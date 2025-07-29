@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+{% load static %}
+<html lang="he">
+<head>
+    <meta charset="UTF-8">
+    <title>חוות סוסים מסילת ציון</title>
+    <link rel="stylesheet" href="{% static 'homePage/home_style.css' %}">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>חוות מסילת ציון</h1>
+        </header>
+
+        <section class="about">
+            <h2>קצת עלינו</h2>
+            <p>
+                חוות מסילת ציון היא חווה כפרית בלב הנוף הקסום של הרי ירושלים.
+                אצלנו תמצאו שילוב של טבע פראי, בעלי חיים אהובים, סדנאות חווייתיות, והרבה נשמה.
+                אנחנו משפחה שגדלה על אהבת האדמה ורוצה לחלוק אותה איתכם – בכל גיל ובכל עונה.
+            </p>
+        </section>
+
+        <section class="activities">
+            <h2>הפעילויות שלנו</h2>
+            <ul>
+                <li><strong>רכיבה זוגית בין הכרמים</strong></li>
+                <li><strong>רכיבת לילה</strong></li>
+                <li><strong>רכיבה בזריחה</strong></li>
+                <li><strong>רכיבה קבוצתית</strong></li>
+                <li><strong>טיול כרכרה</strong></li>
+                <li><strong>צילומים</strong></li>
+                <li><strong>שיעורי רכיבה וטיפולים רגשיים</strong></li>
+            </ul>
+        </section>
+    </div>
+
+    <section class="carousel">
+        <h2>תמונות מהחווה שלנו</h2>
+        <img id="carousel-image" src="{% static 'homePage/images/horse.jpg' %}" alt="תמונה מהחווה">
+    </section>
+
+<footer class="contact-section">
+    <h2>📞 יצירת קשר</h2>
+    <p><strong>טלפון:</strong> 055-8859569</p>
+
+    <h3>🕒 שעות פעילות:</h3>
+    <ul class="hours-list">
+        <li><strong>ראשון:</strong> 09:00–20:00</li>
+        <li><strong>שני:</strong> 09:00–20:00</li>
+        <li><strong>שלישי:</strong> 09:00–20:00</li>
+        <li><strong>רביעי:</strong> 09:00–20:00</li>
+        <li><strong>חמישי:</strong> 09:00–20:00</li>
+        <li><strong>שישי:</strong> 09:00–14:00</li>
+        <li><strong>שבת:</strong> סגור</li>
+    </ul>
+</footer>
+
+
+    <script>
+        const images = [
+            "{% static 'homePage/images/p1.jpg' %}",
+            "{% static 'homePage/images/p2.jpg' %}",
+            "{% static 'homePage/images/p3.jpg' %}",
+            "{% static 'homePage/images/p4.jpg' %}",
+            "{% static 'homePage/images/p5.jpg' %}",
+            "{% static 'homePage/images/p6.jpg' %}",
+            "{% static 'homePage/images/p7.jpg' %}",
+            "{% static 'homePage/images/p8.jpg' %}",
+            "{% static 'homePage/images/p9.jpg' %}",
+            "{% static 'homePage/images/p10.jpg' %}",
+            "{% static 'homePage/images/p11.jpg' %}",
+        ];
+        let index = 0;
+        const imageElement = document.getElementById("carousel-image");
+
+        setInterval(() => {
+            index = (index + 1) % images.length;
+            imageElement.src = images[index];
+        }, 3000); // כל 3 שניות
+    </script>
+</body>
+</html>
