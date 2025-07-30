@@ -1,8 +1,27 @@
+/*קטע עליון*/
+header {
+    background-color: #d8ead3; /* ירוק בהיר */
+    height: 110px;             /* הגובה של הקטע העליון - שימי כאן כמה שתרצי */
+    padding: 0;
+    margin: 0;
+
+    /* **הגדרות עבור sticky header:** */
+    position: sticky; /* הופך את האלמנט לדביק */
+    top: 0;            /* מצמיד אותו לחלק העליון של אזור התצוגה (viewport) */
+    z-index: 1000;     /* ודא שהוא מעל תוכן אחר שעלול לגלול מתחתיו */
+    width: 100%;       /* ודא שהוא תופס את כל הרוחב הזמין */
+}
+
+header img{
+    max-width: 100px; /* גודל מקסימלי לתמונה */
+    height: auto; /* שמירה על יחס הגובה-רוחב */
+}
+
 body {
     margin: 0;
     padding: 0;
     font-family: Arial, sans-serif;
-    background: lightgray;
+    background: whitesmoke;
     color: #333;
     text-align: center;
     direction: rtl;
@@ -14,19 +33,6 @@ body {
     padding: 20px;
 }
 
-header {
-    background-color: #b7d7a8;
-    padding: 40px 20px;
-    border-radius: 0 0 20px 20px;
-}
-
-header h1 {
-    font-size: 60px;
-    color: black;
-    direction: rtl;
-    text-align: center;
-    margin: 0;
-}
 
 section {
     margin: 40px 0;
@@ -42,17 +48,51 @@ ul {
     padding: 0;
 }
 
-ul li {
+/* סגנונות ספציפיים לפריטי הפעילויות בלבד */
+.activities ul li { /* שינוי כאן: הוספתי .activities לפני ul li */
     background-color: #e8f5e2;
-    margin: 10px 0;
+    margin: 20px 0; /* או הערך שקבעת */
     padding: 10px;
     border-radius: 12px;
-    text-align: right;
+    text-align: center;
+    border: 1px solid #3b5e2b; /* מסגרת */
+    cursor: pointer; /* סמן עכבר */
+    transition: background-color 0.3s ease, border-color 0.3s ease, transform 0.2s ease, box-shadow 0.3s ease; /* אנימציות */
 }
 
+.activities ul li:hover { /* שינוי כאן: הוספתי .activities לפני ul li */
+    background-color: #d8ead3;
+    border-color: #2e4a1b;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+}
+
+.activities ul li:active { /* שינוי כאן: הוספתי .activities לפני ul li */
+    background-color: #c0dec2;
+    transform: translateY(0);
+}
+
+.hours-list {
+    list-style: none;
+    padding: 0;
+    font-size: 0.80em;
+    max-width: 260px;
+    margin: auto;
+    text-align: center;
+}
+
+.hours-list li {
+    margin: 3px 0;
+    /* border: none; */ /* אם יש border, ניתן להסיר אותו */
+    background-color: transparent; /* אם יש רקע, ניתן להפוך אותו לשקוף */
+    padding: 0; /* להסיר ריווח פנימי אם לא נדרש */
+}
+
+
+/*קטע תחתון*/
 footer.contact-section {
     background-color: #d8ead3;
-    padding: 30px 15px;
+    padding: 10px 15px;
     margin-top: 40px;
     color: #2e4a1b;
     text-align: center;
@@ -71,24 +111,9 @@ footer h3 {
     color: #3b5e2b;
 }
 
-.hours-list {
-    list-style: none;
-    padding: 0;
-    font-size: 0.95em;
-    max-width: 260px;
-    margin: auto;
-    text-align: right;
-}
+/*קרוסלת תמונות*/
 
-.hours-list li {
-    margin: 3px 0;
-    /* border: none; */ /* אם יש border, ניתן להסיר אותו */
-    background-color: transparent; /* אם יש רקע, ניתן להפוך אותו לשקוף */
-    padding: 0; /* להסיר ריווח פנימי אם לא נדרש */
-}
-
-
-
+/* קרוסלת תמונות - סגנונות כלליים */
 .carousel {
     margin-top: 40px;
 }
@@ -98,32 +123,72 @@ footer h3 {
     margin-bottom: 20px;
 }
 
-.carousel img {
-    width: 100%;
-    max-width: 600px;
-    height: auto;
+.carousel-container {
+    position: relative; /* חיוני למיקום מוחלט של החיצים והנקודות בתוכו */
+    max-width: 250px; /* הרוחב המקסימלי של הקרוסלה */
+    margin: auto; /* למרכז את הקרוסלה בדף */
     border-radius: 16px;
     box-shadow: 0 4px 10px rgba(0,0,0,0.2);
+    overflow: hidden; /* מבטיח שתמונות לא יצאו מגבולות הקונטיינר */
 }
 
-.image-gallery {
-    display: flex;
-    flex-wrap: wrap;
-    justify-content: center;
-    gap: 20px;
-    margin: 40px 0;
+.carousel-container img {
+    width: 100%; /* התמונה תתפוס את כל רוחב הקונטיינר */
+    height: auto;
+    display: block; /* מסיר רווחים מיותרים מתחת לתמונה */
 }
 
-.farm-image {
-    width: 250px;
-    height: 200px;
-    object-fit: cover;
-    border: 3px solid #8FBF9F;
-    border-radius: 12px;
-    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.2);
-    transition: transform 0.3s ease;
+/* סגנונות לחיצים */
+.carousel-container .prev-btn,
+.carousel-container .next-btn {
+    position: absolute; /* ממקם אותם באופן מוחלט ביחס ל-carousel-container */
+    top: 50%; /* ממרכז אותם אנכית */
+    transform: translateY(-50%); /* תיקון עדין למרכוז אנכי מושלם */
+    background-color: rgba(0, 0, 0, 0.5); /* רקע שחור שקוף */
+    color: white;
+    border: none;
+    padding: 10px 15px;
+    cursor: pointer;
+    font-size: 1.5em;
+    border-radius: 50%; /* הופך את הכפתורים לעגולים */
+    transition: background-color 0.3s ease; /* אנימציה בריחוף */
+    z-index: 10; /* ודא שהחיצים מעל התמונה */
 }
 
-.farm-image:hover {
-    transform: scale(1.05);
+.carousel-container .prev-btn {
+    left: 10px; /* מיקום משמאל */
+}
+
+.carousel-container .next-btn {
+    right: 10px; /* מיקום מימין */
+}
+
+.carousel-container .prev-btn:hover,
+.carousel-container .next-btn:hover {
+    background-color: rgba(0, 0, 0, 0.8); /* רקע כהה יותר בריחוף */
+}
+
+/* סגנונות לנקודות ניווט (אופציונלי) */
+.carousel-dots {
+    position: absolute;
+    bottom: 10px; /* ממקם אותן בתחתית הקרוסלה */
+    left: 50%;
+    transform: translateX(-50%); /* ממקם אותן במרכז אופקית */
+    display: flex; /* כדי לסדר את הנקודות בשורה */
+    gap: 8px; /* רווח בין הנקודות */
+    z-index: 10;
+}
+
+.dot {
+    width: 10px;
+    height: 10px;
+    background-color: rgba(255, 255, 255, 0.7); /* צבע לבן שקוף */
+    border-radius: 50%; /* הופך את הנקודות לעגולות */
+    cursor: pointer;
+    transition: background-color 0.3s ease, transform 0.2s ease;
+}
+
+.dot.active {
+    background-color: #3b5e2b; /* צבע הנקודה הפעילה */
+    transform: scale(1.2); /* הגדלה קלה של הנקודה הפעילה */
 }

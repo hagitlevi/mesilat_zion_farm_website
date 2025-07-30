@@ -3,14 +3,15 @@
 <html lang="he">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>חוות סוסים מסילת ציון</title>
     <link rel="stylesheet" href="{% static 'homePage/home_style.css' %}">
 </head>
 <body>
+    <header>
+        <img src="{% static 'homePage/images/logo.png' %}" alt="חוות סילת ציון לוגו ">
+    </header>
     <div class="container">
-        <header>
-            <h1>חוות מסילת ציון</h1>
-        </header>
 
         <section class="about">
             <h2>קצת עלינו</h2>
@@ -22,7 +23,7 @@
         </section>
 
         <section class="activities">
-            <h2>הפעילויות שלנו</h2>
+            <h2>פרטים והזמנת תורים:</h2>
             <ul>
                 <li><strong>רכיבה זוגית בין הכרמים</strong></li>
                 <li><strong>רכיבת לילה</strong></li>
@@ -35,49 +36,138 @@
         </section>
     </div>
 
-    <section class="carousel">
-        <h2>תמונות מהחווה שלנו</h2>
-        <img id="carousel-image" src="{% static 'homePage/images/horse.jpg' %}" alt="תמונה מהחווה">
-    </section>
+<section class="carousel">
+    <h3>תמונות מהחווה שלנו</h3>
+    <div class="carousel-container">
+        <img id="carousel-image" src="{% static 'homePage/images/p1.jpg' %}" alt="תמונה מהחווה">
+
+        <button class="prev-btn">&lt;</button> <button class="next-btn">&gt;</button> <div class="carousel-dots"></div>
+    </div>
+</section>
 
 <footer class="contact-section">
     <h2>📞 יצירת קשר</h2>
     <p><strong>טלפון:</strong> 055-8859569</p>
 
-    <h3>🕒 שעות פעילות:</h3>
+    <h2>🕒 שעות פעילות:</h2>
     <ul class="hours-list">
         <li><strong>ראשון:</strong> 09:00–20:00</li>
-        <li><strong>שני:</strong> 09:00–20:00</li>
+        <li><strong>שני:</strong>&nbsp;&nbsp;&nbsp;&nbsp; 09:00–20:00</li>
         <li><strong>שלישי:</strong> 09:00–20:00</li>
-        <li><strong>רביעי:</strong> 09:00–20:00</li>
+        <li><strong>רביעי:</strong>&nbsp; 09:00–20:00</li>
         <li><strong>חמישי:</strong> 09:00–20:00</li>
-        <li><strong>שישי:</strong> 09:00–14:00</li>
+        <li><strong>שישי:</strong>&nbsp;&nbsp; 09:00–14:00</li>
         <li><strong>שבת:</strong> סגור</li>
     </ul>
 </footer>
 
+<script>
+    const images = [
+        "{% static 'homePage/images/p1.jpg' %}",
+        "{% static 'homePage/images/p2.jpg' %}",
+        "{% static 'homePage/images/p3.jpg' %}",
+        "{% static 'homePage/images/p4.jpg' %}",
+        "{% static 'homePage/images/p5.jpg' %}",
+        "{% static 'homePage/images/p6.jpg' %}",
+        "{% static 'homePage/images/p7.jpg' %}",
+        "{% static 'homePage/images/p8.jpg' %}",
+        "{% static 'homePage/images/p9.jpg' %}",
+        "{% static 'homePage/images/p10.jpg' %}",
+        "{% static 'homePage/images/p11.jpg' %}",
+    ];
+    let index = 0;
+    const imageElement = document.getElementById("carousel-image");
+    const prevBtn = document.querySelector(".prev-btn");
+    const nextBtn = document.querySelector(".next-btn");
+    const dotsContainer = document.querySelector(".carousel-dots");
 
-    <script>
-        const images = [
-            "{% static 'homePage/images/p1.jpg' %}",
-            "{% static 'homePage/images/p2.jpg' %}",
-            "{% static 'homePage/images/p3.jpg' %}",
-            "{% static 'homePage/images/p4.jpg' %}",
-            "{% static 'homePage/images/p5.jpg' %}",
-            "{% static 'homePage/images/p6.jpg' %}",
-            "{% static 'homePage/images/p7.jpg' %}",
-            "{% static 'homePage/images/p8.jpg' %}",
-            "{% static 'homePage/images/p9.jpg' %}",
-            "{% static 'homePage/images/p10.jpg' %}",
-            "{% static 'homePage/images/p11.jpg' %}",
-        ];
-        let index = 0;
-        const imageElement = document.getElementById("carousel-image");
+    let autoSlideInterval; // משתנה לשמירת ה-Interval של המעבר האוטומטי
+    const slideDuration = 1500; // שנייה אחת (1000 מילישניות) - כפי שביקשת
 
-        setInterval(() => {
-            index = (index + 1) % images.length;
-            imageElement.src = images[index];
-        }, 3000); // כל 3 שניות
-    </script>
+    // פונקציה לעדכון התמונה ונקודות הניווט
+    function updateCarousel() {
+        imageElement.src = images[index];
+        updateDots(); // קורא לפונקציה שמעדכנת את מצב הנקודות
+    }
+
+    // פונקציה למעבר לתמונה הבאה
+    function nextSlide() {
+        index = (index + 1) % images.length; // מעבר לתמונה הבאה, חזרה להתחלה אם הגענו לסוף
+        updateCarousel();
+    }
+
+    // פונקציה למעבר לתמונה הקודמת
+    function prevSlide() {
+        index = (index - 1 + images.length) % images.length; // מעבר לתמונה הקודמת, מעבר לסוף אם הגענו להתחלה
+        updateCarousel();
+    }
+
+    // פונקציה ליצירת נקודות הניווט
+    function createDots() {
+        dotsContainer.innerHTML = ''; // מנקה נקודות קיימות לפני יצירה מחדש (אם נקרא שוב)
+        images.forEach((_, i) => { // עובר על כל תמונה במערך
+            const dot = document.createElement('span'); // יוצר אלמנט span לנקודה
+            dot.classList.add('dot'); // מוסיף לו את הקלאס 'dot'
+            if (i === index) { // אם זו הנקודה של התמונה הנוכחית
+                dot.classList.add('active'); // מוסיף לה את הקלאס 'active'
+            }
+            dot.addEventListener('click', () => { // מוסיף האזנה ללחיצה על הנקודה
+                index = i; // משנה את האינדקס לאינדקס של הנקודה שנלחצה
+                updateCarousel(); // מעדכן את הקרוסלה לתמונה המתאימה
+                resetAutoSlide(); // מאפס את טיימר המעבר האוטומטי
+            });
+            dotsContainer.appendChild(dot); // מוסיף את הנקודה למיכל הנקודות ב-HTML
+        });
+    }
+
+    // פונקציה לעדכון מצב הנקודות (סימון הנקודה הפעילה)
+    function updateDots() {
+        const dots = document.querySelectorAll('.dot'); // קולט את כל הנקודות
+        dots.forEach((dot, i) => { // עובר על כל נקודה
+            if (i === index) { // אם האינדקס של הנקודה תואם לאינדקס התמונה הנוכחית
+                dot.classList.add('active'); // מסמן אותה כפעילה
+            } else {
+                dot.classList.remove('active'); // מסיר סימון מנקודות אחרות
+            }
+        });
+    }
+
+    // פונקציה להתחלת המעבר האוטומטי
+    function startAutoSlide() {
+        autoSlideInterval = setInterval(nextSlide, slideDuration); // מפעיל פונקציה כל פרק זמן קבוע
+    }
+
+    // פונקציה לאיפוס המעבר האוטומטי (עוצר ומתחיל מחדש)
+    // חשוב כדי שלחיצות ידניות לא יתנגשו עם המעבר האוטומטי
+    function resetAutoSlide() {
+        clearInterval(autoSlideInterval); // עוצר את הטיימר הקיים
+        startAutoSlide(); // מתחיל טיימר חדש
+    }
+
+    // האזנה ללחיצות על כפתורי הניווט
+    nextBtn.addEventListener('click', () => {
+        nextSlide(); // מעבר לתמונה הבאה
+        resetAutoSlide(); // איפוס טיימר לאחר לחיצה ידנית
+    });
+
+    prevBtn.addEventListener('click', () => {
+        prevSlide(); // מעבר לתמונה הקודמת
+        resetAutoSlide(); // איפוס טיימר לאחר לחיצה ידנית
+    });
+
+    // אתחול הקרוסלה עם טעינת העמוד
+    document.addEventListener('DOMContentLoaded', () => {
+        createDots(); // יוצר את הנקודות בפעם הראשונה
+        updateCarousel(); // מציג את התמונה הראשונה ומעדכן נקודות
+        startAutoSlide(); // מתחיל את הקרוסלה האוטומטית
+    });
+
+    // אופציונלי: עצירת המעבר האוטומטי בריחוף מעל הקרוסלה
+    // זה מונע מהתמונות להתחלף אוטומטית כשהמשתמש מעביר עכבר מעל הקרוסלה
+    const carouselContainer = document.querySelector(".carousel-container");
+    carouselContainer.addEventListener('mouseenter', () => clearInterval(autoSlideInterval));
+    carouselContainer.addEventListener('mouseleave', () => startAutoSlide());
+
+</script>
 </body>
 </html>

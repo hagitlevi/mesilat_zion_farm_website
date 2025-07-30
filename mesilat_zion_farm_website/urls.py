@@ -14,9 +14,10 @@ Including another URLconf
     1. Import the include() function: from django.urls import include, path
     2. Add a URL to urlpatterns:  path('blog/', include('blog.urls'))
 """
-# from django.contrib import admin
+from django.contrib import admin # הוספה של שורת ייבוא זו
 from django.urls import path, include
 
 urlpatterns = [
-    path('', include('homePage.urls'))
+    path('admin/', admin.site.urls), # הוספה של שורה זו
+    path('', include('homePage.urls')),
 ]

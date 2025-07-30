@@ -1,3 +1,4 @@
 from django.contrib import admin
+from .models import PageContent # וודא שאתה מייבא את המודל הנכון
 
-# Register your models here.
+admin.site.register(PageContent) # וודא שהשם PageContent זהה לשם המודל שלך
