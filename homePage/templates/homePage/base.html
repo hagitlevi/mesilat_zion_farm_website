@@ -1,0 +1,25 @@
+{% load static %}
+<html lang="he">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}חוות סוסים מסילת ציון{% endblock %}</title>
+    <link rel="stylesheet" href="{% static 'homePage/base.css' %}">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    {% block extra_css %}{% endblock %}
+</head>
+<body>
+    <header>
+        <div class="logo">
+            <img src="{% static 'homePage/images/logo.png' %}" alt="חוות סילת ציון לוגו ">
+        </div>
+        <div class="shopping-chart">
+
+        </div>
+    </header>
+    <main>
+        {% block content %}
+            <!-- כאן התוכן של תבניות הילד יופיע -->
+        {% endblock %}
+    </main>
+</body>

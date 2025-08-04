@@ -1,19 +1,23 @@
-/*קטע עליון*/
 header {
-    background-color: #d8ead3; /* ירוק בהיר */
-    height: 110px;             /* הגובה של הקטע העליון - שימי כאן כמה שתרצי */
-    padding: 0;
+    background-color: #d8ead3;
+    height: 80px;
     margin: 0;
-
-    /* **הגדרות עבור sticky header:** */
-    position: sticky; /* הופך את האלמנט לדביק */
-    top: 0;            /* מצמיד אותו לחלק העליון של אזור התצוגה (viewport) */
-    z-index: 1000;     /* ודא שהוא מעל תוכן אחר שעלול לגלול מתחתיו */
-    width: 100%;       /* ודא שהוא תופס את כל הרוחב הזמין */
+    display: flex;
+    align-items: center;
+    padding: 0 20px;
+    position: sticky;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 1000;
+    box-sizing: border-box;
+    justify-content: center;
 }
 
+
 header img{
-    max-width: 100px; /* גודל מקסימלי לתמונה */
+
+    max-width: 80px; /* גודל מקסימלי לתמונה */
     height: auto; /* שמירה על יחס הגובה-רוחב */
 }
 
@@ -28,8 +32,8 @@ body {
 }
 
 .container {
-    max-width: 800px;
     margin: auto;
+    max-width: 800px;
     padding: 20px;
 }
 
@@ -41,6 +45,8 @@ section {
 h2 {
     color: #3b5e2b;
     font-size: 1.8em;
+    margin: 0; /* Removes all margins */
+    padding: 0;
 }
 
 ul {
@@ -88,6 +94,10 @@ ul {
     padding: 0; /* להסיר ריווח פנימי אם לא נדרש */
 }
 
+.activity-button{
+    text-decoration: none; /* מסיר את הקו התחתון */
+    color: inherit;
+}
 
 /*קטע תחתון*/
 footer.contact-section {
@@ -98,6 +108,10 @@ footer.contact-section {
     text-align: center;
     direction: rtl;
     font-size: 0.95em; /* כל הטקסט קטן ב־5% */
+}
+
+.tel-color{
+    color: inherit;
 }
 
 footer h2 {
@@ -112,8 +126,6 @@ footer h3 {
 }
 
 /*קרוסלת תמונות*/
-
-/* קרוסלת תמונות - סגנונות כלליים */
 .carousel {
     margin-top: 40px;
 }

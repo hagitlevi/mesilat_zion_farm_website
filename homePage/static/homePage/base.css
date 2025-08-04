@@ -1,0 +1,18 @@
+header{
+    height: 80px;
+    width: 100%;
+    display: flex;
+    background-color: #333333;
+    position: relative;
+    justify-content: center;
+
+}
+
+.logo img{
+    height: 100%;
+    display: table;
+    width: auto;
+
+}
+
+

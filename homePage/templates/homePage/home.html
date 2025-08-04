@@ -6,10 +6,14 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>חוות סוסים מסילת ציון</title>
     <link rel="stylesheet" href="{% static 'homePage/home_style.css' %}">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
 </head>
 <body>
     <header>
-        <img src="{% static 'homePage/images/logo.png' %}" alt="חוות סילת ציון לוגו ">
+        <div class="logo-container">
+            <img src="{% static 'homePage/images/logo.png' %}" alt="חוות סילת ציון לוגו ">
+        </div>
     </header>
     <div class="container">
 
@@ -23,7 +27,7 @@
         </section>
 
         <section class="activities">
-            <h2>פרטים והזמנת תורים:</h2>
+            <h2>לפרטים והזמנת תורים:</h2>
             <ul>
                 <li><strong>רכיבה זוגית בין הכרמים</strong></li>
                 <li><strong>רכיבת לילה</strong></li>
@@ -31,7 +35,11 @@
                 <li><strong>רכיבה קבוצתית</strong></li>
                 <li><strong>טיול כרכרה</strong></li>
                 <li><strong>צילומים</strong></li>
-                <li><strong>שיעורי רכיבה וטיפולים רגשיים</strong></li>
+                <li>
+                    <a href="{% url 'riding_lessons' %}" class="activity-button" >
+                        <strong>שיעורי רכיבה וטיפולים רגשיים</strong>
+                    </a>
+                </li>
             </ul>
         </section>
     </div>
@@ -47,7 +55,10 @@
 
 <footer class="contact-section">
     <h2>📞 יצירת קשר</h2>
-    <p><strong>טלפון:</strong> 055-8859569</p>
+    <p>
+        טלפון:
+    <a href="tel:+97255-8859569" class="tel-color">055-8859569 </a>
+    </p>
 
     <h2>🕒 שעות פעילות:</h2>
     <ul class="hours-list">
@@ -56,7 +67,7 @@
         <li><strong>שלישי:</strong> 09:00–20:00</li>
         <li><strong>רביעי:</strong>&nbsp; 09:00–20:00</li>
         <li><strong>חמישי:</strong> 09:00–20:00</li>
-        <li><strong>שישי:</strong>&nbsp;&nbsp; 09:00–14:00</li>
+        <li><strong>שישי:</strong>&nbsp;&nbsp; 09:00–16:00</li>
         <li><strong>שבת:</strong> סגור</li>
     </ul>
 </footer>
@@ -82,7 +93,7 @@
     const dotsContainer = document.querySelector(".carousel-dots");
 
     let autoSlideInterval; // משתנה לשמירת ה-Interval של המעבר האוטומטי
-    const slideDuration = 1500; // שנייה אחת (1000 מילישניות) - כפי שביקשת
+    const slideDuration = 3000; // שנייה אחת (1000 מילישניות) - כפי שביקשת
 
     // פונקציה לעדכון התמונה ונקודות הניווט
     function updateCarousel() {
