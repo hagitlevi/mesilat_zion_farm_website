@@ -20,17 +20,19 @@ section {
 }
 
 .about {
+    display: inline-block;
     position: relative;
-    border: 2px solid black;
+    border: 2px solid #3b5e2b;
     padding: 40px 20px 20px;
-    width: 100%;
-    max-width: 300px;
     margin: auto;
     font-family: sans-serif;
     text-align: center;
+    max-width: 100%;
+    box-sizing: border-box;
 }
 
 .about .frame-text {
+    color: #3b5e2b;
     position: absolute;
     top: -12px; /* מציב את הטקסט מעט מעל המסגרת */
     left: 50%;
@@ -39,6 +41,7 @@ section {
     font-weight: bold;
     font-size: 20px;
     background-color: whitesmoke;
+
     }
 
 h2 {
