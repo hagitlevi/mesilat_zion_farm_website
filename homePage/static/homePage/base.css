@@ -1,8 +1,10 @@
 header{
     height: 80px;
     width: 100%;
+    margin: 0;
+    padding: 0;
     display: flex;
-    background-color: #333333;
+    background-color: #d8ead3;
     position: relative;
     justify-content: center;
 
@@ -12,7 +14,10 @@ header{
     height: 100%;
     display: table;
     width: auto;
-
 }
 
+body {
+    margin: 0;
+    padding: 0;
+}
 

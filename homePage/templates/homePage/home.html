@@ -2,7 +2,7 @@
 {% load static %}
 <html lang="he">
 <head>
-    <meta charset="UTF-8">
+    <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>חוות סוסים מסילת ציון</title>
     <link rel="stylesheet" href="{% static 'homePage/home_style.css' %}">
@@ -19,26 +19,80 @@
 
         <section class="about">
             <h2>קצת עלינו</h2>
-            <p>
-                חוות מסילת ציון היא חווה כפרית בלב הנוף הקסום של הרי ירושלים.
-                אצלנו תמצאו שילוב של טבע פראי, בעלי חיים אהובים, סדנאות חווייתיות, והרבה נשמה.
-                אנחנו משפחה שגדלה על אהבת האדמה ורוצה לחלוק אותה איתכם – בכל גיל ובכל עונה.
-            </p>
+            <p>חוות מסילת ציון היא פנינה כפרית ירוקה בלב הרי ירושלים, מקום שבו הזמן עוצר והחיבור לטבע מתעורר לחיים.
+                <br> החווה שלנו הוקמה מתוך אהבה אמיתית לאדמה, לסוסים ולאנשים – והיא מציעה חוויה אישית, אותנטית ומרגיעה לכל מבקר.<br>
+                אצלנו תמצאו מגוון רחב של פעילויות:<br>
+                -רכיבה זוגית רומנטית בין הכרמים<br>
+                -רכיבת לילה לאור ירח<br>
+                -רכיבה בזריחה עם נוף עוצר נשימה<br>
+                -רכיבת שטח מלאת אנרגיה<br>
+                -רכיבה לילדים<br>
+                -צילומים מיוחדים עם הסוסים והנוף<br>
+                -שיעורי רכיבה מקצועיים למתחילים ומתקדמים<br>
+                -רכיבה טיפולית לילדים, נוער ומבוגרים<br>
+                -טיול בכרכרה מסורתית לאווירה כפרית של פעם<br>
+
+                החווה שלנו היא יותר ממקום – היא חוויה. מקום לחיבור בין אדם לסוס, בין משפחה לטבע. נשמח לארח אתכם באהבה, ולהפוך כל ביקור לחוויה בלתי נשכחת.</p>
         </section>
 
         <section class="activities">
             <h2>לפרטים והזמנת תורים:</h2>
             <ul>
-                <li><strong>רכיבה זוגית בין הכרמים</strong></li>
-                <li><strong>רכיבת לילה</strong></li>
-                <li><strong>רכיבה בזריחה</strong></li>
-                <li><strong>רכיבה קבוצתית</strong></li>
-                <li><strong>טיול כרכרה</strong></li>
-                <li><strong>צילומים</strong></li>
                 <li>
-                    <a href="{% url 'riding_lessons' %}" class="activity-button" >
-                        <strong>שיעורי רכיבה וטיפולים רגשיים</strong>
-                    </a>
+                    <div class="activity-button">
+                        <a href="{% url 'couple_riding' %}" class="details-link"> <h4> לפרטים והזמנות</h4></a>
+                        <img src="{% static 'homePage/images/couple-riding.jpg' %}" alt="רכיבה זוגית">
+                        <span class="title-text">רכיבה זוגית </span>
+                    </div>
+                </li>
+                <li>
+                    <div class="activity-button" >
+                        <a href="{% url 'night_riding' %}" class="details-link"> <h4> לפרטים והזמנות</h4></a>
+                        <img src="{% static 'homePage/images/night-riding.jpg' %}" alt="רכיבת לילה">
+                        <span class="title-text">רכיבת לילה</span>
+                    </div>
+                </li>
+                <li>
+                    <div class="activity-button" >
+                        <a href="{% url 'sunrise_riding' %}" class="details-link"> <h4> לפרטים והזמנות</h4></a>
+                        <img src="{% static 'homePage/images/sunrise-riding.jpg' %}" alt="רכיבה בזריחה">
+                        <span class="title-text">רכיבה בזריחה</span>
+                    </div>
+                </li>
+                <li>
+                    <div class="activity-button" >
+                        <a href="{% url 'group_riding' %}" class="details-link"> <h4> לפרטים והזמנות</h4></a>
+                        <img src="{% static 'homePage/images/group-riding.jpg' %}" alt="רכיבה קבוצתית">
+                        <span class="title-text">רכיבת שטח</span>
+                    </div>
+                </li>
+                <li>
+                    <div class="activity-button" >
+                        <a href="{% url 'children_riding' %}" class="details-link"> <h4> לפרטים והזמנות</h4></a>
+                        <img src="{% static 'homePage/images/photographs.jpg' %}" alt="רכיבה לילדים">
+                        <span class="title-text">רכיבת ילדים</span>
+                    </div>
+                </li>
+                <li>
+                    <div class="activity-button" >
+                        <a href="{% url 'carriage_trip' %}" class="details-link"> <h4> לפרטים והזמנות</h4></a>
+                        <img src="{% static 'homePage/images/carriage-trip.jpg' %}" alt="טיול כרכרה">
+                        <span class="title-text">טיול כרכרה</span>
+                    </div>
+                </li>
+                <li>
+                    <div class="activity-button" >
+                        <a href="{% url 'photographs' %}" class="details-link"> <h4> לפרטים והזמנות</h4></a>
+                        <img src="{% static 'homePage/images/photographs.jpg' %}" alt="צילומים">
+                        <span class="title-text">צילומים</span>
+                    </div>
+                </li>
+                <li>
+                    <div class="activity-button" >
+                        <a href="{% url 'riding_lessons' %}" class="details-link"> <h4> לפרטים והזמנות</h4></a>
+                        <img src="{% static 'homePage/images/riding-lessons.jpg' %}" alt="שיעורי רכיבה">
+                        <span class="title-text">שיעורי רכיבה וטיפולים רגשיים</span>
+                    </div>
                 </li>
             </ul>
         </section>

@@ -16,9 +16,14 @@ header {
 
 
 header img{
-
     max-width: 80px; /* גודל מקסימלי לתמונה */
     height: auto; /* שמירה על יחס הגובה-רוחב */
+}
+
+.container {
+    margin: auto;
+    max-width: 800px;
+    padding: 20px;
 }
 
 body {
@@ -31,15 +36,11 @@ body {
     direction: rtl;
 }
 
-.container {
-    margin: auto;
-    max-width: 800px;
-    padding: 20px;
-}
+
 
 
 section {
-    margin: 40px 0;
+    margin: 10px 0;
 }
 
 h2 {
@@ -53,51 +54,117 @@ ul {
     list-style: none;
     padding: 0;
 }
+.activities ul{
+   place-items: center;
+   display: grid;
+}
 
 /* סגנונות ספציפיים לפריטי הפעילויות בלבד */
 .activities ul li { /* שינוי כאן: הוספתי .activities לפני ul li */
-    background-color: #e8f5e2;
-    margin: 20px 0; /* או הערך שקבעת */
-    padding: 10px;
-    border-radius: 12px;
-    text-align: center;
-    border: 1px solid #3b5e2b; /* מסגרת */
+    margin: 0 0 25px 0;
     cursor: pointer; /* סמן עכבר */
-    transition: background-color 0.3s ease, border-color 0.3s ease, transform 0.2s ease, box-shadow 0.3s ease; /* אנימציות */
+    overflow: hidden;
+    transition: transform 0.2s ease, box-shadow 0.3s ease;
+    border: 3px solid #3b5e2b;
+    border-radius: 12px;
+    box-shadow: 0 4px 10px rgba(59, 94, 43, 0.3); /* צל ירוק כהה */
 }
 
-.activities ul li:hover { /* שינוי כאן: הוספתי .activities לפני ul li */
-    background-color: #d8ead3;
-    border-color: #2e4a1b;
-    transform: translateY(-2px);
-    box-shadow: 0 4px 8px rgba(0,0,0,0.1);
-}
 
-.activities ul li:active { /* שינוי כאן: הוספתי .activities לפני ul li */
-    background-color: #c0dec2;
-    transform: translateY(0);
-}
-
-.hours-list {
-    list-style: none;
-    padding: 0;
-    font-size: 0.80em;
-    max-width: 260px;
-    margin: auto;
+.title-text {
+    font-weight: 900; /* מודגש במיוחד */
+    color: #ffffff;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    letter-spacing: 1px;
+    display: inline-block;
+    top: 25px;
+    left: 50%;
+    transform: translate(-50%, 0);
     text-align: center;
+    width: 100%;
+    position: absolute;
+    font-size: clamp(24px, 8vw, 60px);
+    text-shadow:
+        0 1px 0 #ccc,
+        0 2px 0 #bbb,
+        0 3px 0 #aaa,
+        0 4px 0 #999,
+        0 5px 0 #888,
+        0 6px 1px rgba(0,0,0,0.1),
+        0 0 5px rgba(0,0,0,0.1),
+        0 1px 3px rgba(0,0,0,0.3),
+        0 3px 5px rgba(0,0,0,0.2),
+        0 5px 10px rgba(0,0,0,0.25),
+        0 10px 10px rgba(0,0,0,0.2),
+        0 20px 20px rgba(0,0,0,0.15);
+    transition: transform 0.3s ease, text-shadow 0.3s ease;
+    padding: 10px 15px;
 }
 
-.hours-list li {
-    margin: 3px 0;
-    /* border: none; */ /* אם יש border, ניתן להסיר אותו */
-    background-color: transparent; /* אם יש רקע, ניתן להפוך אותו לשקוף */
-    padding: 0; /* להסיר ריווח פנימי אם לא נדרש */
+
+.activity-button {
+    height: 100%;
+    position: relative;
+    display: block; /* Aligns image and text horizontally */
+    text-decoration: none; /* Removes underline from links */
+    color: inherit; /* Ensures text color matches the design */
+    overflow: hidden;
 }
 
-.activity-button{
-    text-decoration: none; /* מסיר את הקו התחתון */
-    color: inherit;
+.activity-button img {
+    width: 100%; /* Ensures the image fits within the container */
+    height: 100%;
+    display: block;
+    object-fit: cover;
+    overflow: hidden;
+    vertical-align: bottom;
+    margin: 0 !important;       /* ⬅️ מבטל כל margin כולל מה שמתווסף ממקום אחר */
+    border-radius: inherit;
+
 }
+
+.details-link:active ~ .title-text {
+    transform: translate(-50%, 0) scale(1.03);
+    text-shadow:
+        0 0 5px #fff,
+        0 0 10px #fff,
+        0 0 15px #88c070,
+        0 0 20px #88c070,
+        0 0 25px #88c070;
+}
+
+.details-link:active ~ img {
+    transform: scale(1.05);
+    transition: transform 0.2s ease;
+}
+
+
+
+
+
+.details-link {
+    position: absolute;
+    bottom: 45px;
+    left: 50%;
+    transform: translateX(-50%);
+    background-color: rgba(255, 255, 255, 0.9);
+    color: #3b5e2b;
+    padding: 1px 20px;
+    border-radius: 20px;
+    font-weight: bold;
+    text-decoration: none;
+    box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+    transition: all 0.3s ease;
+    z-index: 10;
+}
+
+.details-link h4{
+    font-family: Arial, sans-serif;
+    font-size: clamp(24px, 4vw, 60px);
+    margin: 15px;
+    white-space: nowrap;
+}
+
 
 /*קטע תחתון*/
 footer.contact-section {
@@ -123,6 +190,22 @@ footer h3 {
     margin-top: 20px;
     font-size: 1.1em;
     color: #3b5e2b;
+}
+
+.hours-list {
+    list-style: none;
+    padding: 0;
+    font-size: 0.80em;
+    max-width: 260px;
+    margin: auto;
+    text-align: center;
+}
+
+.hours-list li {
+    margin: 3px 0;
+    /* border: none; */ /* אם יש border, ניתן להסיר אותו */
+    background-color: transparent; /* אם יש רקע, ניתן להפוך אותו לשקוף */
+    padding: 0; /* להסיר ריווח פנימי אם לא נדרש */
 }
 
 /*קרוסלת תמונות*/
