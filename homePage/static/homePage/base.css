@@ -5,9 +5,13 @@ header{
     padding: 0;
     display: flex;
     background-color: #d8ead3;
-    position: relative;
     justify-content: center;
-
+    position: sticky;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 1000;
+    box-sizing: border-box;
 }
 
 .logo img{

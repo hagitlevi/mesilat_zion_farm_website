@@ -1,25 +1,3 @@
-header {
-    background-color: #d8ead3;
-    height: 80px;
-    margin: 0;
-    display: flex;
-    align-items: center;
-    padding: 0 20px;
-    position: sticky;
-    top: 0;
-    left: 0;
-    right: 0;
-    z-index: 1000;
-    box-sizing: border-box;
-    justify-content: center;
-}
-
-
-header img{
-    max-width: 80px; /* גודל מקסימלי לתמונה */
-    height: auto; /* שמירה על יחס הגובה-רוחב */
-}
-
 .container {
     margin: auto;
     max-width: 800px;
@@ -37,16 +15,36 @@ body {
 }
 
 
-
-
 section {
     margin: 10px 0;
 }
 
+.about {
+    position: relative;
+    border: 2px solid black;
+    padding: 40px 20px 20px;
+    width: 100%;
+    max-width: 300px;
+    margin: auto;
+    font-family: sans-serif;
+    text-align: center;
+}
+
+.about .frame-text {
+    position: absolute;
+    top: -12px; /* מציב את הטקסט מעט מעל המסגרת */
+    left: 50%;
+    transform: translateX(-50%);
+    padding: 0 10px;
+    font-weight: bold;
+    font-size: 20px;
+    background-color: whitesmoke;
+    }
+
 h2 {
     color: #3b5e2b;
     font-size: 1.8em;
-    margin: 0; /* Removes all margins */
+    margin: 20px;
     padding: 0;
 }
 
@@ -54,22 +52,39 @@ ul {
     list-style: none;
     padding: 0;
 }
+
 .activities ul{
-   place-items: center;
-   display: grid;
+    place-items: center;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 20px;
+    list-style: none;
+    padding: 0;
+    margin: 0;
 }
 
-/* סגנונות ספציפיים לפריטי הפעילויות בלבד */
-.activities ul li { /* שינוי כאן: הוספתי .activities לפני ul li */
+@media (max-width: 600px) {
+    .activities ul {
+        grid-template-columns: 1fr;
+    }
+}
+
+.activities ul li {
     margin: 0 0 25px 0;
-    cursor: pointer; /* סמן עכבר */
+    cursor: pointer;
     overflow: hidden;
     transition: transform 0.2s ease, box-shadow 0.3s ease;
     border: 3px solid #3b5e2b;
     border-radius: 12px;
     box-shadow: 0 4px 10px rgba(59, 94, 43, 0.3); /* צל ירוק כהה */
+    aspect-ratio: 1 / 1; /* הופך את ה-li לריבוע */
+    font-size: 2.3em;     /* גודל טקסט יחסי לגובה/רוחב הריבוע */
 }
 
+.activities ul li h4,
+.activities ul li span {
+    font-size: 1em; /* זה יהיה יחסי ל־font-size של li */
+}
 
 .title-text {
     font-weight: 900; /* מודגש במיוחד */
@@ -83,7 +98,7 @@ ul {
     text-align: center;
     width: 100%;
     position: absolute;
-    font-size: clamp(24px, 8vw, 60px);
+    font-size: 3.5vw;
     text-shadow:
         0 1px 0 #ccc,
         0 2px 0 #bbb,
@@ -101,7 +116,6 @@ ul {
     padding: 10px 15px;
 }
 
-
 .activity-button {
     height: 100%;
     position: relative;
@@ -118,7 +132,7 @@ ul {
     object-fit: cover;
     overflow: hidden;
     vertical-align: bottom;
-    margin: 0 !important;       /* ⬅️ מבטל כל margin כולל מה שמתווסף ממקום אחר */
+    margin: 0 !important;
     border-radius: inherit;
 
 }
@@ -138,10 +152,6 @@ ul {
     transition: transform 0.2s ease;
 }
 
-
-
-
-
 .details-link {
     position: absolute;
     bottom: 45px;
@@ -149,22 +159,22 @@ ul {
     transform: translateX(-50%);
     background-color: rgba(255, 255, 255, 0.9);
     color: #3b5e2b;
-    padding: 1px 20px;
     border-radius: 20px;
     font-weight: bold;
     text-decoration: none;
     box-shadow: 0 4px 8px rgba(0,0,0,0.2);
     transition: all 0.3s ease;
     z-index: 10;
+    font-size: 0.6em; /* NEW: מייצר יחס לגודל הטקסט של li */
+    padding: 3px 10px; /* קצת יותר קטן מהמקורי */
 }
 
 .details-link h4{
     font-family: Arial, sans-serif;
-    font-size: clamp(24px, 4vw, 60px);
-    margin: 15px;
+    font-size: 0.8vw;
+    margin: 12px;
     white-space: nowrap;
 }
-
 
 /*קטע תחתון*/
 footer.contact-section {

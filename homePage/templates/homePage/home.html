@@ -1,24 +1,18 @@
-<!DOCTYPE html>
+{% extends "homePage/base.html" %}
 {% load static %}
-<html lang="he">
-<head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>חוות סוסים מסילת ציון</title>
-    <link rel="stylesheet" href="{% static 'homePage/home_style.css' %}">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 
-</head>
-<body>
-    <header>
-        <div class="logo-container">
-            <img src="{% static 'homePage/images/logo.png' %}" alt="חוות סילת ציון לוגו ">
-        </div>
-    </header>
+{% block title %}חוות סוסים מסילת ציון{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{% static 'homePage/home_style.css' %}">
+{% endblock %}
+
+
+{% block content %}
     <div class="container">
 
         <section class="about">
-            <h2>קצת עלינו</h2>
+            <div class="frame-text">קצת עלינו</div>
             <p>חוות מסילת ציון היא פנינה כפרית ירוקה בלב הרי ירושלים, מקום שבו הזמן עוצר והחיבור לטבע מתעורר לחיים.
                 <br> החווה שלנו הוקמה מתוך אהבה אמיתית לאדמה, לסוסים ולאנשים – והיא מציעה חוויה אישית, אותנטית ומרגיעה לכל מבקר.<br>
                 אצלנו תמצאו מגוון רחב של פעילויות:<br>
@@ -34,7 +28,6 @@
 
                 החווה שלנו היא יותר ממקום – היא חוויה. מקום לחיבור בין אדם לסוס, בין משפחה לטבע. נשמח לארח אתכם באהבה, ולהפוך כל ביקור לחוויה בלתי נשכחת.</p>
         </section>
-
         <section class="activities">
             <h2>לפרטים והזמנת תורים:</h2>
             <ul>
@@ -43,6 +36,13 @@
                         <a href="{% url 'couple_riding' %}" class="details-link"> <h4> לפרטים והזמנות</h4></a>
                         <img src="{% static 'homePage/images/couple-riding.jpg' %}" alt="רכיבה זוגית">
                         <span class="title-text">רכיבה זוגית </span>
+                    </div>
+                </li>
+                <li>
+                    <div class="activity-button" >
+                        <a href="{% url 'group_riding' %}" class="details-link"> <h4> לפרטים והזמנות</h4></a>
+                        <img src="{% static 'homePage/images/group-riding.jpg' %}" alt="רכיבה קבוצתית">
+                        <span class="title-text">רכיבת שטח</span>
                     </div>
                 </li>
                 <li>
@@ -61,15 +61,8 @@
                 </li>
                 <li>
                     <div class="activity-button" >
-                        <a href="{% url 'group_riding' %}" class="details-link"> <h4> לפרטים והזמנות</h4></a>
-                        <img src="{% static 'homePage/images/group-riding.jpg' %}" alt="רכיבה קבוצתית">
-                        <span class="title-text">רכיבת שטח</span>
-                    </div>
-                </li>
-                <li>
-                    <div class="activity-button" >
                         <a href="{% url 'children_riding' %}" class="details-link"> <h4> לפרטים והזמנות</h4></a>
-                        <img src="{% static 'homePage/images/photographs.jpg' %}" alt="רכיבה לילדים">
+                        <img src="{% static 'homePage/images/children-riding.jpg' %}" alt="רכיבה לילדים">
                         <span class="title-text">רכיבת ילדים</span>
                     </div>
                 </li>
@@ -98,6 +91,8 @@
         </section>
     </div>
 
+{% endblock %}
+
 <section class="carousel">
     <h3>תמונות מהחווה שלנו</h3>
     <div class="carousel-container">
@@ -106,6 +101,8 @@
         <button class="prev-btn">&lt;</button> <button class="next-btn">&gt;</button> <div class="carousel-dots"></div>
     </div>
 </section>
+
+{% block footer %}
 
 <footer class="contact-section">
     <h2>📞 יצירת קשר</h2>
@@ -123,8 +120,13 @@
         <li><strong>חמישי:</strong> 09:00–20:00</li>
         <li><strong>שישי:</strong>&nbsp;&nbsp; 09:00–16:00</li>
         <li><strong>שבת:</strong> סגור</li>
+        <li><strong>*רכיבות לילה וזריחה יהיו אחרי שעות הפעילות בתיאום מראש בלבד</strong></li>
     </ul>
 </footer>
+
+{% endblock %}
+
+{% block scripts %}
 
 <script>
     const images = [
@@ -234,5 +236,5 @@
     carouselContainer.addEventListener('mouseleave', () => startAutoSlide());
 
 </script>
-</body>
-</html>
+
+{% endblock %}
