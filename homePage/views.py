@@ -26,3 +26,6 @@ def photographs_view(request):
 
 def children_riding_view(request):
     return render(request, 'homePage/children_riding.html')
+
+def gallery_view(request):
+    return render(request, 'homePage/gallery.html')

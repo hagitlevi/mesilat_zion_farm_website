@@ -1,6 +1,11 @@
 {% extends 'homePage/base.html' %}
+{% load static %}
 
-{% block title %}דף הבית{% endblock %}
+{% block title %}טיול כרכרה - חוות מסילת ציון{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{% static 'homePage/carriage_trip.css' %}">
+{% endblock %}
 
 {% block content %}
     <section class="about">

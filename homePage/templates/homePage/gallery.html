@@ -1,0 +1,28 @@
+{% extends "homePage/base.html" %}
+{% load static %}
+
+{% block title %}גלריה - חוות מסילת ציון{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{% static 'homePage/gallery.css' %}">
+
+{% endblock %}
+
+{% block content %}
+<div class="gallery-section">
+    <div class="gallery-grid">
+        <img src="{% static 'homePage/images/p1.jpg' %}" alt="תמונה 1">
+        <img src="{% static 'homePage/images/p2.jpg' %}" alt="תמונה 2">
+        <img src="{% static 'homePage/images/p3.jpg' %}" alt="תמונה 3">
+        <img src="{% static 'homePage/images/p4.jpg' %}" alt="תמונה 4">
+        <img src="{% static 'homePage/images/p5.jpg' %}" alt="תמונה 5">
+        <img src="{% static 'homePage/images/p6.jpg' %}" alt="תמונה 6">
+        <img src="{% static 'homePage/images/p7.jpg' %}" alt="תמונה 7">
+        <img src="{% static 'homePage/images/p8.jpg' %}" alt="תמונה 8">
+        <img src="{% static 'homePage/images/p9.jpg' %}" alt="תמונה 9">
+        <img src="{% static 'homePage/images/p10.jpg' %}" alt="תמונה 10">
+        <img src="{% static 'homePage/images/p11.jpg' %}" alt="תמונה 11">
+
+    </div>
+</div>
+{% endblock %}

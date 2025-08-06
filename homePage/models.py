@@ -7,3 +7,4 @@ class PageContent(models.Model):
     # ... שדות נוספים
     def _str_(self):
         return self.title
+

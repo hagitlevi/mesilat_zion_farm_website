@@ -10,5 +10,6 @@ urlpatterns = [
     path('carriage-trip/', views.carriage_trip_view, name='carriage_trip'),
     path('photographs/', views.photographs_view, name='photographs'),
     path('children_riding/', views.children_riding_view, name='children_riding'),
+    path('gallery/', views.gallery_view, name='gallery'),
 
 ]

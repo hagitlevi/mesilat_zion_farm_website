@@ -2,10 +2,10 @@ header{
     height: 80px;
     width: 100%;
     margin: 0;
-    padding: 0;
+    padding: 0 20px;
     display: flex;
     background-color: #d8ead3;
-    justify-content: center;
+    justify-content: space-around;
     position: sticky;
     top: 0;
     left: 0;
@@ -18,7 +18,38 @@ header{
     height: 100%;
     display: table;
     width: auto;
+    margin: 0 30px;
 }
+
+.left-icons,
+.right-icons {
+    display: flex;
+    align-items: center;
+    gap: 30px;
+    font-size: 24px;
+}
+
+.whatsapp-icon {
+  font-size: 35px;
+  cursor: pointer;
+  color: #2f3133;
+}
+
+
+.waze-icon {
+    width: 40px;
+    height: auto;
+    cursor: pointer;
+}
+
+.shopping-cart-icon{
+    color: #2f3133;
+}
+
+.gallery-icon{
+    color: #2f3133;
+}
+
 
 body {
     margin: 0;

@@ -1,6 +1,6 @@
 {% load static %}
 <!DOCTYPE html>
-<html lang="he">
+<html lang="he" dir="rtl">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -18,11 +18,34 @@
 
     <!-- HEADER -->
     <header>
+
+        <div class="right-icons">
+
+            <a href="https://wa.me/972558859569" target="_blank">
+                <i class="fa-brands fa-whatsapp whatsapp-icon"></i>
+            </a>
+
+            <a href="https://waze.com/ul?ll=31.805655,35.005960&navigate=yes" target="_blank">
+                <img src="{% static 'homePage/images/waze.png' %}" alt="Waze" class="waze-icon">
+            </a>
+
+        </div>
+
+
         <div class="logo">
             <img src="{% static 'homePage/images/logo.png' %}" alt="חוות סילת ציון לוגו">
         </div>
-        <div class="shopping-chart">
-            <!-- עגלה / אייקון / קישורים - אם יש -->
+
+
+        <div class="left-icons">
+            <a href="{% url 'gallery' %}">
+                <i class="fa-regular fa-images gallery-icon"></i>
+            </a>
+
+            <div class="shopping-cart-icon">
+                <i class="fa-solid fa-cart-shopping"></i>
+            </div>
+
         </div>
     </header>
 
