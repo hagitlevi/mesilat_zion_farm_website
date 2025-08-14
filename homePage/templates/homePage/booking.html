@@ -1,0 +1,35 @@
+{% extends 'homePage/base.html' %}
+{% load static %}
+
+{% block title %}טיול כרכרה - חוות מסילת ציון{% endblock %}
+
+{% block extra_css %}
+
+{% endblock %}
+
+{% block content %}
+    <section class="about">
+        <form method="POST" action="{% url 'confirm_booking' %}">
+            {% csrf_token %}
+
+            <!-- שדות מוסתרים שחייבים להיות -->
+            <input type="hidden" name="activity_id" value="{{ activity.id }}">
+            <input type="hidden" name="appointment_id" value="{{ appointment.id }}">
+
+            <!-- שדות גלויים למשתמש -->
+            <input type="text" name="name" placeholder="שם מלא" required>
+            <input type="text" name="phone" placeholder="טלפון" required>
+
+            <!-- שדה מספר משתתפים עם מינימום ומקסימום -->
+            <input type="number"
+                   name="participants"
+                   value="1"
+                   min="{{ activity.min_participants }}"
+                   max="{{ activity.max_participants }}"
+                   required>
+
+            <button type="submit">אישור הזמנה</button>
+        </form>
+
+    </section>
+{% endblock %}

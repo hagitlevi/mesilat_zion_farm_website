@@ -1,0 +1,117 @@
+:root {
+    --main-color: #2f6e2f;       /* ירוק רגיל */
+    --main-emerald: #b8e3ac;  /* ירוק כהה */
+    --main-press: #d8ead3;          /* רקע ירוק בהיר */
+}
+
+
+.top-image-container {
+    position: relative;
+    width: 90%;
+    max-width: 800px;
+    display: flex;
+    overflow: hidden;
+    margin: 10px auto;
+    justify-content: center;
+    align-items: end;
+}
+
+.top-image-container img {
+    width: 100%;
+    height: auto;
+    margin: 0;
+    display: block;
+    object-fit: cover;
+}
+
+.text_on_picture {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    position: absolute;
+    background-color: rgba(255, 255, 255, 0.5);
+    padding: 10px 15px;
+    border-radius: 8px;
+    color: #000;
+    text-align: center;
+    font-weight: bold;
+    font-size: clamp(14px, 2.5vw, 36px);
+    max-width: 90%; /* מונע גלישה */
+}
+
+.cancellation-policy {
+    border: black 2px solid; /* מסגרת שחורה */
+    padding: 10px;
+    font-family: Arial, sans-serif;
+    line-height: 1.8;           /* ריווח בין שורות */
+    color: #222;                /* צבע טקסט כהה */
+    max-width: calc(100% - 40px);           /* רוחב מקסימלי */
+    direction: rtl;             /* כתיבה מימין לשמאל */
+    margin: 0 auto;
+}
+
+.cancellation-policy p {
+    margin: 0 0 15px;           /* רווח מתחת לכל פסקה */
+    font-size: 1.1rem;          /* גודל טקסט נעים */
+    text-align: center;
+    text-decoration: underline;
+}
+
+.cancellation-policy .section-title {
+    font-weight: bold;          /* הדגשה לכותרת */
+    text-align: center;         /* ממרכז את הכותרת */
+}
+
+.cancellation-policy ul {
+    margin: 0;
+    padding-right: 20px;        /* הזחה קלה מהצד */
+    list-style-type: disc;      /* bullets רגילים */
+}
+
+.cancellation-policy li {
+    margin-bottom: 10px;        /* רווח בין סעיפי הרשימה */
+}
+
+.appointment_title{
+    font-size: 2rem;
+    font-weight: bold;
+    color: var(--main-color);
+    text-align: center;
+    margin-top: 20px;
+    margin-bottom: 35px;
+    text-decoration: underline;
+}
+
+.day-title{margin:10px 0;font-weight:700}
+.appointments-columns{display:flex;gap:20px;flex-wrap:wrap;margin-top:10px}
+.duration-column{flex:1 1 240px;background:#f9f9f9;border-radius:10px;padding:12px}
+.slots{list-style:none;margin:0;padding:0}
+.slot-item{margin-bottom:8px}
+
+.slot-btn{
+    width:100%;
+    padding:10px;
+    border-radius:8px;
+    background:var(--main-press);
+    color: black;
+    border: black 1px solid;
+    cursor:pointer
+}
+
+.slot-btn:hover{background:var(--main-emerald)}
+.no-appointments{color:#c00;font-weight:600}
+.date-strip{display:flex;gap:8px;overflow-x:auto;padding-bottom:6px;margin:12px 0;scrollbar-width:thin}
+
+.date-chip{
+    border:1px solid #ddd;
+    background:var(--main-press);
+    border-radius:999px;
+    padding:8px 12px;
+    cursor:pointer;
+    white-space:nowrap;
+}
+
+.date-chip.active{
+    background:var(--main-emerald);
+    color:black;
+    border-color:black;
+}
+

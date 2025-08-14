@@ -1,0 +1,131 @@
+:root {
+    --main-color: #2f6e2f;       /* ירוק רגיל */
+    --main-emerald: #b8e3ac;  /* ירוק כהה */
+    --main-press: #d8ead3;          /* רקע ירוק בהיר */
+}
+
+body {
+    font-family: Arial, sans-serif;
+    background-color: #f7f7f7;
+    direction: rtl;
+    text-align: right;
+    margin: 0;
+    padding: 0;
+}
+
+.container {
+    max-width: 500px;
+    margin: 50px auto;
+    padding: 25px;
+    background-color: white;
+    border-radius: 12px;
+    box-shadow: 0 0 15px rgba(0, 0, 0, 0.1);
+}
+
+h2 {
+    color: #3b5e2b;
+    font-size: 24px;
+    margin-bottom: 20px;
+    text-align: center;
+}
+
+label {
+    display: block;
+    margin-bottom: 5px;
+    font-weight: bold;
+    color: #444;
+}
+
+select, input[type="number"] {
+    width: 100%;
+    padding: 10px;
+    margin-bottom: 20px;
+    border: 1px solid #ccc;
+    border-radius: 6px;
+    font-size: 16px;
+}
+
+button {
+    width: 100%;
+    padding: 12px;
+    background-color: #3b5e2b;
+    color: white;
+    border: none;
+    border-radius: 8px;
+    font-size: 18px;
+    cursor: pointer;
+    transition: background-color 0.3s ease;
+}
+
+button:hover {
+    background-color: #2f4b21;
+}
+
+.appointments-container {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 30px;
+    margin-top: 20px;
+}
+
+/* קבוצה של משך זמן */
+.appointments-group {
+    background: #f9f9f9;
+    padding: 15px;
+    border-radius: 8px;
+    flex: 1 1 250px; /* מינימום 250px */
+}
+
+/* כותרת משך הזמן */
+.appointments-group h3 {
+    font-size: 1.3rem;
+    font-weight: bold;
+    margin-bottom: 15px;
+    color: #333;
+    text-align: center;
+}
+
+/* ביטול נקודות ברשימה */
+.appointments-group ul {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+
+/* כל תור */
+.appointments-group li {
+    margin-bottom: 12px; /* רווח בין תורים */
+}
+
+/* הכפתור */
+.appointments-group button {
+    display: block;          /* שיהיה בשורה משלו */
+    width: 100%;              /* כל הרוחב */
+    padding: 10px;
+    border: none;
+    border-radius: 6px;
+    background-color: #2f6e2f;
+    color: white;
+    font-size: 1rem;
+    cursor: pointer;
+    transition: background-color 0.2s ease;
+}
+
+/* אפקט מעבר */
+.appointments-group button:hover {
+    background-color: #256325;
+}
+
+/* הודעה כשאין תורים */
+.no-appointments {
+    color: red;
+    font-weight: bold;
+    text-align: center;
+}
+
+.slot-btn{
+    direction: ltr
+}
+.slot-btn:active{
+    background-color: var(--main-emerald);
+}

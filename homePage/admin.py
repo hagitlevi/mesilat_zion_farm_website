@@ -1,4 +1,12 @@
 from django.contrib import admin
-from .models import PageContent # וודא שאתה מייבא את המודל הנכון
+from .models import PageContent, Activity, Appointment, CustomSchedule
 
-admin.site.register(PageContent) # וודא שהשם PageContent זהה לשם המודל שלך
+@admin.register(Activity)
+class ActivityAdmin(admin.ModelAdmin):
+    list_display = ['id', 'name', 'description']  # תציגי את id + name + description
+
+admin.site.register(PageContent)
+
+admin.site.register(Appointment)
+
+admin.site.register(CustomSchedule)

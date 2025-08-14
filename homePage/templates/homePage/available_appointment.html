@@ -1,0 +1,38 @@
+{% load static %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{% static 'homePage/available_appointment.css' %}">
+{% endblock %}
+
+{% block content %}
+
+    {% if not grouped_appointments %}
+      <p class="no-appointments">אין תורים זמינים לתאריך זה</p>
+    {% else %}
+      <div class="appointments-columns">
+        {% for duration, appts in grouped_appointments.items %}
+          <section class="duration-column">
+            <h4>{{ duration }} דקות</h4>
+
+            {% if appts %}
+              <ul class="slots">
+                {% for appt in appts %}
+                  <li class="slot-item">
+                    <form method="GET" action="{% url 'booking_form' %}">
+                      <input type="hidden" name="appointment_id" value="{{ appt.id }}">
+                      <input type="hidden" name="activity_id" value="{{ activity.id }}">
+                      <button type="submit" class="slot-btn">
+                        {{ appt.time|time:"H:i" }}-{{ appt.end_time }}
+                      </button>
+                    </form>
+                  </li>
+                {% endfor %}
+              </ul>
+            {% else %}
+              <p class="no-appointments">אין תורים למשך זה ביום הנבחר</p>
+            {% endif %}
+          </section>
+        {% endfor %}
+      </div>
+    {% endif %}
+{% endblock %}
