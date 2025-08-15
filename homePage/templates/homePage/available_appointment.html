@@ -11,27 +11,33 @@
     {% else %}
       <div class="appointments-columns">
         {% for duration, appts in grouped_appointments.items %}
-          <section class="duration-column">
-            <h4>{{ duration }} דקות</h4>
+            <input type="radio" id="dur-{{ duration }}" name="appointments-columns" {% if forloop.first %}checked="checked"{% endif %}>
+            <label for="dur-{{ duration }}">
+              {% if duration == 60 %}שעה
+              {% elif duration == 90 %}שעה וחצי
+              {% elif duration == 120 %}שעתיים
+              {% else %}{{ duration }} דקות{% endif %}
+            </label>
+            <div class="appointments">
+                {% if appts %}
+                  <ul class="slots">
+                    {% for appt in appts %}
+                      <li class="slot-item">
+                        <form method="GET" action="{% url 'booking_form' %}">
+                          <input type="hidden" name="appointment_id" value="{{ appt.id }}">
+                          <input type="hidden" name="activity_id" value="{{ activity.id }}">
+                          <button type="submit" class="slot-btn">
+                            {{ appt.time|time:"H:i" }} – {{ appt.end_time|time:"H:i" }}
 
-            {% if appts %}
-              <ul class="slots">
-                {% for appt in appts %}
-                  <li class="slot-item">
-                    <form method="GET" action="{% url 'booking_form' %}">
-                      <input type="hidden" name="appointment_id" value="{{ appt.id }}">
-                      <input type="hidden" name="activity_id" value="{{ activity.id }}">
-                      <button type="submit" class="slot-btn">
-                        {{ appt.time|time:"H:i" }}-{{ appt.end_time }}
-                      </button>
-                    </form>
-                  </li>
-                {% endfor %}
-              </ul>
-            {% else %}
-              <p class="no-appointments">אין תורים למשך זה ביום הנבחר</p>
-            {% endif %}
-          </section>
+                          </button>
+                        </form>
+                      </li>
+                    {% endfor %}
+                  </ul>
+                {% else %}
+                  <p class="no-appointments">אין תורים למשך זה ביום הנבחר</p>
+                {% endif %}
+            </div>
         {% endfor %}
       </div>
     {% endif %}

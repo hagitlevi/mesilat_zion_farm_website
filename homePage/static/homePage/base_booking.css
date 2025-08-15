@@ -73,7 +73,7 @@
 .appointment_title{
     font-size: 2rem;
     font-weight: bold;
-    color: var(--main-color);
+    color: #000;
     text-align: center;
     margin-top: 20px;
     margin-bottom: 35px;
@@ -107,6 +107,7 @@
     padding:8px 12px;
     cursor:pointer;
     white-space:nowrap;
+    font-weight: bold;
 }
 
 .date-chip.active{
@@ -115,3 +116,106 @@
     border-color:black;
 }
 
+
+.duration-tabs {
+  margin-top: 12px;
+  direction: rtl;
+}
+
+/* מסתירים את ה-radio */
+.duration-tabs input[type="radio"] {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* פס הטאבים (שורה לרוחב, ניתן לגלילה) */
+.duration-tabs .tab-list {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding: 6px 0 10px;
+  scrollbar-width: thin;
+  border-bottom: 1px solid #e3e3e3;
+}
+
+/* כפתור טאב (label) */
+.duration-tabs .tab-label {
+  border: 1px solid #ddd;
+  background: var(--main-press);
+  border-radius: 999px;
+  padding: 8px 14px;
+  cursor: pointer;
+  white-space: nowrap;
+  font-weight: 600;
+  transition: background .2s ease, border-color .2s ease, transform .08s ease;
+  user-select: none;
+}
+.duration-tabs .tab-label:active {
+  transform: scale(0.98);
+}
+
+/* פאנלים של התוכן */
+.duration-tabs .tab-panels {
+  margin-top: 14px;
+}
+.duration-tabs .tab-panel {
+  display: none;
+}
+
+/* מצב נבחר: צובעים את הטאב */
+.duration-tabs input[type="radio"]:checked + .tab-label {
+  background: var(--main-emerald);
+  color: #000;
+  border-color: #000;
+}
+
+/* מיפוי: כל radio שולט על פאנל תואם לפי id */
+.duration-tabs input#dur-tab-1:checked ~ .tab-panels #panel-1,
+.duration-tabs input#dur-tab-2:checked ~ .tab-panels #panel-2,
+.duration-tabs input#dur-tab-3:checked ~ .tab-panels #panel-3,
+.duration-tabs input#dur-tab-4:checked ~ .tab-panels #panel-4,
+.duration-tabs input#dur-tab-5:checked ~ .tab-panels #panel-5,
+.duration-tabs input#dur-tab-6:checked ~ .tab-panels #panel-6,
+.duration-tabs input#dur-tab-7:checked ~ .tab-panels #panel-7,
+.duration-tabs input#dur-tab-8:checked ~ .tab-panels #panel-8,
+.duration-tabs input#dur-tab-9:checked ~ .tab-panels #panel-9,
+.duration-tabs input#dur-tab-10:checked ~ .tab-panels #panel-10 {
+  display: block;
+}
+
+/* עיצוב פנימי של העמודה/רשימת התורים */
+.tab-panel .slots {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.tab-panel .slot-item { margin-bottom: 8px; }
+
+.tab-panel .slot-btn {
+  width: 100%;
+  padding: 10px;
+  border-radius: 8px;
+  background: var(--main-press);
+  color: black;
+  border: 1px solid #000;
+  cursor: pointer;
+  transition: background .2s ease;
+  direction: ltr;
+}
+.tab-panel .slot-btn:hover { background: var(--main-emerald); }
+.tab-panel .slot-btn:active { background: var(--main-emerald); }
+
+/* כותרת יום מעל הטאבים (אופציונלי) */
+.day-title {
+  margin: 10px 0 6px;
+  font-weight: 700;
+  text-align: center;
+}
+
+/* הודעה כשאין תורים */
+.no-appointments {
+  color: #c00;
+  font-weight: 600;
+  text-align: center;
+}

@@ -1,3 +1,4 @@
+from django.http import Http404
 from django.shortcuts import render, get_object_or_404
 from homePage.models import Appointment, Activity
 from django.views.decorators.csrf import csrf_exempt  # אם צריך לפתח בלי CSRF זמנית
@@ -19,30 +20,34 @@ def sunrise_riding_view(request):
     activity = get_object_or_404(Activity, name="רכיבה בזריחה")
     return render(request, 'homePage/sunrise_riding.html', {'activity': activity})
 
-from collections import defaultdict
 
 def couple_riding_view(request):
-    # כל סוגי הרכיבה הזוגית
-    activities = Activity.objects.filter(name="רכיבה זוגית")
-
-    # יצירת מבנה נתונים לקיבוץ לפי משך זמן
-    grouped_activities = defaultdict(list)
-    for activity in activities:
-        grouped_activities[activity.duration_minutes].append(activity)
-
-    context = {
-        "grouped_activities": dict(grouped_activities)
-    }
-    return render(request, "homePage/couple_riding.html", context)
+    qs = Activity.objects.filter(name="רכיבה זוגית").order_by('id')
+    activity = qs.first()
+    if not activity:
+        raise Http404("לא נמצאה פעילות 'רכיבה זוגית'")
+    return render(request, 'homePage/couple_riding.html', {'activity': activity})
 
 def group_riding_view(request):
-    return render(request, 'homePage/group_riding.html')
+    qs = Activity.objects.filter(name="רכיבת שטח").order_by('id')
+    activity = qs.first()
+    if not activity:
+        raise Http404("לא נמצאה פעילות 'רכיבת שטח'")
+    return render(request, 'homePage/group_riding.html', {'activity': activity})
 
 def carriage_trip_view(request):
-    return render(request, 'homePage/carriage_trip.html')
+    qs = Activity.objects.filter(name="טיול כרכרה").order_by('id')
+    activity = qs.first()  # תחזירי אחת – הראשונה
+    if not activity:
+        raise Http404("לא נמצאה פעילות 'טיול כירכרה'")
+    return render(request, 'homePage/carriage_trip.html', {'activity': activity})
 
 def photographs_view(request):
-    return render(request, 'homePage/photographs.html')
+    qs = Activity.objects.filter(name="צילומים").order_by('id')
+    activity = qs.first()  # תחזירי אחת – הראשונה
+    if not activity:
+        raise Http404("לא נמצאה פעילות 'צילומים'")
+    return render(request, 'homePage/photographs.html', {'activity': activity})
 
 def children_riding_view(request):
     activity = get_object_or_404(Activity, name="רכיבת ילדים")
@@ -51,10 +56,10 @@ def children_riding_view(request):
 def gallery_view(request):
     return render(request, 'homePage/gallery.html')
 
-def available_appointment_view(request, activity_id=None):
+def available_appointment_view(request, activity_id):
     activity = get_object_or_404(Activity, id=activity_id)
 
-    # תמיכה בפרמטר ?date=YYYY-MM-DD  → מסנן ליום הזה בלבד
+    # --- סינון טווח תאריכים (כמו אצלך) ---
     date_str = request.GET.get("date")
     if date_str:
         try:
@@ -67,27 +72,47 @@ def available_appointment_view(request, activity_id=None):
         start_day = date.today()
         end_day = start_day + timedelta(days=7)
 
-    all_appointments = Appointment.objects.filter(
-        is_booked=False,
-        is_break=False,
-        date__range=(start_day, end_day)
-    ).order_by('date', 'time')
+    # --- שליפת כל המשכים של פעילויות עם אותו שם ---
+    durations = (
+        Activity.objects
+        .filter(name=activity.name)
+        .values_list('duration_minutes', flat=True)
+        .distinct()
+    )
+    # אם אין כפילויות, זה יחזיר רק משך אחד (כמו קודם)
 
-    grouped_appointments = defaultdict(list)
+    # --- שליפת התורים הפנויים (בריכה משותפת) ---
+    all_appointments = (
+        Appointment.objects
+        .filter(is_booked=False, is_break=False, date__range=(start_day, end_day))
+        .order_by('date', 'time')
+    )
+
+    # --- קיבוץ לפי כל אחד מהמשכים שמצאנו ---
+    grouped_appointments = {d: [] for d in durations}
+
     for appt in all_appointments:
         start_dt = datetime.combine(appt.date, appt.time)
-        end_dt = start_dt + timedelta(minutes=activity.duration_minutes)
-        appt.end_time = end_dt.time().strftime("%H:%M")
-        # מקבץ לפי משך הפעילות (כמו שהיה אצלך)
-        grouped_appointments[activity.duration_minutes].append(appt)
-    context = {
-        'activity': activity,
-        'grouped_appointments': dict(grouped_appointments),
-        'selected_date': selected_date,   # נשתמש להצגת כותרת יום
-    }
+        for d in durations:
+            end_dt = start_dt + timedelta(minutes=d)
+            # לא נוגעים באובייקט המקורי (כדי לא לדרוס end_time בין משכים שונים)
+            grouped_appointments[d].append({
+                "id": appt.id,
+                "date": appt.date,
+                "time": appt.time,          # אובייקט time
+                "end_time": end_dt.time(),  # אובייקט time
 
-    # חשוב: להחזיר תבנית *חלקית* שה-AJAX משבץ לתוך הדף
-    return render(request, 'homePage/available_appointment.html', context)
+                # אפשר להוסיף שדות נוספים לתבנית לפי הצורך:
+                # "participants_count": appt.participants_count,
+            })
+
+    context = {
+        "activity": activity,
+        "durations": sorted(durations),                 # שימושי לניווט/כותרות בטמפלט
+        "grouped_appointments": grouped_appointments,   # {משך: [סלוטים...]}
+        "selected_date": selected_date,
+    }
+    return render(request, "homePage/available_appointment.html", context)
 
 
 @csrf_exempt  # להסיר בייצור אם יש {% csrf_token %}

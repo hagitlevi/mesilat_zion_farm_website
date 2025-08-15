@@ -36,9 +36,8 @@ class Appointment(models.Model):
     is_booked = models.BooleanField(default=False)
     is_break = models.BooleanField(default=False)
     participants_count = models.IntegerField(default=1)
-
-    customer_name = models.CharField(max_length=100, blank=True)
-    customer_phone = models.CharField(max_length=20, blank=True)
+    customer_name = models.CharField(max_length=50, blank=True)
+    customer_phone = models.CharField(max_length=15, blank=True)
 
     def __str__(self):
         return f"{self.date} {self.time} {'- תפוס' if self.is_booked else '- פנוי'}"

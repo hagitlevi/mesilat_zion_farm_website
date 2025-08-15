@@ -1,91 +1,19 @@
-{% extends "homePage/base.html" %}
+{% extends "homePage/base_booking.html" %}
 {% load static %}
-{% block title %}רכיבה זוגית - חוות מסילת ציון{% endblock %}
 
-{% block extra_css %}
-<link rel="stylesheet" href="{% static 'homePage/base_booking.css' %}">
+{% block specific_title %}רכיבה זוגית - חוות מסילת ציון{% endblock %}
+
+{% block image_src %}{% static 'homePage/images/couple-riding.jpg' %}{% endblock %}
+
+{% block image_alt %}רכיבה זוגית{% endblock %}
+
+{% block description_text %}
+    חווית רכיבה מיוחדת לזוג! 🐎<br>
+    מחפשים פעילות בלתי נשכחת לילדים? בואו ליהנות מרכיבת סוסים קצרה של 10 דקות בשטח הפתוח – לא במגרש סגור!<br>
+    החוויה מתבצעת בליווי צמוד של מדריך מקצועי, שמחזיק את הסוס על הקרקע ומבטיח בטיחות מרבית<br>
+    במחיר של 50 ש"ח בלבד, הזדמנות מושלמת לילדים ליהנות מרכיבה ראשונה בטוחה ומהנה<br>
 {% endblock %}
 
-{% block content %}
-    <div class="top-image-container">
-        <img src="{% static 'homePage/images/couple-riding.jpg' %}" alt="רכיבה לילדים">
-        <p class="text_on_picture">
-            חווית רכיבה מיוחדת לזוג! 🐎<br>
-            מחפשים פעילות בלתי נשכחת לילדים? בואו ליהנות מרכיבת סוסים קצרה של 10 דקות בשטח הפתוח – לא במגרש סגור!<br>
-            החוויה מתבצעת בליווי צמוד של מדריך מקצועי, שמחזיק את הסוס על הקרקע ומבטיח בטיחות מרבית<br>
-            במחיר של 50 ש"ח בלבד, הזדמנות מושלמת לילדים ליהנות מרכיבה ראשונה בטוחה ומהנה<br>
-        </p>
-    </div>
-    <div class="cancellation-policy">
-        <p>
-            שימו לב! על מנת להבטיח את מקומכם, נדרש תשלום מלא מראש
-        </p>
-
-        <p class="section-title">מדיניות ביטולים:</p>
-
-        <ul>
-            <li>ביטול עד שבוע (7 ימים) לפני מועד האירוע יאפשר קבלת החזר כספי מלא</li>
-            <li>במקרה של ביטול שמתבצע פחות משבוע לפני האירוע, או במקרה של אי-הגעה, לא ניתן החזר כספי ותחויבו במלוא הסכום (100%)</li>
-        </ul>
-    </div>
+{% block appointment_title %}
     <div class="appointment_title">להזמנת רכיבה</div>
-    <!-- פס תאריכים לשבוע קדימה -->
-    <div class="date-strip" id="date-strip"></div>
-    <div id="appointments-container">
-    <p>טוען תורים...</p>
-    </div>
-{% endblock %}
-
-{% block scripts %}
-<script>
-document.addEventListener("DOMContentLoaded", function () {
-  const activityId = "{{ activity.id }}";
-  const strip = document.getElementById("date-strip");
-  const container = document.getElementById("appointments-container");
-
-  const today = new Date();
-  const days = Array.from({length: 7}, (_, i) => {
-    const d = new Date(today);
-    d.setDate(today.getDate() + i);
-    return {
-      iso: d.toISOString().slice(0,10), // YYYY-MM-DD
-label: `${d.toLocaleDateString('he-IL', { weekday: 'short' })} | ${d.toLocaleDateString('he-IL', { day: '2-digit', month: '2-digit' })}`
-    };
-  });
-
-  // בניית הכפתורים
-  days.forEach((d, idx) => {
-    const btn = document.createElement("button");
-    btn.className = "date-chip" + (idx === 0 ? " active" : "");
-    btn.textContent = d.label;
-    btn.dataset.date = d.iso;
-    btn.addEventListener("click", () => {
-      document.querySelectorAll(".date-chip").forEach(b => b.classList.remove("active"));
-      btn.classList.add("active");
-      loadForDate(d.iso, /* shouldScroll */ true); // ← גלול רק בלחיצה
-    });
-    strip.appendChild(btn);
-  });
-
-  // טעינת היום כברירת מחדל – בלי גלילה
-  loadForDate(days[0].iso, /* shouldScroll */ false);
-
-  function loadForDate(iso, shouldScroll = false) {
-    container.innerHTML = "<p>טוען תורים...</p>";
-    const baseUrl = `{% url 'available_appointment' 0 %}`.replace('/0/', `/${activityId}/`);
-    fetch(`${baseUrl}?date=${iso}`)
-      .then(r => r.text())
-      .then(html => {
-        container.innerHTML = html;
-        if (shouldScroll && strip) {
-          strip.scrollIntoView({ behavior: 'smooth', block: 'start' });
-        }
-      })
-      .catch(err => {
-        console.error(err);
-        container.innerHTML = "<p>שגיאה בטעינת התורים.</p>";
-      });
-  }
-});
-</script>
 {% endblock %}

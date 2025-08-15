@@ -57,9 +57,11 @@ button {
     transition: background-color 0.3s ease;
 }
 
-button:hover {
+/*
+button:hover { ריחוף מעל התאריכים
     background-color: #2f4b21;
 }
+*/
 
 .appointments-container {
     display: flex;
@@ -129,3 +131,45 @@ button:hover {
 .slot-btn:active{
     background-color: var(--main-emerald);
 }
+
+.appointments-columns{
+    display: flex;
+    flex-wrap: wrap;
+    max-width: 700px;
+    margin: 50px auto;
+    padding: 25px;
+    justify-content: center;
+}
+
+.appointments-columns input[type="radio"]{
+    display: none;
+}
+
+.appointments-columns label{
+    width: 70px;
+    padding: 10px;
+    font-weight: bold;
+    color: white;
+    border: 1px solid #ddd;
+    background: var(--main-press);
+    border-radius: 999px;
+    text-align: center;
+}
+
+.appointments-columns .appointments{
+    width: 100%;
+    padding: 20px;
+    order: 1;
+    display: none;
+}
+
+.appointments-columns input[type="radio"]:checked + label + .appointments{
+    display: block;
+}
+
+.appointments-columns input[type="radio"]:checked + label{
+    background: var(--main-emerald);
+    color: black;
+    border-color: #000;
+}
+

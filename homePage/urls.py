@@ -12,7 +12,6 @@ urlpatterns = [
     path('children_riding/', views.children_riding_view, name='children_riding'),
     path('gallery/', views.gallery_view, name='gallery'),
     path('available-appointment/<int:activity_id>/', views.available_appointment_view, name='available_appointment'),
-    path('available-appointment/', views.available_appointment_view, name='available_appointment_without_id'),
     path('confirm-booking/', views.confirm_booking, name='confirm_booking'),
     path('booking-form/', views.booking_form, name='booking_form'),
 ]

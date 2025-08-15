@@ -1,14 +1,19 @@
-{% extends 'homePage/base.html' %}
+{% extends "homePage/base_booking.html" %}
 {% load static %}
 
-{% block title %}טיול כרכרה - חוות מסילת ציון{% endblock %}
+{% block specific_title %}טיול כרכרה - חוות מסילת ציון{% endblock %}
 
-{% block extra_css %}
-<link rel="stylesheet" href="{% static 'homePage/carriage_trip.css' %}">
+{% block image_src %}{% static 'homePage/images/carriage-trip.jpg' %}{% endblock %}
+
+{% block image_alt %}טיול כרכרה{% endblock %}
+
+{% block description_text %}
+    חווית רכיבה מיוחדת בכרכרה! 🐎<br>
+    מחפשים פעילות בלתי נשכחת לילדים? בואו ליהנות מרכיבת סוסים קצרה של 10 דקות בשטח הפתוח – לא במגרש סגור!<br>
+    החוויה מתבצעת בליווי צמוד של מדריך מקצועי, שמחזיק את הסוס על הקרקע ומבטיח בטיחות מרבית<br>
+    במחיר של 50 ש"ח בלבד, הזדמנות מושלמת לילדים ליהנות מרכיבה ראשונה בטוחה ומהנה<br>
 {% endblock %}
 
-{% block content %}
-    <section class="about">
-        <h2>טיול כרכרה</h2>
-    </section>
+{% block appointment_title %}
+    <div class="appointment_title">להזמנת טיול</div>
 {% endblock %}
