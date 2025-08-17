@@ -12,7 +12,6 @@ body {
     text-align: center;
 }
 
-
 section {
     margin: 10px 0;
 }
@@ -20,7 +19,7 @@ section {
 .about {
     display: inline-block;
     position: relative;
-    border: 2px solid #3b5e2b;
+    border: 2px solid var(--main-color);
     padding: 40px 20px 20px;
     margin: auto;
     font-family: sans-serif;
@@ -30,7 +29,7 @@ section {
 }
 
 .about .frame-text {
-    color: #3b5e2b;
+    color: var(--main-color);
     position: absolute;
     top: -12px; /* מציב את הטקסט מעט מעל המסגרת */
     left: 50%;
@@ -42,7 +41,7 @@ section {
     }
 
 h2 {
-    color: #3b5e2b;
+    color: var(--main-color);
     font-size: 1.8em;
     margin: 20px;
     padding: 0;
@@ -74,7 +73,7 @@ ul {
     cursor: pointer;
     overflow: hidden;
     transition: transform 0.2s ease, box-shadow 0.3s ease;
-    border: 3px solid #3b5e2b;
+    border: 3px solid var(--main-color);
     border-radius: 12px;
     box-shadow: 0 4px 10px rgba(59, 94, 43, 0.3); /* צל ירוק כהה */
     aspect-ratio: 1 / 1; /* הופך את ה-li לריבוע */
@@ -83,7 +82,7 @@ ul {
 
 .activities ul li h4,
 .activities ul li span {
-    font-size: 1em; /* זה יהיה יחסי ל־font-size של li */
+    font-size: 1em;
 }
 
 .title-text {
@@ -158,7 +157,7 @@ ul {
     left: 50%;
     transform: translateX(-50%);
     background-color: rgba(255, 255, 255, 0.9);
-    color: #3b5e2b;
+    color: var(--main-color);
     border-radius: 20px;
     font-weight: bold;
     text-decoration: none;
@@ -178,13 +177,13 @@ ul {
 
 /*קטע תחתון*/
 footer.contact-section {
-    background-color: #d8ead3;
+    background-color: var(--main-bright);
     padding: 10px 15px;
     margin-top: 40px;
-    color: #2e4a1b;
+    color: #000;
     text-align: center;
     direction: rtl;
-    font-size: 0.95em; /* כל הטקסט קטן ב־5% */
+    font-size: 0.95em;
 }
 
 .tel-color{
@@ -194,12 +193,7 @@ footer.contact-section {
 footer h2 {
     font-size: 1.4em;
     margin-bottom: 5px;
-}
-
-footer h3 {
-    margin-top: 20px;
-    font-size: 1.1em;
-    color: #3b5e2b;
+    color: var(--main-color);
 }
 
 .hours-list {
@@ -213,9 +207,7 @@ footer h3 {
 
 .hours-list li {
     margin: 3px 0;
-    /* border: none; */ /* אם יש border, ניתן להסיר אותו */
-    background-color: transparent; /* אם יש רקע, ניתן להפוך אותו לשקוף */
-    padding: 0; /* להסיר ריווח פנימי אם לא נדרש */
+    padding: 0;
 }
 
 /*קרוסלת תמונות*/
@@ -223,9 +215,8 @@ footer h3 {
     margin-top: 40px;
 }
 
-.carousel h2 {
-    color: #2e4a1b;
-    margin-bottom: 20px;
+.carousel h3{
+    color: var(--main-color);
 }
 
 .carousel-container {
@@ -247,7 +238,6 @@ footer h3 {
 }
 
 /* סגנונות לחיצים */
-
 .carousel-container .prev-btn,
 .carousel-container .next-btn {
     position: absolute; /* ממקם אותם באופן מוחלט ביחס ל-carousel-container */
@@ -277,29 +267,27 @@ footer h3 {
     background-color: rgba(0, 0, 0, 0.8); /* רקע כהה יותר בריחוף */
 }
 
-/* סגנונות לנקודות ניווט (אופציונלי) */
-
 .carousel-dots {
     position: absolute;
-    bottom: 10px; /* ממקם אותן בתחתית הקרוסלה */
+    bottom: 10px;
     left: 50%;
     transform: translateX(-50%); /* ממקם אותן במרכז אופקית */
-    display: flex; /* כדי לסדר את הנקודות בשורה */
-    gap: 8px; /* רווח בין הנקודות */
+    display: flex;
+    gap: 8px;
     z-index: 10;
 }
 
 .dot {
     width: 10px;
     height: 10px;
-    background-color: rgba(255, 255, 255, 0.7); /* צבע לבן שקוף */
+    background-color: rgba(255, 255, 255, 0.7);
     border-radius: 50%; /* הופך את הנקודות לעגולות */
     cursor: pointer;
     transition: background-color 0.3s ease, transform 0.2s ease;
 }
 
 .dot.active {
-    background-color: #3b5e2b; /* צבע הנקודה הפעילה */
+    background-color: black; /* צבע הנקודה הפעילה */
     transform: scale(1.2); /* הגדלה קלה של הנקודה הפעילה */
 }
 

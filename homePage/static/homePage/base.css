@@ -1,10 +1,16 @@
+:root {
+    --main-color: #12a7b5;       /* הכי כהה */
+    --main-emerald: #12a7b5;  /*8eecf5 בהיר */
+    --main-bright: #b6f4fa;          /* הכי בהיר */
+}
+
 header{
     height: 80px;
     width: 100%;
     margin: 0;
     padding: 0 20px;
     display: flex;
-    background-color: #d8ead3;
+    background-color: var(--main-bright);
     justify-content: space-around;
     position: sticky;
     top: 0;
@@ -35,7 +41,6 @@ header{
   color: #2f3133;
 }
 
-
 .waze-icon {
     width: 40px;
     height: auto;
@@ -49,7 +54,6 @@ header{
 .gallery-icon{
     color: #2f3133;
 }
-
 
 body {
     margin: 0;

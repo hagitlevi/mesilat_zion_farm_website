@@ -1,11 +1,11 @@
 from django.http import Http404
 from django.views.decorators.csrf import csrf_exempt
 from django.shortcuts import redirect
-from django.utils import timezone
-from django.db.models import Q
-from django.shortcuts import render, get_object_or_404
-from datetime import datetime, timedelta, time, date
 from homePage.models import ActivityRule, BusinessHours, Season, Appointment, Activity
+from datetime import datetime, timedelta, date, time
+from django.shortcuts import render, get_object_or_404
+from django.db.models import Q
+from django.utils import timezone
 
 
 def home(request):
@@ -75,8 +75,110 @@ def _strict_window(activity, base_date):
         return start_dt, end_dt
     return None, None
 
-def a_vailable_appointment_view(request, activity_id):
-    activity = get_object_or_404(Activity, id=activity_id)
+def detect_season(d):
+    """
+    לוגיקה פשוטה: אפריל–ספטמבר = קיץ, אחרת חורף.
+    אם יש אצלך לוגיקה אחרת/טבלת עונות – החליפי כאן.
+    """
+    return Season.SUMMER if 4 <= d.month <= 9 else Season.WINTER
+
+def get_rules_for(activity, d):
+    """
+    מחזיר כללים ליום נתון ופעילות נתונה:
+      assigned_only: האם להציג רק תורים שמשויכים לפעילות הזו
+      cutoff_minutes: מינימום דקות מראש להזמנה
+      win_start_dt: תחילת חלון (datetime) אם מוגדר
+      win_end_dt:   סוף חלון (datetime) אם מוגדר
+    סדר עדיפויות: ActivityRule (ספציפי לפעילות) → BusinessHours (כללי) → בלי כללים.
+    """
+    weekday = d.weekday()                     # Monday=0 ... Sunday=6
+    season = detect_season(d)
+
+    # 1) כלל ספציפי לפעילות (אם קיים ליום+עונה)
+    arule = (ActivityRule.objects
+             .filter(activity=activity, season=season, days__code=weekday)
+             .first())
+
+    if arule:
+        assigned_only   = bool(arule.assigned_only)
+        cutoff_minutes  = int(arule.booking_cutoff_minutes or 0)
+        win_start_dt    = datetime.combine(d, arule.start_time) if arule.start_time else None
+
+        if arule.end_time:
+            # תמיכה ב"סוף היום" (24:00) באמצעות סימון end_is_midnight_next_day
+            if arule.end_is_midnight_next_day:
+                win_end_dt = datetime.combine(d, time(0, 0)) + timedelta(days=1)  # 00:00 שלמחרת
+            else:
+                win_end_dt = datetime.combine(d, arule.end_time)
+        else:
+            win_end_dt = None
+
+        return assigned_only, cutoff_minutes, win_start_dt, win_end_dt
+
+    # 2) fallback לשעות כלליות של העסק (לפי עונה+יום)
+    bh = (BusinessHours.objects
+          .filter(season=season, days__code=weekday)
+          .first())
+
+    if bh:
+        win_start_dt   = datetime.combine(d, bh.start_time)
+        win_end_dt     = datetime.combine(d, bh.end_time)
+        # ברירת מחדל עבור שעות כלליות: לא מחייב שיוך, בלי cutoff
+        return False, 0, win_start_dt, win_end_dt
+
+    # 3) אין כלל – בלי חלון ובלי מגבלות
+    return False, 0, None, None
+
+VARIANT_TO_TYPE = {
+    "day":     "רכיבה זוגית ביום",
+    "sunrise": "רכיבה זוגית בזריחה",
+    "night":   "רכיבה זוגית בלילה",
+}
+
+VARIANT_TO_TARGET_ACTIVITY_NAME = {
+    "day":     None,              # סלוטים ללא שיוך
+    "sunrise": "רכיבה בזריחה",
+    "night":   "רכיבת לילה",
+}
+
+def _durations_for_variant(variant: str):
+    """
+    משכים לטאב (יום/זריחה/לילה) מתוך 'רכיבה זוגית', עם פולבקים חכמים למקרה של כתיב/רווחים.
+    """
+    def distinct_minutes(qs):
+        return sorted(set(qs.values_list("duration_minutes", flat=True)))
+
+    if variant == "day":
+        qs = Activity.objects.filter(name="רכיבה זוגית", activity_type__iexact=VARIANT_TO_TYPE["day"])
+        mins = distinct_minutes(qs)
+        if mins: return mins
+        qs = (Activity.objects.filter(name="רכיבה זוגית", activity_type__icontains="יום")
+                              .exclude(activity_type__icontains="לילה")
+                              .exclude(activity_type__icontains="זריחה"))
+        mins = distinct_minutes(qs)
+        return mins or [30, 45, 60]
+
+    if variant == "sunrise":
+        qs = Activity.objects.filter(name="רכיבה זוגית", activity_type__iexact=VARIANT_TO_TYPE["sunrise"])
+        mins = distinct_minutes(qs)
+        if mins: return mins
+        qs = Activity.objects.filter(name="רכיבה זוגית", activity_type__icontains="זריחה")
+        mins = distinct_minutes(qs)
+        return mins or [90]
+
+    if variant == "night":
+        qs = Activity.objects.filter(name="רכיבה זוגית", activity_type__iexact=VARIANT_TO_TYPE["night"])
+        mins = distinct_minutes(qs)
+        if mins: return mins
+        qs = Activity.objects.filter(name="רכיבה זוגית", activity_type__icontains="לילה")
+        mins = distinct_minutes(qs)
+        return mins or [90]
+
+    return [60]
+
+def available_appointment_view(request, activity_id):
+    activity = get_object_or_404(Activity, id=activity_id)  # למשל "רכיבה זוגית"
+    variant = (request.GET.get("variant") or "").lower()
 
     # --- טווח תאריכים ---
     date_str = request.GET.get("date")
@@ -91,48 +193,86 @@ def a_vailable_appointment_view(request, activity_id):
         start_day = date.today()
         end_day = start_day + timedelta(days=7)
 
-    # --- כל המשכים של הפעילות הנוכחית (לשם tabs וכו') ---
-    durations = (
-        Activity.objects
-        .filter(name=activity.name)
-        .values_list('duration_minutes', flat=True)
-        .distinct()
-    )
+    base_qs = (Appointment.objects
+               .filter(is_booked=False, is_break=False, date__range=(start_day, end_day))
+               .order_by("date", "time")
+               .distinct())
 
-    base_qs = Appointment.objects.filter(
-        is_booked=False,
-        is_break=False,
-        date__range=(start_day, end_day)
-    )
+    # --- משכים + מקור סלוטים לפי הטאב ---
+    if activity.name == "רכיבה זוגית" and variant in ("day", "sunrise", "night"):
+        durations = _durations_for_variant(variant)
+        target_activity_name = VARIANT_TO_TARGET_ACTIVITY_NAME[variant]
 
-    # === לוגיקה של שיוך ===
-    if activity.name in ["רכיבת לילה", "רכיבה בזריחה"]:
-        # רק תורים שמשויכים לפעילות הזו
-        all_appointments = base_qs.filter(activities=activity)
+        if variant == "day":
+            # סלוטים ללא שיוך (Shared)
+            appts_qs = base_qs.filter(activities__isnull=True)
+            # אם זה FK:
+            # appts_qs = base_qs.filter(activity__isnull=True)
+            rules_activity = activity  # לשימוש ב-BusinessHours (חלון בלבד)
+            apply_window, apply_cutoff = True, False
+        else:
+            # סלוטים משויכים לפעילות היעד (זריחה/לילה)
+            target_acts = Activity.objects.filter(name=target_activity_name)
+            appts_qs = base_qs.filter(activities__in=target_acts)
+            # אם זה FK:
+            # appts_qs = base_qs.filter(activity__in=Activity.objects.filter(name=target_activity_name))
+            rules_activity = target_acts.first()  # ActivityRule + cutoff
+            apply_window, apply_cutoff = True, True
+
     else:
-        # תורים משותפים או משויכים לפעילות
-        all_appointments = base_qs.filter(
-            Q(activities__isnull=True) | Q(activities=activity)
-        )
+        # שאר הפעילויות (ללא הטאבים של זוגית) – כמו שהיה + חלון, בלי cutoff
+        durations = sorted(set(
+            Activity.objects.filter(name=activity.name)
+            .values_list("duration_minutes", flat=True)
+            .distinct()
+        )) or [getattr(activity, "duration_minutes", 60)]
 
-    all_appointments = all_appointments.order_by('date', 'time').distinct()
+        if activity.name in {"רכיבת לילה", "רכיבה בזריחה"}:
+            appts_qs = base_qs.filter(activities=activity)
+            # FK: appts_qs = base_qs.filter(activity=activity)
+        else:
+            appts_qs = base_qs.filter(Q(activities__isnull=True) | Q(activities=activity))
+            # FK: appts_qs = base_qs.filter(Q(activity__isnull=True) | Q(activity=activity))
+        rules_activity = activity
+        apply_window, apply_cutoff = True, False
 
-    # --- קיבוץ לפי משכים ---
+    # --- סינון לפי חלון/‏cutoff מה־Admin ---
+    now_aw = timezone.localtime()
+    now_naive = datetime.combine(now_aw.date(), now_aw.time())
+
+    rules_cache = {}  # date -> (cutoff_min, win_start_dt, win_end_dt)
+
+    def rules_for_date(the_date: date):
+        if the_date in rules_cache:
+            return rules_cache[the_date]
+        if rules_activity:
+            # get_rules_for(activity, date) -> (assigned_only, cutoff_minutes, win_start_dt, win_end_dt)
+            _, cutoff_min, win_start_dt, win_end_dt = get_rules_for(rules_activity, the_date)
+        else:
+            cutoff_min, win_start_dt, win_end_dt = 0, None, None
+        rules_cache[the_date] = (cutoff_min or 0, win_start_dt, win_end_dt)
+        return rules_cache[the_date]
+
     grouped_appointments = {d: [] for d in durations}
 
-    for appt in all_appointments:
+    for appt in appts_qs:
         start_dt = datetime.combine(appt.date, appt.time)
+        cutoff_min, win_start_dt, win_end_dt = rules_for_date(appt.date)
 
-        # חלון קשיח לפעילויות לילה/זריחה (אחרת None)
-        win_start, win_end = _strict_window(activity, appt.date)
+        # חלון התחלה (לדוגמא 09:00 ב-BusinessHours, או 05:00/20:00 ב-ActivityRule)
+        if apply_window and win_start_dt and start_dt < win_start_dt:
+            continue
 
-        for d in durations:
-            end_dt = start_dt + timedelta(minutes=d)
-
-            # אם יש חלון קשיח: נציג רק סלוטים שההתחלה ≥ התחלת החלון והסיום ≤ סוף החלון
-            if win_start and not (start_dt >= win_start and end_dt <= win_end):
+        # cutoff (למשל שעה מראש) – רק בטאבי זריחה/לילה ועל היום הנוכחי
+        if apply_cutoff and appt.date == now_aw.date() and cutoff_min > 0:
+            if start_dt < now_naive + timedelta(minutes=cutoff_min):
                 continue
 
+        # לכל משך – בדיקה שהסוף לא חוצה את סוף החלון (למשל 20:00 ביום, 08:00 בזריחה, 24:00 בלילה)
+        for d in durations:
+            end_dt = start_dt + timedelta(minutes=d)
+            if apply_window and win_end_dt and end_dt > win_end_dt:
+                continue
             grouped_appointments[d].append({
                 "id": appt.id,
                 "date": appt.date,
@@ -142,12 +282,45 @@ def a_vailable_appointment_view(request, activity_id):
 
     context = {
         "activity": activity,
-        "durations": sorted(durations),
+        "durations": durations,
         "grouped_appointments": grouped_appointments,
         "selected_date": selected_date,
     }
     return render(request, "homePage/available_appointment.html", context)
 
+def _detect_season(d):
+    # קיץ: אפריל–ספטמבר; תרגישי חופשי לשנות
+    return Season.SUMMER if 4 <= d.month <= 9 else Season.WINTER
+
+def build_business_hours_rows(season=None):
+    """מחזיר רשימה מוכנה לתצוגה: [{label, closed, start, end}, ...] לפי ה-BusinessHours מהאדמין."""
+    if season is None:
+        season = _detect_season(timezone.localtime().date())
+
+    # Monday=0 ... Sunday=6; נציג לפי ראשון..שבת
+    day_map = {0: None, 1: None, 2: None, 3: None, 4: None, 5: None, 6: None}
+
+    qs = BusinessHours.objects.filter(season=season).prefetch_related("days")
+    for bh in qs:
+        for wd in bh.days.all():     # wd.code: 0..6
+            cur = day_map[wd.code]
+            if cur is None:
+                day_map[wd.code] = (bh.start_time, bh.end_time)
+            else:
+                s0, e0 = cur
+                day_map[wd.code] = (min(s0, bh.start_time), max(e0, bh.end_time))
+
+    heb = {6: "ראשון", 0: "שני", 1: "שלישי", 2: "רביעי", 3: "חמישי", 4: "שישי", 5: "שבת"}
+    order = [6, 0, 1, 2, 3, 4, 5]
+
+    rows = []
+    for code in order:
+        rng = day_map[code]
+        if rng is None:
+            rows.append({"label": heb[code], "closed": True, "start": None, "end": None})
+        else:
+            rows.append({"label": heb[code], "closed": False, "start": rng[0], "end": rng[1]})
+    return rows
 
 @csrf_exempt
 def confirm_booking(request):
@@ -199,190 +372,3 @@ def booking_form(request):
         'appointment': appointment,
         'activity': activity,
     })
-
-
-
-###################
-
-
-
-def detect_season(d):
-    """
-    לוגיקה פשוטה: אפריל–ספטמבר = קיץ, אחרת חורף.
-    אם יש אצלך לוגיקה אחרת/טבלת עונות – החליפי כאן.
-    """
-    return Season.SUMMER if 4 <= d.month <= 9 else Season.WINTER
-
-
-def get_rules_for(activity, d):
-    """
-    מחזיר כללים ליום נתון ופעילות נתונה:
-      assigned_only: האם להציג רק תורים שמשויכים לפעילות הזו
-      cutoff_minutes: מינימום דקות מראש להזמנה
-      win_start_dt: תחילת חלון (datetime) אם מוגדר
-      win_end_dt:   סוף חלון (datetime) אם מוגדר
-    סדר עדיפויות: ActivityRule (ספציפי לפעילות) → BusinessHours (כללי) → בלי כללים.
-    """
-    weekday = d.weekday()                     # Monday=0 ... Sunday=6
-    season = detect_season(d)
-
-    # 1) כלל ספציפי לפעילות (אם קיים ליום+עונה)
-    arule = (ActivityRule.objects
-             .filter(activity=activity, season=season, days__code=weekday)
-             .first())
-
-    if arule:
-        assigned_only   = bool(arule.assigned_only)
-        cutoff_minutes  = int(arule.booking_cutoff_minutes or 0)
-        win_start_dt    = datetime.combine(d, arule.start_time) if arule.start_time else None
-
-        if arule.end_time:
-            # תמיכה ב"סוף היום" (24:00) באמצעות סימון end_is_midnight_next_day
-            if arule.end_is_midnight_next_day:
-                win_end_dt = datetime.combine(d, time(0, 0)) + timedelta(days=1)  # 00:00 שלמחרת
-            else:
-                win_end_dt = datetime.combine(d, arule.end_time)
-        else:
-            win_end_dt = None
-
-        return assigned_only, cutoff_minutes, win_start_dt, win_end_dt
-
-    # 2) fallback לשעות כלליות של העסק (לפי עונה+יום)
-    bh = (BusinessHours.objects
-          .filter(season=season, days__code=weekday)
-          .first())
-
-    if bh:
-        win_start_dt   = datetime.combine(d, bh.start_time)
-        win_end_dt     = datetime.combine(d, bh.end_time)
-        # ברירת מחדל עבור שעות כלליות: לא מחייב שיוך, בלי cutoff
-        return False, 0, win_start_dt, win_end_dt
-
-    # 3) אין כלל – בלי חלון ובלי מגבלות
-    return False, 0, None, None
-
-def available_appointment_view(request, activity_id):
-    activity = get_object_or_404(Activity, id=activity_id)
-
-    # --- טווח תאריכים ---
-    date_str = request.GET.get("date")
-    if date_str:
-        try:
-            selected_date = datetime.strptime(date_str, "%Y-%m-%d").date()
-        except ValueError:
-            selected_date = date.today()
-        start_day = end_day = selected_date
-    else:
-        selected_date = None
-        start_day = date.today()
-        end_day = start_day + timedelta(days=7)
-
-    # --- משכים (לטאבים) לפי שם הפעילות (או נופל למשך הפעילות עצמה) ---
-    durations = (
-        Activity.objects
-        .filter(name=activity.name)
-        .values_list('duration_minutes', flat=True)
-        .distinct()
-    )
-    durations = list(durations) or [getattr(activity, "duration_minutes", 60)]
-
-    # --- שליפת תורים פנויים בתקופה ---
-    base_qs = Appointment.objects.filter(
-        is_booked=False,
-        is_break=False,
-        date__range=(start_day, end_day)
-    )
-
-    grouped_appointments = {d: [] for d in durations}
-
-    # נרוץ על כל התורים – לכל תור נחלץ כללים לפי היום שלו והפעילות
-    now_local = timezone.localtime()
-
-    # מסייע לשיוך: לכל תור נחלץ אם צריך "assigned_only" והחלון שלו
-    for appt in base_qs.order_by("date", "time"):
-        assigned_only, cutoff_minutes, win_start_dt, win_end_dt = get_rules_for(activity, appt.date)
-
-        # סינון לפי שיוך:
-        if assigned_only:
-            # רק תורים ששויכו לפעילות הנוכחית (M2M)
-            # אם אצלך זה FK – החליפי ל: appt.activity_id == activity.id
-            if not appt.activities.filter(id=activity.id).exists():
-                continue
-        else:
-            # תורים משותפים או משויכים
-            # אם יש M2M activities, "משותף" = ללא שיוך (count=0)
-            if appt.activities.exists() and not appt.activities.filter(id=activity.id).exists():
-                continue
-
-        # חיתוך לפי "כמה זמן מראש" אם הוגדר (למשל 60 דק')
-        if cutoff_minutes:
-            cutoff_dt = (now_local + timedelta(minutes=cutoff_minutes)).replace(tzinfo=None)
-            start_dt = datetime.combine(appt.date, appt.time)
-            if start_dt <= cutoff_dt:
-                continue
-        else:
-            start_dt = datetime.combine(appt.date, appt.time)
-
-        # חיתוך לפי חלון (אם הוגדר)
-        # מציגים רק אם start>=win_start ו-end<=win_end
-        for d in durations:
-            end_dt = start_dt + timedelta(minutes=d)
-
-            if win_start_dt and start_dt < win_start_dt:
-                continue
-            if win_end_dt and end_dt > win_end_dt:
-                continue
-
-            grouped_appointments[d].append({
-                "id": appt.id,
-                "date": appt.date,
-                "time": appt.time,
-                "end_time": end_dt.time(),
-            })
-
-    context = {
-        "activity": activity,
-        "durations": sorted(durations),
-        "grouped_appointments": grouped_appointments,
-        "selected_date": selected_date,
-    }
-    return render(request, "homePage/available_appointment.html", context)
-
-
-from datetime import datetime, time
-from django.utils import timezone
-from homePage.models import BusinessHours, Season
-
-def _detect_season(d):
-    # קיץ: אפריל–ספטמבר; תרגישי חופשי לשנות
-    return Season.SUMMER if 4 <= d.month <= 9 else Season.WINTER
-
-def build_business_hours_rows(season=None):
-    """מחזיר רשימה מוכנה לתצוגה: [{label, closed, start, end}, ...] לפי ה-BusinessHours מהאדמין."""
-    if season is None:
-        season = _detect_season(timezone.localtime().date())
-
-    # Monday=0 ... Sunday=6; נציג לפי ראשון..שבת
-    day_map = {0: None, 1: None, 2: None, 3: None, 4: None, 5: None, 6: None}
-
-    qs = BusinessHours.objects.filter(season=season).prefetch_related("days")
-    for bh in qs:
-        for wd in bh.days.all():     # wd.code: 0..6
-            cur = day_map[wd.code]
-            if cur is None:
-                day_map[wd.code] = (bh.start_time, bh.end_time)
-            else:
-                s0, e0 = cur
-                day_map[wd.code] = (min(s0, bh.start_time), max(e0, bh.end_time))
-
-    heb = {6: "ראשון", 0: "שני", 1: "שלישי", 2: "רביעי", 3: "חמישי", 4: "שישי", 5: "שבת"}
-    order = [6, 0, 1, 2, 3, 4, 5]
-
-    rows = []
-    for code in order:
-        rng = day_map[code]
-        if rng is None:
-            rows.append({"label": heb[code], "closed": True, "start": None, "end": None})
-        else:
-            rows.append({"label": heb[code], "closed": False, "start": rng[0], "end": rng[1]})
-    return rows

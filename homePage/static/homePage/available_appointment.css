@@ -1,39 +1,10 @@
-:root {
-    --main-color: #2f6e2f;       /* ירוק רגיל */
-    --main-emerald: #b8e3ac;  /* ירוק כהה */
-    --main-press: #d8ead3;          /* רקע ירוק בהיר */
-}
-
 body {
     font-family: Arial, sans-serif;
-    background-color: #f7f7f7;
+    background-color: whitesmoke;
     direction: rtl;
     text-align: right;
     margin: 0;
     padding: 0;
-}
-
-.container {
-    max-width: 500px;
-    margin: 50px auto;
-    padding: 25px;
-    background-color: white;
-    border-radius: 12px;
-    box-shadow: 0 0 15px rgba(0, 0, 0, 0.1);
-}
-
-h2 {
-    color: #3b5e2b;
-    font-size: 24px;
-    margin-bottom: 20px;
-    text-align: center;
-}
-
-label {
-    display: block;
-    margin-bottom: 5px;
-    font-weight: bold;
-    color: #444;
 }
 
 select, input[type="number"] {
@@ -45,77 +16,16 @@ select, input[type="number"] {
     font-size: 16px;
 }
 
+/*כפתורי התורים הפנויים*/
 button {
     width: 100%;
     padding: 12px;
-    background-color: #3b5e2b;
     color: white;
     border: none;
     border-radius: 8px;
     font-size: 18px;
     cursor: pointer;
-    transition: background-color 0.3s ease;
-}
-
-/*
-button:hover { ריחוף מעל התאריכים
-    background-color: #2f4b21;
-}
-*/
-
-.appointments-container {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 30px;
-    margin-top: 20px;
-}
-
-/* קבוצה של משך זמן */
-.appointments-group {
-    background: #f9f9f9;
-    padding: 15px;
-    border-radius: 8px;
-    flex: 1 1 250px; /* מינימום 250px */
-}
-
-/* כותרת משך הזמן */
-.appointments-group h3 {
-    font-size: 1.3rem;
-    font-weight: bold;
-    margin-bottom: 15px;
-    color: #333;
-    text-align: center;
-}
-
-/* ביטול נקודות ברשימה */
-.appointments-group ul {
-    list-style: none;
-    padding: 0;
-    margin: 0;
-}
-
-/* כל תור */
-.appointments-group li {
-    margin-bottom: 12px; /* רווח בין תורים */
-}
-
-/* הכפתור */
-.appointments-group button {
-    display: block;          /* שיהיה בשורה משלו */
-    width: 100%;              /* כל הרוחב */
-    padding: 10px;
-    border: none;
-    border-radius: 6px;
-    background-color: #2f6e2f;
-    color: white;
-    font-size: 1rem;
-    cursor: pointer;
-    transition: background-color 0.2s ease;
-}
-
-/* אפקט מעבר */
-.appointments-group button:hover {
-    background-color: #256325;
+    direction: ltr
 }
 
 /* הודעה כשאין תורים */
@@ -125,37 +35,52 @@ button:hover { ריחוף מעל התאריכים
     text-align: center;
 }
 
-.slot-btn{
-    direction: ltr
-}
+/*כאשר נלחץ על תור בשעה כלשהי*/
 .slot-btn:active{
     background-color: var(--main-emerald);
 }
 
+/*בלוק הטאבים של השעות והצגת התורים*/
 .appointments-columns{
     display: flex;
     flex-wrap: wrap;
     max-width: 700px;
-    margin: 50px auto;
-    padding: 25px;
+    margin: 10px auto;
+    padding: 10px;
     justify-content: center;
+    gap:20px;
 }
 
+/*הסתרת כפתורי הרדיו*/
 .appointments-columns input[type="radio"]{
     display: none;
 }
 
+/*עיצוב טאב של שעה מסויימת*/
 .appointments-columns label{
     width: 70px;
     padding: 10px;
     font-weight: bold;
     color: white;
     border: 1px solid #ddd;
-    background: var(--main-press);
+    background: var(--main-bright);
     border-radius: 999px;
     text-align: center;
+    display: block;
+    margin-bottom: 5px;
 }
 
+/*כל שורות התורים המוצגים*/
+.slots{
+    list-style:none;
+    margin:0;
+    padding:0
+}
+
+/*שורה אחת מתוך התורים המוצגים*/
+.slot-item{margin-bottom:8px}
+
+/*בלוק התורים המוצגים*/
 .appointments-columns .appointments{
     width: 100%;
     padding: 20px;
@@ -163,10 +88,12 @@ button:hover { ריחוף מעל התאריכים
     display: none;
 }
 
+/*הצגת סוג התורים שנבחרו(שעה)*/
 .appointments-columns input[type="radio"]:checked + label + .appointments{
     display: block;
 }
 
+/*כאשר נבחר תור בשעה מסויימת*/
 .appointments-columns input[type="radio"]:checked + label{
     background: var(--main-emerald);
     color: black;

@@ -1,10 +1,4 @@
-:root {
-    --main-color: #2f6e2f;       /* ירוק רגיל */
-    --main-emerald: #b8e3ac;  /* ירוק כהה */
-    --main-press: #d8ead3;          /* רקע ירוק בהיר */
-}
-
-
+/*בלוק עליון של התמונה*/
 .top-image-container {
     position: relative;
     width: 90%;
@@ -24,6 +18,7 @@
     object-fit: cover;
 }
 
+/*עיצוב הטקסט שעל התמונה למעלה*/
 .text_on_picture {
     font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
     position: absolute;
@@ -34,75 +29,93 @@
     text-align: center;
     font-weight: bold;
     font-size: clamp(14px, 2.5vw, 36px);
-    max-width: 90%; /* מונע גלישה */
+    max-width: 90%;
 }
 
+/*בלוק של מדיניות החזרות*/
 .cancellation-policy {
-    border: black 2px solid; /* מסגרת שחורה */
+    border: black 2px solid;
     padding: 10px;
     font-family: Arial, sans-serif;
     line-height: 1.8;           /* ריווח בין שורות */
-    color: #222;                /* צבע טקסט כהה */
-    max-width: calc(100% - 40px);           /* רוחב מקסימלי */
-    direction: rtl;             /* כתיבה מימין לשמאל */
+    color: #222;
+    max-width: calc(100% - 40px);
+    direction: rtl;
     margin: 0 auto;
 }
 
 .cancellation-policy p {
-    margin: 0 0 15px;           /* רווח מתחת לכל פסקה */
-    font-size: 1.1rem;          /* גודל טקסט נעים */
+    margin: 0 0 15px;
+    font-size: 1.1rem;
     text-align: center;
     text-decoration: underline;
 }
 
+/*כותרת המדיניות*/
 .cancellation-policy .section-title {
-    font-weight: bold;          /* הדגשה לכותרת */
-    text-align: center;         /* ממרכז את הכותרת */
+    font-weight: bold;
+    text-align: center;
 }
 
+/*שורות המדיניות*/
 .cancellation-policy ul {
     margin: 0;
-    padding-right: 20px;        /* הזחה קלה מהצד */
-    list-style-type: disc;      /* bullets רגילים */
+    padding-right: 20px;
+    list-style-type: disc;
 }
 
+/*הגדרת שורה ספציפית מהמדיניות*/
 .cancellation-policy li {
-    margin-bottom: 10px;        /* רווח בין סעיפי הרשימה */
+    margin-bottom: 10px;
 }
 
+/*בלוק הטאבים של השעות והצגת התורים*/
+#appointments-container{
+    margin: 0;
+}
+
+/*כותרת מעל התורים המוצגים*/
 .appointment_title{
     font-size: 2rem;
     font-weight: bold;
-    color: #000;
+    color: var(--main-color);
     text-align: center;
     margin-top: 20px;
     margin-bottom: 35px;
     text-decoration: underline;
 }
 
-.day-title{margin:10px 0;font-weight:700}
-.appointments-columns{display:flex;gap:20px;flex-wrap:wrap;margin-top:10px}
-.duration-column{flex:1 1 240px;background:#f9f9f9;border-radius:10px;padding:12px}
-.slots{list-style:none;margin:0;padding:0}
-.slot-item{margin-bottom:8px}
-
+/*התורים המוצגים*/
 .slot-btn{
     width:100%;
     padding:10px;
     border-radius:8px;
-    background:var(--main-press);
+    background:var(--main-bright);
     color: black;
     border: black 1px solid;
     cursor:pointer
 }
 
+/*ריחוף מעף התורים*/
 .slot-btn:hover{background:var(--main-emerald)}
-.no-appointments{color:#c00;font-weight:600}
-.date-strip{display:flex;gap:8px;overflow-x:auto;padding-bottom:6px;margin:12px 0;scrollbar-width:thin}
 
+/*כאשר אין תורים פנויים*/
+.no-appointments{color:#c00;font-weight:600}
+
+/*טאבים של כל הימים בשבוע*/
+.date-strip{
+    display:flex;
+    gap:8px;
+    overflow-x:auto;
+    padding-bottom:6px;
+    margin:12px 0;
+    scrollbar-width:thin
+}
+
+/*כל טאב בודד של יום בשבוע*/
 .date-chip{
     border:1px solid #ddd;
-    background:var(--main-press);
+    background:var(--main-bright);
     border-radius:999px;
     padding:8px 12px;
     cursor:pointer;
@@ -110,107 +123,11 @@
     font-weight: bold;
 }
 
+/*כאשר נבחר יום בשבוע*/
 .date-chip.active{
     background:var(--main-emerald);
     color:black;
     border-color:black;
-}
-
-
-.duration-tabs {
-  margin-top: 12px;
-  direction: rtl;
-}
-
-/* מסתירים את ה-radio */
-.duration-tabs input[type="radio"] {
-  position: absolute;
-  opacity: 0;
-  pointer-events: none;
-}
-
-/* פס הטאבים (שורה לרוחב, ניתן לגלילה) */
-.duration-tabs .tab-list {
-  display: flex;
-  gap: 8px;
-  overflow-x: auto;
-  padding: 6px 0 10px;
-  scrollbar-width: thin;
-  border-bottom: 1px solid #e3e3e3;
-}
-
-/* כפתור טאב (label) */
-.duration-tabs .tab-label {
-  border: 1px solid #ddd;
-  background: var(--main-press);
-  border-radius: 999px;
-  padding: 8px 14px;
-  cursor: pointer;
-  white-space: nowrap;
-  font-weight: 600;
-  transition: background .2s ease, border-color .2s ease, transform .08s ease;
-  user-select: none;
-}
-.duration-tabs .tab-label:active {
-  transform: scale(0.98);
-}
-
-/* פאנלים של התוכן */
-.duration-tabs .tab-panels {
-  margin-top: 14px;
-}
-.duration-tabs .tab-panel {
-  display: none;
-}
-
-/* מצב נבחר: צובעים את הטאב */
-.duration-tabs input[type="radio"]:checked + .tab-label {
-  background: var(--main-emerald);
-  color: #000;
-  border-color: #000;
-}
-
-/* מיפוי: כל radio שולט על פאנל תואם לפי id */
-.duration-tabs input#dur-tab-1:checked ~ .tab-panels #panel-1,
-.duration-tabs input#dur-tab-2:checked ~ .tab-panels #panel-2,
-.duration-tabs input#dur-tab-3:checked ~ .tab-panels #panel-3,
-.duration-tabs input#dur-tab-4:checked ~ .tab-panels #panel-4,
-.duration-tabs input#dur-tab-5:checked ~ .tab-panels #panel-5,
-.duration-tabs input#dur-tab-6:checked ~ .tab-panels #panel-6,
-.duration-tabs input#dur-tab-7:checked ~ .tab-panels #panel-7,
-.duration-tabs input#dur-tab-8:checked ~ .tab-panels #panel-8,
-.duration-tabs input#dur-tab-9:checked ~ .tab-panels #panel-9,
-.duration-tabs input#dur-tab-10:checked ~ .tab-panels #panel-10 {
-  display: block;
-}
-
-/* עיצוב פנימי של העמודה/רשימת התורים */
-.tab-panel .slots {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-}
-.tab-panel .slot-item { margin-bottom: 8px; }
-
-.tab-panel .slot-btn {
-  width: 100%;
-  padding: 10px;
-  border-radius: 8px;
-  background: var(--main-press);
-  color: black;
-  border: 1px solid #000;
-  cursor: pointer;
-  transition: background .2s ease;
-  direction: ltr;
-}
-.tab-panel .slot-btn:hover { background: var(--main-emerald); }
-.tab-panel .slot-btn:active { background: var(--main-emerald); }
-
-/* כותרת יום מעל הטאבים (אופציונלי) */
-.day-title {
-  margin: 10px 0 6px;
-  font-weight: 700;
-  text-align: center;
 }
 
 /* הודעה כשאין תורים */
@@ -218,4 +135,54 @@
   color: #c00;
   font-weight: 600;
   text-align: center;
+}
+
+/*כל הטאבים של סוגי רכיבה זוגית*/
+.variant-strip{
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    justify-content: center;
+    align-items: center;
+    margin: 10px auto;
+    padding: 10px;
+    max-width: 700px;
+    border-radius: 12px;
+}
+
+/*טאב בודד לסוג רכיבה זוגית*/
+.variant-strip .variant-chip{
+  width: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: white;
+  padding: 8px 14px;
+  border: 1px solid #ddd;
+  border-radius: 999px;
+  background: var(--main-bright);
+  font-weight: bold;
+  font-size: .95rem;
+  cursor: pointer;
+  transition: transform .08s ease, background-color .2s ease, border-color .2s ease, box-shadow .2s ease;
+}
+
+/*כאשר נבחר סוג רכיבה זוגית*/
+.variant-strip .variant-chip.active{
+    background: var(--main-emerald);
+    color: #000;
+    border-color: #000;
+}
+
+/* וריאציה קומפקטית במסכים קטנים */
+@media (max-width: 480px){
+  .variant-strip{
+    gap: 8px;
+    padding: 6px;
+  }
+  .variant-strip .variant-chip{
+    color: white;
+    padding: 7px 12px;
+    font-size: .9rem;
+  }
 }
