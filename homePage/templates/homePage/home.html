@@ -113,15 +113,15 @@
 
     <h2>🕒 שעות פעילות:</h2>
     <ul class="hours-list">
-        <li><strong>ראשון:</strong> 09:00–20:00</li>
-        <li><strong>שני:</strong>&nbsp;&nbsp;&nbsp;&nbsp; 09:00–20:00</li>
-        <li><strong>שלישי:</strong> 09:00–20:00</li>
-        <li><strong>רביעי:</strong>&nbsp; 09:00–20:00</li>
-        <li><strong>חמישי:</strong> 09:00–20:00</li>
-        <li><strong>שישי:</strong>&nbsp;&nbsp; 09:00–16:00</li>
-        <li><strong>שבת:</strong> סגור</li>
-        <li><strong>*רכיבות לילה וזריחה יהיו אחרי שעות הפעילות בתיאום מראש בלבד!</strong></li>
+      {% for row in hours_rows %}
+        <li>
+          <strong>{{ row.label }}:</strong>
+          {% if row.closed %}סגור{% else %}{{ row.start|time:"H:i" }}–{{ row.end|time:"H:i" }}{% endif %}
+        </li>
+      {% endfor %}
+      <li><strong>*רכיבות לילה וזריחה יהיו אחרי שעות הפעילות בתיאום מראש בלבד!</strong></li>
     </ul>
+
 </footer>
 
 {% endblock %}

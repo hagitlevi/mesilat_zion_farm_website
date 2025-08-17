@@ -1,3 +1,4 @@
+from django.utils.translation import gettext_lazy as _
 from django.db import models
 
 class PageContent(models.Model):
@@ -35,9 +36,14 @@ class Appointment(models.Model):
     duration_minutes = models.IntegerField(default=15)
     is_booked = models.BooleanField(default=False)
     is_break = models.BooleanField(default=False)
-    participants_count = models.IntegerField(default=1)
+    participants_count = models.IntegerField(default=2)
     customer_name = models.CharField(max_length=50, blank=True)
     customer_phone = models.CharField(max_length=15, blank=True)
+    activities = models.ManyToManyField(
+        Activity,
+        blank=True,
+        related_name="appointments"
+    )
 
     def __str__(self):
         return f"{self.date} {self.time} {'- תפוס' if self.is_booked else '- פנוי'}"
@@ -52,3 +58,50 @@ class CustomSchedule(models.Model):
     def __str__(self):
         return f"{self.date}: {self.start_time} - {self.end_time}" if self.is_active else f"{self.date}: לא פעיל"
 
+class Season(models.TextChoices):
+    SUMMER = "summer", _("קיץ")
+    WINTER = "winter", _("חורף")
+
+
+class Weekday(models.Model):
+    code = models.PositiveSmallIntegerField(unique=True)
+    name = models.CharField(max_length=20)
+
+    class Meta:
+        ordering = ["code"]
+        verbose_name = "יום בשבוע"
+        verbose_name_plural = "ימים בשבוע"
+
+    def __str__(self):
+        return self.name
+
+
+class BusinessHours(models.Model):
+    season = models.CharField(max_length=10, choices=[("summer","קיץ"),("winter","חורף")])
+    days = models.ManyToManyField(Weekday, related_name="business_hours")
+    start_time = models.TimeField()
+    end_time = models.TimeField()
+
+    class Meta:
+        verbose_name = "שעות עבודה כלליות"
+        verbose_name_plural = "שעות עבודה כלליות"
+
+    def __str__(self):
+        return f"{self.season} {self.start_time}-{self.end_time}"
+
+class ActivityRule(models.Model):
+    activity = models.ForeignKey("Activity", on_delete=models.CASCADE, related_name="rules")
+    season = models.CharField(max_length=10, choices=[("summer","קיץ"),("winter","חורף")])
+    days = models.ManyToManyField(Weekday, related_name="activity_rules")
+    start_time = models.TimeField(null=True, blank=True)
+    end_time = models.TimeField(null=True, blank=True)
+    end_is_midnight_next_day = models.BooleanField(default=False)
+    assigned_only = models.BooleanField(default=False)
+    booking_cutoff_minutes = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        verbose_name = "כלל פעילות"
+        verbose_name_plural = "כללי פעילות"
+
+    def __str__(self):
+        return f"{self.activity.name} {self.season}"
