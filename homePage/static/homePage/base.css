@@ -1,7 +1,10 @@
 :root {
-    --main-color: #12a7b5;       /* הכי כהה */
-    --main-emerald: #12a7b5;  /*8eecf5 בהיר */
-    --main-bright: #b6f4fa;          /* הכי בהיר */
+    --main-color: #2f6e2f;       /* הכי כהה */
+    --main-emerald: #b8e3ac;  /* בהיר */
+    --main-bright: #d8ead3;          /* הכי בהיר */
+    --main-muted:#6b786f;       /* אטום */
+    --main-border:#e6efe7;        /* מסגרת */
+    --main-white:#fcfffc;        /* מסגרת */
 }
 
 header{
@@ -58,5 +61,8 @@ header{
 body {
     margin: 0;
     padding: 0;
+    background: linear-gradient(180deg, #f6fbf4 0%, #eef6ea 100%);
 }
+html, body { min-height: 100dvh; }
+
 

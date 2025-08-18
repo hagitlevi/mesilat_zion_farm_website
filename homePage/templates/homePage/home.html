@@ -45,6 +45,7 @@
                         <span class="title-text">רכיבת שטח</span>
                     </div>
                 </li>
+                {% if not is_winter %}
                 <li>
                     <div class="activity-button" >
                         <a href="{% url 'night_riding' %}" class="details-link"> <h4> לפרטים והזמנות</h4></a>
@@ -52,6 +53,7 @@
                         <span class="title-text">רכיבת לילה</span>
                     </div>
                 </li>
+                {% endif %}
                 <li>
                     <div class="activity-button" >
                         <a href="{% url 'sunrise_riding' %}" class="details-link"> <h4> לפרטים והזמנות</h4></a>

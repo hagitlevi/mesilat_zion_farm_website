@@ -1,21 +1,40 @@
-from django.http import Http404
+from django.http import Http404, HttpResponseBadRequest
 from django.views.decorators.csrf import csrf_exempt
-from django.shortcuts import redirect
 from homePage.models import ActivityRule, BusinessHours, Season, Appointment, Activity
 from datetime import datetime, timedelta, date, time
 from django.shortcuts import render, get_object_or_404
 from django.db.models import Q
 from django.utils import timezone
+from decimal import Decimal
+from zoneinfo import ZoneInfo   # ← הוספה
 
+
+VARIANT_TO_TYPE = {
+    "day":     "רכיבה זוגית ביום",
+    "sunrise": "רכיבה זוגית בזריחה",
+    "night":   "רכיבה זוגית בלילה",
+}
+
+VARIANT_TO_TARGET_ACTIVITY_NAME = {
+    "day":     None,              # סלוטים ללא שיוך
+    "sunrise": "רכיבה בזריחה",
+    "night":   "רכיבת לילה",
+}
 
 def home(request):
     hours_rows = build_business_hours_rows()
-    return render(request, "homePage/home.html", {"hours_rows": hours_rows})
+    is_winter = (detect_season(timezone.localdate()) == Season.WINTER)
+    return render(request, "homePage/home.html", {
+        "hours_rows": hours_rows,
+        "is_winter": is_winter,
+    })
 
 def riding_lessons_view(request):
     return render(request, 'homePage/riding_lessons.html')
 
 def night_riding_view(request):
+    if detect_season(timezone.localdate()) == Season.WINTER:
+        raise Http404("רכיבת לילה אינה פעילה בחורף")
     activity = get_object_or_404(Activity, name="רכיבת לילה")
     return render(request, 'homePage/night_riding.html', {'activity': activity})
 
@@ -129,18 +148,6 @@ def get_rules_for(activity, d):
     # 3) אין כלל – בלי חלון ובלי מגבלות
     return False, 0, None, None
 
-VARIANT_TO_TYPE = {
-    "day":     "רכיבה זוגית ביום",
-    "sunrise": "רכיבה זוגית בזריחה",
-    "night":   "רכיבה זוגית בלילה",
-}
-
-VARIANT_TO_TARGET_ACTIVITY_NAME = {
-    "day":     None,              # סלוטים ללא שיוך
-    "sunrise": "רכיבה בזריחה",
-    "night":   "רכיבת לילה",
-}
-
 def _durations_for_variant(variant: str):
     """
     משכים לטאב (יום/זריחה/לילה) מתוך 'רכיבה זוגית', עם פולבקים חכמים למקרה של כתיב/רווחים.
@@ -177,7 +184,7 @@ def _durations_for_variant(variant: str):
     return [60]
 
 def available_appointment_view(request, activity_id):
-    activity = get_object_or_404(Activity, id=activity_id)  # למשל "רכיבה זוגית"
+    activity = get_object_or_404(Activity, id=activity_id)
     variant = (request.GET.get("variant") or "").lower()
 
     # --- טווח תאריכים ---
@@ -193,10 +200,22 @@ def available_appointment_view(request, activity_id):
         start_day = date.today()
         end_day = start_day + timedelta(days=7)
 
-    base_qs = (Appointment.objects
-               .filter(is_booked=False, is_break=False, date__range=(start_day, end_day))
-               .order_by("date", "time")
-               .distinct())
+    # ✅ חדש/מסודר: לחשב פעם אחת
+    now_aw = timezone.now().astimezone(ZoneInfo("Asia/Jerusalem"))
+    today = now_aw.date()
+    now_naive = datetime.combine(today, now_aw.time())
+    two_hours_ahead_time = (now_aw + timedelta(hours=2)).time()
+
+    base_qs = (
+        Appointment.objects
+        .filter(is_booked=False, is_break=False, date__range=(start_day, end_day))
+        .order_by("date", "time")
+        .distinct()
+    )
+
+    # ✅ מסנן תורים של היום עד שעתיים קדימה
+    if selected_date is None or selected_date == today:
+        base_qs = base_qs.exclude(date=today, time__lte=two_hours_ahead_time)
 
     # --- משכים + מקור סלוטים לפי הטאב ---
     if activity.name == "רכיבה זוגית" and variant in ("day", "sunrise", "night"):
@@ -204,23 +223,15 @@ def available_appointment_view(request, activity_id):
         target_activity_name = VARIANT_TO_TARGET_ACTIVITY_NAME[variant]
 
         if variant == "day":
-            # סלוטים ללא שיוך (Shared)
             appts_qs = base_qs.filter(activities__isnull=True)
-            # אם זה FK:
-            # appts_qs = base_qs.filter(activity__isnull=True)
-            rules_activity = activity  # לשימוש ב-BusinessHours (חלון בלבד)
+            rules_activity = activity
             apply_window, apply_cutoff = True, False
         else:
-            # סלוטים משויכים לפעילות היעד (זריחה/לילה)
             target_acts = Activity.objects.filter(name=target_activity_name)
             appts_qs = base_qs.filter(activities__in=target_acts)
-            # אם זה FK:
-            # appts_qs = base_qs.filter(activity__in=Activity.objects.filter(name=target_activity_name))
-            rules_activity = target_acts.first()  # ActivityRule + cutoff
+            rules_activity = target_acts.first()
             apply_window, apply_cutoff = True, True
-
     else:
-        # שאר הפעילויות (ללא הטאבים של זוגית) – כמו שהיה + חלון, בלי cutoff
         durations = sorted(set(
             Activity.objects.filter(name=activity.name)
             .values_list("duration_minutes", flat=True)
@@ -229,24 +240,16 @@ def available_appointment_view(request, activity_id):
 
         if activity.name in {"רכיבת לילה", "רכיבה בזריחה"}:
             appts_qs = base_qs.filter(activities=activity)
-            # FK: appts_qs = base_qs.filter(activity=activity)
         else:
             appts_qs = base_qs.filter(Q(activities__isnull=True) | Q(activities=activity))
-            # FK: appts_qs = base_qs.filter(Q(activity__isnull=True) | Q(activity=activity))
         rules_activity = activity
         apply_window, apply_cutoff = True, False
 
-    # --- סינון לפי חלון/‏cutoff מה־Admin ---
-    now_aw = timezone.localtime()
-    now_naive = datetime.combine(now_aw.date(), now_aw.time())
-
     rules_cache = {}  # date -> (cutoff_min, win_start_dt, win_end_dt)
-
     def rules_for_date(the_date: date):
         if the_date in rules_cache:
             return rules_cache[the_date]
         if rules_activity:
-            # get_rules_for(activity, date) -> (assigned_only, cutoff_minutes, win_start_dt, win_end_dt)
             _, cutoff_min, win_start_dt, win_end_dt = get_rules_for(rules_activity, the_date)
         else:
             cutoff_min, win_start_dt, win_end_dt = 0, None, None
@@ -259,16 +262,20 @@ def available_appointment_view(request, activity_id):
         start_dt = datetime.combine(appt.date, appt.time)
         cutoff_min, win_start_dt, win_end_dt = rules_for_date(appt.date)
 
-        # חלון התחלה (לדוגמא 09:00 ב-BusinessHours, או 05:00/20:00 ב-ActivityRule)
+        # ✅ ביטוח: לא להציג תורים של היום עד שעתיים קדימה
+        if appt.date == today and start_dt <= (now_naive + timedelta(hours=2)):
+            continue
+
+        # חלון התחלה
         if apply_window and win_start_dt and start_dt < win_start_dt:
             continue
 
-        # cutoff (למשל שעה מראש) – רק בטאבי זריחה/לילה ועל היום הנוכחי
-        if apply_cutoff and appt.date == now_aw.date() and cutoff_min > 0:
+        # cutoff (למשל שעה מראש) – רק בטאבים הרלוונטיים ועל היום הנוכחי
+        if apply_cutoff and appt.date == today and cutoff_min > 0:
             if start_dt < now_naive + timedelta(minutes=cutoff_min):
                 continue
 
-        # לכל משך – בדיקה שהסוף לא חוצה את סוף החלון (למשל 20:00 ביום, 08:00 בזריחה, 24:00 בלילה)
+        # בדיקה שהסיום לא חוצה סוף חלון
         for d in durations:
             end_dt = start_dt + timedelta(minutes=d)
             if apply_window and win_end_dt and end_dt > win_end_dt:
@@ -322,53 +329,124 @@ def build_business_hours_rows(season=None):
             rows.append({"label": heb[code], "closed": False, "start": rng[0], "end": rng[1]})
     return rows
 
-@csrf_exempt
-def confirm_booking(request):
-
-    if request.method == 'POST':
-        appointment_id = request.POST.get('appointment_id')
-        activity_id = request.POST.get('activity_id')
-        name = request.POST.get('name')
-        phone = request.POST.get('phone')
-        participants_str = request.POST.get('participants')
-
-        if not all([appointment_id, activity_id, participants_str]):
-            return render(request, 'homePage/unbooking.html', {'message': 'נתונים חסרים'})
-
-        try:
-            participants = int(participants_str)
-        except ValueError:
-            return render(request, 'homePage/unbooking.html', {'message': 'מספר משתתפים לא תקין'})
-
-        appointment = get_object_or_404(Appointment, id=appointment_id)
-        activity = get_object_or_404(Activity, id=activity_id)
-
-        if appointment.is_booked:
-            return render(request, 'homePage/unbooking.html', {'message': 'התור כבר תפוס'})
-
-        if not (activity.min_participants <= participants <= activity.max_participants):
-            return render(request, 'homePage/unbooking.html', {
-                'message': f'מספר משתתפים צריך להיות בין {activity.min_participants} ל־{activity.max_participants}'
-            })
-
-        # עדכון התור
-        appointment.is_booked = True
-        appointment.participants_count = participants
-        appointment.save()
-
-        # אפשר לשמור גם את השם והטלפון אם תוסיף שדות מתאימים בטבלה
-        return redirect('home')
-
-    return render(request, 'homePage/unbooking.html', {'message': 'שגיאה בבקשה'})
-
 def booking_form(request):
-    appointment_id = request.GET.get('appointment_id')
-    activity_id = request.GET.get('activity_id')
+    appointment_id   = request.GET.get('appointment_id')
+    activity_id      = request.GET.get('activity_id')
+    duration_minutes = request.GET.get('duration_minutes')      # מחרוזת או None
+    selected_type    = request.GET.get('activity_type')         # קוד activity_type שנבחר (אם נבחר)
+    qty_raw          = request.GET.get('participants')          # כמות משתתפים (אם נבחרה)
 
     appointment = get_object_or_404(Appointment, id=appointment_id)
-    activity = get_object_or_404(Activity, id=activity_id)
+    activity    = get_object_or_404(Activity, id=activity_id)
 
-    return render(request, 'homePage/booking.html', {
+    # 1) מסננים וריאציות לפי שם → משך (לא מסננים לפי סוג כדי להציג את כולן לבחירה)
+    qs = Activity.objects.filter(name=activity.name)
+    try:
+        if duration_minutes:
+            qs = qs.filter(duration_minutes=int(duration_minutes))
+    except (TypeError, ValueError):
+        pass
+
+    # 2) וריאציות רלוונטיות להצגה ולחישוב
+    variants = list(
+        qs.values('activity_type', 'price', 'price').order_by('activity_type')
+    )
+
+    # 3) מיפוי קוד → תווית ידידותית, ורשימת אופציות לטמפלייט (כולל מחיר ליחידה לכל סוג)
+    choices_map = dict(Activity._meta.get_field('activity_type').choices)
+    type_options = []
+    for v in variants:
+        unit = v['price'] or v['price']
+        code = v['activity_type']
+        type_options.append({
+            'code': code,
+            'label': choices_map.get(code, code),
+            'unit_price': unit,
+        })
+
+    # 4) unit_price לפי סדר עדיפויות: (א) וריאציה יחידה, (ב) נבחר סוג, (ג) כל הווריאציות באותו מחיר
+    unit_price = None
+    if len(variants) == 1:
+        unit_price = variants[0]['price'] or variants[0]['price']
+    elif selected_type:
+        for v in variants:
+            if v['activity_type'] == selected_type:
+                unit_price = v['price'] or v['price']
+                break
+    else:
+        prices = { (v['price'] or v['price']) for v in variants }
+        if len(prices) == 1:
+            unit_price = prices.pop()
+
+    # 5) כמות שנבחרה
+    if activity.min_participants == activity.max_participants:
+        selected_participants = activity.min_participants
+    else:
+        selected_participants = int(qty_raw) if (qty_raw and qty_raw.isdigit()) else None
+
+    # 6) סיכום כולל (רק אם יש מחיר ליחידה וגם יש כמות)
+    total_price = None
+    if unit_price is not None and selected_participants:
+        total_price = Decimal(str(unit_price)) * Decimal(selected_participants)
+
+    # 7) טווח לבחירה בכמות
+    participants_range = range(activity.min_participants, activity.max_participants + 1)
+
+    return render(request, 'homePage/user_details.html', {
         'appointment': appointment,
         'activity': activity,
+        'duration': duration_minutes,
+        'participants_range': participants_range,
+        'type_options': type_options,
+        'selected_type': selected_type,
+        'unit_price': unit_price,
+        'selected_participants': selected_participants,
+        'total_price': total_price,
     })
+
+@csrf_exempt
+def confirm_booking(request):
+    if request.method != "POST":
+        return HttpResponseBadRequest("Invalid method")
+
+    # שדות שכבר יש לך בטופס:
+    appointment_id   = request.POST.get("appointment_id")
+    activity_id      = request.POST.get("activity_id")
+    duration_minutes = request.POST.get("duration_minutes")
+    first_name       = request.POST.get("first_name")
+    last_name        = request.POST.get("last_name")
+    phone            = request.POST.get("phone")
+    gmail            = request.POST.get("gmail")
+    participants     = request.POST.get("participants")
+    activity_type    = request.POST.get("activity_type")
+
+    # *** החדשה: בחירת אמצעי תשלום ***
+    payment_method   = request.POST.get("payment_method")  # 'credit_card' / 'bit' / 'paybox'
+
+    # ולידציה בסיסית בצד שרת
+    if payment_method not in ("credit_card", "bit", "paybox"):
+        return HttpResponseBadRequest("Payment method is required")
+
+    # דוגמאות לשימוש:
+    # 1) שמירה במסד (אם יש שדה מתאים במודל ההזמנה שלך)
+    # booking.payment_method = payment_method
+    # booking.save()
+
+    # 2) או העברת זה לדף סיכום/תשלום:
+    appointment = get_object_or_404(Appointment, id=appointment_id)
+    activity    = get_object_or_404(Activity, id=activity_id)
+
+    context = {
+        "appointment": appointment,
+        "activity": activity,
+        "duration_minutes": duration_minutes,
+        "first_name": first_name,
+        "last_name": last_name,
+        "phone": phone,
+        "gmail": gmail,
+        "participants": participants,
+        "activity_type": activity_type,
+        "payment_method": payment_method,
+    }
+    return render(request, "homePage/payment_page.html", context)
+

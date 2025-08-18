@@ -1,0 +1,260 @@
+{% extends 'homePage/base.html' %}
+{% load static %}
+
+{% block title %}מילוי פרטים אישיים - חוות מסילת ציון{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{% static 'homePage/user_details.css' %}">
+{% endblock %}
+
+{% block content %}
+<section class="details">
+
+{# --- טופס GET קטן: יוצג רק אם צריך לבחור סוג/כמות --- #}
+{% if activity.min_participants != activity.max_participants or type_options|length > 1 and activity.name != "רכיבה זוגית" %}
+    <form id="calc-form" method="get" action="{% url 'booking_form' %}" class="selector-form" novalidate>
+      <input type="hidden" name="appointment_id"   value="{{ appointment.id }}">
+      <input type="hidden" name="activity_id"      value="{{ activity.id }}">
+      <input type="hidden" name="duration_minutes" value="{{ duration }}">
+
+      {# אם יש יותר מסוג פעילות אחד (ולא רכיבה זוגית) – נציג בחירה; אחרת נעביר חבוי #}
+      {% if type_options|length > 1 and activity.name != "רכיבה זוגית" %}
+        <select id="activity_type" name="activity_type" required onchange="this.form.requestSubmit()">
+          <option value="" disabled {% if not selected_type %}selected{% endif %} hidden>צבע הסוס</option>
+          {% for opt in type_options %}
+            <option value="{{ opt.code }}" {% if selected_type == opt.code %}selected{% endif %}>
+              {{ opt.label }}
+            </option>
+          {% endfor %}
+        </select>
+      {% else %}
+        <input type="hidden" name="activity_type" value="{{ type_options.0.code }}">
+      {% endif %}
+
+      {# אם הכמות לא קבועה – נציג בחירה; אחרת נעביר חבוי #}
+      {% if activity.min_participants != activity.max_participants %}
+        <select id="participants" name="participants" required onchange="this.form.requestSubmit()" required>
+          <option value="" disabled {% if not selected_participants %}selected{% endif %} hidden>בחרו מספר רוכבים</option>
+          {% for n in participants_range %}
+            <option value="{{ n }}" {% if selected_participants == n %}selected{% endif %}>{{ n }}</option>
+          {% endfor %}
+        </select>
+      {% else %}
+        <input type="hidden" name="participants" value="{{ activity.min_participants }}">
+      {% endif %}
+    </form>
+{% endif %}
+
+  {# ==== תצוגת מחיר: שורה של "מחיר לאדם" ותחתיה סיכום (אם נבחרה כמות) ==== #}
+  {% if unit_price %}
+      {% if activity.name != "צילומים" and activity.name != "רכיבת ילדים"  %}
+        <div class="price-row">
+          <span class="label">מחיר לאדם:</span>
+          <span class="sum">{{ unit_price|floatformat:"-2" }} ₪</span>
+        </div>
+      {% endif %}
+
+    {% if selected_participants and total_price %}
+      <div class="price-row">
+        <span class="label">סה"כ לתשלום:</span>
+        <span class="expr">{{ unit_price|floatformat:"-2" }}×{{ selected_participants }}</span>
+        <span class="eq">=</span>
+        <span class="sum">{{ total_price|floatformat:"-2" }} ₪</span>
+      </div>
+    {% endif %}
+  {% else %}
+    <div class="price-row">
+      <span class="label">המחיר תלוי בצבע הסוס שתבחרו</span>
+    </div>
+  {% endif %}
+
+  {# ==== טופס POST לפרטים ותשלום ==== #}
+  <form method="POST" action="{% url 'confirm_booking' %}" id="booking-form" novalidate>
+    {% csrf_token %}
+    <input type="hidden" name="appointment_id"   value="{{ appointment.id }}">
+    <input type="hidden" name="activity_id"      value="{{ activity.id }}">
+    <input type="hidden" name="duration_minutes" value="{{ duration }}">
+
+    {# מעבירים הלאה את הבחירות מה-GET #}
+    <input type="hidden" name="participants"  value="{{ selected_participants|default_if_none:'' }}">
+    {% if type_options|length > 1 and activity.name != "רכיבה זוגית" %}
+      <input type="hidden" name="activity_type" value="{{ selected_type|default_if_none:'' }}">
+    {% else %}
+      <input type="hidden" name="activity_type" value="{{ type_options.0.code }}">
+    {% endif %}
+
+    {# (אופציונלי) לשלוח גם את unit/total להצגה בעמוד הבא; החיוב תמיד יחושב בשרת #}
+    {% if unit_price %}<input type="hidden" name="unit_price"  value="{{ unit_price }}">{% endif %}
+    {% if total_price %}<input type="hidden" name="total_price" value="{{ total_price }}">{% endif %}
+
+    <input type="text"  name="first_name" placeholder="שם פרטי"  required>
+    <input type="text"  name="last_name"  placeholder="שם משפחה" required>
+    <input type="tel"   name="phone"      placeholder="טלפון"    required>
+    <input type="email" name="gmail"      placeholder="מייל"     required>
+
+    <!-- בחירת תשלום (חובה) -->
+    <fieldset class="payment-fieldset">
+      <legend>בחר אפשרות לתשלום</legend>
+
+      <div class="payment-options">
+        <input type="radio" id="pay-cc" name="payment_method" value="credit_card" required>
+        <label class="payment-option" for="pay-cc">
+          <span class="title">כרטיס אשראי</span><br>
+          <span class="desc">תשלום מאובטח בכרטיס אשראי. אישור והקבלה יישלחו מיד לאחר ביצוע העסקה.</span>
+        </label>
+
+        <input type="radio" id="pay-bit" name="payment_method" value="bit">
+        <label class="payment-option" for="pay-bit">
+          <span class="title">Bit</span><br>
+          <span class="desc">נשלח אליכם בקשת תשלום ב־Bit לאחר אישור ההזמנה. הקבלה תצורף אוטומטית למייל.</span>
+        </label>
+
+        <input type="radio" id="pay-paybox" name="payment_method" value="paybox">
+        <label class="payment-option" for="pay-paybox">
+          <span class="title">PayBox</span><br>
+          <span class="desc">אפשר לשלם דרך PayBox בלחיצה על קישור שנשלח אליכם. הקבלה תישלח למייל.</span>
+        </label>
+      </div>
+    </fieldset>
+
+    <!-- הודעת תשומת-לב לפני התשלום -->
+    <div class="notice notice-warn" role="alert" aria-live="polite">
+      <span class="icon" aria-hidden="true">⚠️</span>
+      <div>
+        <strong>שימו לב:</strong>
+        ודאו שמספר הטלפון וכתובת המייל תקינים — אישור ההזמנה והקבלה יישלחו לשם
+      </div>
+    </div>
+
+    <button type="submit">המשך לתשלום</button>
+  </form>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  const form = document.getElementById('booking-form');   // טופס ה-POST
+  if (!form) return;
+
+  let submitted = false;
+
+  // שולפים את הסלקטים הגלויים שנמצאים בטופס ה-GET (אם קיימים בעמוד)
+  const participantsSelect = document.getElementById('participants');
+  const activityTypeSelect = document.getElementById('activity_type');
+
+  // Regex בסיסי לישראל
+  const rePhoneIL = /^0(5\d{8}|[2-9]\d{7})$/;
+  const reEmail   = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+  // עוזרים לשגיאות
+  function ensureErrNode(el){
+    if (!el) return null;
+    let n = el.nextElementSibling;
+    if (!n || !n.classList || !n.classList.contains('field-error')) {
+      n = document.createElement('div');
+      n.className = 'field-error';
+      n.setAttribute('aria-live', 'polite');
+      el.after(n);
+    }
+    return n;
+  }
+  function setError(el, text){
+    const box = ensureErrNode(el);
+    if (box) box.textContent = text || '';
+    if (el && el.classList) el.classList.toggle('is-invalid', !!text);
+    if (text){
+      el.setAttribute('aria-invalid', 'true');
+      if (box && !box.id) box.id = (el.name || el.id || 'fld') + '-error';
+      if (box) el.setAttribute('aria-describedby', box.id);
+    } else {
+      el.removeAttribute('aria-invalid');
+      el.removeAttribute('aria-describedby');
+    }
+  }
+  function validateField(el, test, msg, force=false){
+    if (!el) return true;
+    const val = (el.value || '').trim();
+    const shouldValidate = force || submitted || val.length > 0;
+    if (!shouldValidate){ setError(el, ''); return true; }
+    const ok = !!test(val);
+    setError(el, ok ? '' : msg);
+    return ok;
+  }
+
+  // מאזינים לשדות כדי לנקות/להראות שגיאות תוך כדי
+  function wireLiveValidation(el, test, msg){
+    if (!el) return;
+    const evt = (el.tagName === 'SELECT') ? 'change' : 'input';
+    el.addEventListener(evt, () => validateField(el, test, msg));
+    el.addEventListener('blur', () => validateField(el, test, msg));
+  }
+
+  wireLiveValidation(form.elements.first_name, v=>v.length>0, 'נא למלא שם פרטי');
+  wireLiveValidation(form.elements.last_name,  v=>v.length>0, 'נא למלא שם משפחה');
+  wireLiveValidation(form.elements.phone,      v=>rePhoneIL.test(v), 'מספר טלפון לא תקין');
+  wireLiveValidation(form.elements.gmail,      v=>reEmail.test(v),   'כתובת מייל לא תקינה');
+
+  // חובה גם על הסלקטים של טופס ה-GET (אם קיימים)
+  wireLiveValidation(participantsSelect, v=>!!v, 'בחרו מספר רוכבים');
+  wireLiveValidation(activityTypeSelect, v=>!!v, 'בחרו את צבע הסוס');
+
+  // אמצעי תשלום (רדיו)
+  function validatePayment(force=false){
+    const radios = form.querySelectorAll('input[name="payment_method"]');
+    if (!radios.length) return true;
+    const anyChecked = Array.from(radios).some(r => r.checked);
+
+    let err = document.getElementById('payment-error');
+    if (!err){
+      err = document.createElement('div');
+      err.id = 'payment-error';
+      err.className = 'field-error';
+      err.setAttribute('aria-live', 'polite');
+      const fs = form.querySelector('.payment-fieldset');
+      (fs || form).appendChild(err);
+    }
+    if (!anyChecked && (force || submitted)){
+      err.textContent = 'נא לבחור אמצעי תשלום';
+      return false;
+    }
+    err.textContent = '';
+    return true;
+  }
+
+  // ולידציה מלאה לפני שליחת ה-POST
+  function validateAll(force=false){
+    let ok = true;
+    ok &= validateField(form.elements.first_name, v=>v.length>0, 'נא למלא שם פרטי', force);
+    ok &= validateField(form.elements.last_name,  v=>v.length>0, 'נא למלא שם משפחה', force);
+    ok &= validateField(form.elements.phone,      v=>rePhoneIL.test(v), 'מספר טלפון לא תקין', force);
+    ok &= validateField(form.elements.gmail,      v=>reEmail.test(v),   'כתובת מייל לא תקינה', force);
+
+    // אם יש select גלוי לכמות – הוא חובה
+    if (participantsSelect){
+      ok &= validateField(participantsSelect, v=>!!v, 'בחרו מספר רוכבים', force);
+    }
+    // אם יש select גלוי לסוג פעילות – הוא חובה
+    if (activityTypeSelect){
+      ok &= validateField(activityTypeSelect, v=>!!v, 'בחרו צבע הסוס', force);
+    }
+
+    ok &= validatePayment(force);
+    return !!ok;
+  }
+
+  form.addEventListener('submit', (e) => {
+    submitted = true;
+    if (!validateAll(true)){
+      e.preventDefault();
+      const firstInvalid = document.querySelector('.is-invalid') || document.getElementById('payment-error');
+      if (firstInvalid && firstInvalid.scrollIntoView){
+        firstInvalid.scrollIntoView({behavior:'smooth', block:'center'});
+      }
+      if (firstInvalid && firstInvalid.focus) firstInvalid.focus();
+    }
+  });
+})();
+</script>
+{% endblock %}
+

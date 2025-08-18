@@ -27,6 +27,7 @@
                         <form method="GET" action="{% url 'booking_form' %}">
                           <input type="hidden" name="appointment_id" value="{{ appt.id }}">
                           <input type="hidden" name="activity_id" value="{{ activity.id }}">
+                          <input type="hidden" name="duration_minutes" value="{{ duration }}">
                           <button type="submit" class="slot-btn">
                             {{ appt.time|time:"H:i" }} – {{ appt.end_time|time:"H:i" }}
                           </button>
