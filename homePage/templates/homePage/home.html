@@ -28,6 +28,7 @@
 
                 החווה שלנו היא יותר ממקום – היא חוויה. מקום לחיבור בין אדם לסוס, בין משפחה לטבע. נשמח לארח אתכם באהבה, ולהפוך כל ביקור לחוויה בלתי נשכחת.</p>
         </section>
+
         <section class="activities">
             <h2>לפרטים והזמנת תורים:</h2>
             <ul>
@@ -107,13 +108,25 @@
 {% block footer %}
 
 <footer class="contact-section">
-    <h2>📞 יצירת קשר</h2>
+
+    <div class="follow-block" dir="rtl">
+      <h3> עקבו אחרינו בטיקטוק</h3>
+      <p class="follow-handle">
+        <a href="https://www.tiktok.com/@mesilat_zion_farm22" target="_blank" rel="noopener"
+           aria-label="עקבו אחרינו בטיקטוק @mesilat_zion_farm_22">
+          <i class="fa-brands fa-tiktok" aria-hidden="true"></i>
+          <span dir="ltr">@mesilat_zion_farm22</span>
+        </a>
+      </p>
+    </div>
+
+    <h3>יצירת קשר</h3>
     <p>
         טלפון/ ווצאפ:
     <a href="tel:+97255-8859569" class="tel-color">055-8859569 </a>
     </p>
 
-    <h2>🕒 שעות פעילות:</h2>
+    <h3>שעות פעילות</h3>
     <ul class="hours-list">
       {% for row in hours_rows %}
         <li>

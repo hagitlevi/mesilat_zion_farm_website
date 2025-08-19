@@ -1,12 +1,13 @@
 from django.http import Http404, HttpResponseBadRequest
 from django.views.decorators.csrf import csrf_exempt
 from homePage.models import ActivityRule, BusinessHours, Season, Appointment, Activity
-from datetime import datetime, timedelta, date, time
+from datetime import date, time
 from django.shortcuts import render, get_object_or_404
 from django.db.models import Q
-from django.utils import timezone
 from decimal import Decimal
-from zoneinfo import ZoneInfo   # ← הוספה
+import json
+from zoneinfo import ZoneInfo
+from .utils import group_consecutive_hours, timezone
 
 
 VARIANT_TO_TYPE = {
@@ -21,12 +22,17 @@ VARIANT_TO_TARGET_ACTIVITY_NAME = {
     "night":   "רכיבת לילה",
 }
 
+
+
 def home(request):
-    hours_rows = build_business_hours_rows()
+    hours_rows = build_business_hours_rows()         # שלך, מחזיר ראשון..שבת
+    hours_rows = group_consecutive_hours(hours_rows) # קיבוץ רצפים זהים
+    popup_payload = request.session.pop('payment_popup', None)  # קריאה חד-פעמית
     is_winter = (detect_season(timezone.localdate()) == Season.WINTER)
     return render(request, "homePage/home.html", {
-        "hours_rows": hours_rows,
+        "hours_rows": hours_rows,    # שם המפתח לא משתנה → אין שינוי בתבנית
         "is_winter": is_winter,
+        "payment_popup_json": json.dumps(popup_payload) if popup_payload else None,
     })
 
 def riding_lessons_view(request):
@@ -386,9 +392,10 @@ def booking_form(request):
 
     # 6) סיכום כולל (רק אם יש מחיר ליחידה וגם יש כמות)
     total_price = None
-    if unit_price is not None and selected_participants:
+    if unit_price is not None and selected_participants and activity.name != "טיול כרכרה":
         total_price = Decimal(str(unit_price)) * Decimal(selected_participants)
-
+    else:
+        total_price = Decimal(str(unit_price))
     # 7) טווח לבחירה בכמות
     participants_range = range(activity.min_participants, activity.max_participants + 1)
 

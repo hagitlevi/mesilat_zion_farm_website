@@ -47,21 +47,26 @@
 
   {# ==== תצוגת מחיר: שורה של "מחיר לאדם" ותחתיה סיכום (אם נבחרה כמות) ==== #}
   {% if unit_price %}
-      {% if activity.name != "צילומים" and activity.name != "רכיבת ילדים"  %}
+        {% if activity.name != "צילומים" and activity.name != "רכיבת ילדים" and activity.name != "טיול כרכרה"  %}
         <div class="price-row">
           <span class="label">מחיר לאדם:</span>
           <span class="sum">{{ unit_price|floatformat:"-2" }} ₪</span>
         </div>
-      {% endif %}
+        {% endif %}
 
-    {% if selected_participants and total_price %}
-      <div class="price-row">
-        <span class="label">סה"כ לתשלום:</span>
-        <span class="expr">{{ unit_price|floatformat:"-2" }}×{{ selected_participants }}</span>
-        <span class="eq">=</span>
-        <span class="sum">{{ total_price|floatformat:"-2" }} ₪</span>
-      </div>
-    {% endif %}
+        {% if activity.name == "טיול כרכרה" and total_price %}
+          <div class="price-row">
+            <span class="label">סה"כ לתשלום:</span>
+            <span class="sum">{{ total_price|floatformat:"-2" }} ₪</span>
+          </div>
+        {% elif selected_participants and total_price %}
+          <div class="price-row">
+            <span class="label">סה"כ לתשלום:</span>
+            <span class="expr">{{ unit_price|floatformat:"-2" }}×{{ selected_participants }}</span>
+            <span class="eq">=</span>
+            <span class="sum">{{ total_price|floatformat:"-2" }} ₪</span>
+          </div>
+        {% endif %}
   {% else %}
     <div class="price-row">
       <span class="label">המחיר תלוי בצבע הסוס שתבחרו</span>

@@ -15,9 +15,9 @@ def cleanup_expired_appointments(delete_booked=False):
     deleted, _ = Appointment.objects.filter(q).delete()
     return deleted
 
+#cleanup_expired_appointments(delete_booked=False)
 
 def generate_appointments(days_ahead=7):
-    cleanup_expired_appointments(delete_booked=False)
 
     start_date = date.today()
 
@@ -138,3 +138,42 @@ def generate_appointments(days_ahead=7):
                 night_current_time += timedelta(minutes=15)
 
     print("✅ תורים נוצרו בהצלחה")
+
+# homePage/utils.py
+
+def group_consecutive_hours(rows):
+    """
+    rows: רשימה של שורות שעות, כל שורה עם השדות:
+          label (שם היום), start (datetime.time), end (datetime.time), closed (bool)
+    מחזיר רשימה מקובצת: ימים עוקבים עם שעות זהות יהפכו לשורה אחת "ראשון–חמישי".
+    """
+    def get(r, k):
+        # תומך גם במבנה dict וגם באובייקט עם מאפיינים
+        return r.get(k) if isinstance(r, dict) else getattr(r, k)
+
+    grouped = []
+    i = 0
+    n = len(rows)
+    while i < n:
+        j = i
+        # אותו מצב (סגור/פתוח) ואותן שעות → ממשיכים את הקבוצה
+        while (j + 1 < n and
+               get(rows[j], "closed") == get(rows[j+1], "closed") and
+               (get(rows[j], "closed") or
+                (get(rows[j], "start") == get(rows[j+1], "start") and
+                 get(rows[j], "end")   == get(rows[j+1], "end")))):
+            j += 1
+
+        first_label = get(rows[i], "label")
+        last_label  = get(rows[j], "label")
+        label = first_label if i == j else f"{first_label}–{last_label}"
+
+        grouped.append({
+            "label":  label,
+            "start":  get(rows[i], "start"),
+            "end":    get(rows[i], "end"),
+            "closed": get(rows[i], "closed"),
+        })
+        i = j + 1
+
+    return grouped

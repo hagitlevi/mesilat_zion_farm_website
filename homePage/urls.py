@@ -14,4 +14,5 @@ urlpatterns = [
     path('available-appointment/<int:activity_id>/', views.available_appointment_view, name='available_appointment'),
     path('confirm-booking/', views.confirm_booking, name='confirm_booking'),
     path('booking-form/', views.booking_form, name='booking_form'),
+    path("mock-payment-success/", views.mock_payment_success, name="mock_payment_success"),
 ]
