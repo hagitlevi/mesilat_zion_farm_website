@@ -4,6 +4,7 @@
     --main-bright: #f5e5cb;          /* הכי בהיר */
     --main-muted:#6b786f;       /* אטום */
     --main-border:#faf0dc;        /* מסגרת */
+    --main-bor-der:#faf0dc;        /* מסגרת */
     --main-white:#faf7f2;        /* צבע כמעט לבן */
     --main-background: #faf7ed;
 }

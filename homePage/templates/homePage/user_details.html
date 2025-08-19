@@ -47,14 +47,14 @@
 
   {# ==== תצוגת מחיר: שורה של "מחיר לאדם" ותחתיה סיכום (אם נבחרה כמות) ==== #}
   {% if unit_price %}
-        {% if activity.name != "צילומים" and activity.name != "רכיבת ילדים" and activity.name != "טיול כרכרה"  %}
+        {% if activity.name != "צילומים" and activity.name != "רכיבת ילדים" and activity.name != "טיול כרכרה" and activity.name != "רכיבה זוגית" %}
         <div class="price-row">
           <span class="label">מחיר לאדם:</span>
           <span class="sum">{{ unit_price|floatformat:"-2" }} ₪</span>
         </div>
         {% endif %}
 
-        {% if activity.name == "טיול כרכרה" and total_price %}
+        {% if activity.name == "טיול כרכרה" or activity.name == "רכיבה זוגית" and total_price %}
           <div class="price-row">
             <span class="label">סה"כ לתשלום:</span>
             <span class="sum">{{ total_price|floatformat:"-2" }} ₪</span>

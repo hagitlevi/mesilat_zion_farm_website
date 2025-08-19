@@ -62,6 +62,86 @@
 
 
 
+{% if payment_popup_json %}
+  <div id="payment-popup" class="popup-overlay" style="display:none;">
+    <div class="popup-modal">
+      <button class="popup-close" aria-label="סגירה">&times;</button>
+      <h3 id="pop-title"></h3>
+      <div class="popup-body">
+        <p id="pop-text" style="display:none;"></p>
+        <p><strong>תאריך:</strong> <span id="pop-date"></span></p>
+        <p><strong>משך:</strong> <span id="pop-duration"></span> דק'</p>
+        <p><strong>משתתפים:</strong> <span id="pop-participants"></span></p>
+        <p><strong>מס' אישור:</strong> <span id="pop-ref"></span></p>
+        <p id="pop-total" style="display:none;"><strong>סה״כ:</strong> <span id="pop-total-price"></span> ₪</p>
+      </div>
+      <div class="popup-actions">
+        <button class="popup-close btn-primary">סגור</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    (function() {
+      const data = JSON.parse('{{ payment_popup_json|escapejs }}');
+      document.addEventListener('DOMContentLoaded', function () {
+        const overlay = document.getElementById("payment-popup");
+        const $ = (id) => document.getElementById(id);
+
+        // כותרת/טקסט (שימושי גם ל-error)
+        $("pop-title").textContent = data.title || (data.type === "success" ? "התשלום בוצע בהצלחה" : "הודעה");
+        if (data.text) {
+          $("pop-text").style.display = "block";
+          $("pop-text").textContent = data.text;
+        }
+
+        // פרטי הצלחה (אם קיימים)
+        if (data.date) $("pop-date").textContent = data.date;
+        if (data.duration_minutes != null) $("pop-duration").textContent = data.duration_minutes;
+        if (data.participants != null) $("pop-participants").textContent = data.participants;
+        if (data.ref) $("pop-ref").textContent = data.ref;
+        if (data.total_price) {
+          $("pop-total").style.display = "block";
+          $("pop-total-price").textContent = data.total_price;
+        }
+
+        // פתיחה
+        overlay.style.display = "flex";
+
+        // סגירה
+        overlay.querySelectorAll(".popup-close").forEach(btn =>
+          btn.addEventListener("click", () => overlay.style.display = "none")
+        );
+        overlay.addEventListener("click", (e) => {
+          if (e.target === overlay) overlay.style.display = "none";
+        });
+      });
+    })();
+  </script>
+
+  <style>
+    .popup-overlay {
+      position: fixed; inset: 0; background: rgba(0,0,0,0.45);
+      display: none; align-items: center; justify-content: center; z-index: 1000;
+    }
+    .popup-modal {
+      background: #fff; width: min(520px, 92vw); border-radius: 14px;
+      padding: 18px 20px; box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+      position: relative; direction: rtl;
+    }
+    .popup-modal h3 { margin: 0 0 10px; font-size: 1.25rem; }
+    .popup-body p { margin: 8px 0; }
+    .popup-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 14px; }
+    .btn-primary {
+      border: none; padding: 8px 14px; border-radius: 10px; cursor: pointer;
+      background: var(--main-color, #2f6e2f); color: #fff; font-weight: 600;
+    }
+    .popup-close {
+      background: transparent; border: none; font-size: 22px;
+      position: absolute; left: 12px; top: 10px; cursor: pointer; line-height: 1;
+    }
+  </style>
+{% endif %}
 
 
 

@@ -1,13 +1,13 @@
 from django.http import Http404, HttpResponseBadRequest
 from django.views.decorators.csrf import csrf_exempt
 from homePage.models import ActivityRule, BusinessHours, Season, Appointment, Activity
-from datetime import date, time
+from datetime import datetime, timedelta, date, time
 from django.shortcuts import render, get_object_or_404
 from django.db.models import Q
 from decimal import Decimal
 import json
 from zoneinfo import ZoneInfo
-from .utils import group_consecutive_hours, timezone
+from .utils import group_consecutive_hours
 
 
 VARIANT_TO_TYPE = {
@@ -222,6 +222,8 @@ def available_appointment_view(request, activity_id):
     # ✅ מסנן תורים של היום עד שעתיים קדימה
     if selected_date is None or selected_date == today:
         base_qs = base_qs.exclude(date=today, time__lte=two_hours_ahead_time)
+
+
 
     # --- משכים + מקור סלוטים לפי הטאב ---
     if activity.name == "רכיבה זוגית" and variant in ("day", "sunrise", "night"):
@@ -456,4 +458,117 @@ def confirm_booking(request):
         "payment_method": payment_method,
     }
     return render(request, "homePage/payment_page.html", context)
+
+
+
+import math
+from datetime import datetime, timedelta
+
+from django.db import transaction
+from django.shortcuts import get_object_or_404, redirect
+from django.utils import timezone
+
+@transaction.atomic
+@transaction.atomic
+def mock_payment_success(request):
+    """
+    מסמן תשלום כהושלם, תופס סלוטים בני 15 דק' לפי duration_minutes,
+    ואז מפנה למסך הבית עם פופאפ 'תשלום בוצע בהצלחה' (דרך session).
+    מצופה לקבל ב-GET: appointment_id, duration_minutes, (אופציונלי) participants, total_price, payment_ref.
+    """
+
+    # --- עזר להמרות בטוחות ---
+    def _to_int(val, default=None, min_value=None):
+        if val in (None, ""):
+            return default
+        try:
+            n = int(val)
+            if min_value is not None and n < min_value:
+                return default
+            return n
+        except (TypeError, ValueError):
+            return default
+
+    def _to_str_or_none(val):
+        return val if (val not in (None, "")) else None
+
+    # --- קריאת פרמטרים בצורה חסינה ---
+    appointment_id   = _to_int(request.GET.get("appointment_id"),   default=None, min_value=1)
+    duration_minutes = _to_int(request.GET.get("duration_minutes"), default=None, min_value=1)
+    participants     = _to_int(request.GET.get("participants"),     default=1,    min_value=1)
+    total_price      = _to_str_or_none(request.GET.get("total_price"))
+    payment_ref      = _to_str_or_none(request.GET.get("payment_ref")) or f"MOCK-{timezone.now().strftime('%Y%m%d%H%M%S')}"
+
+    if appointment_id is None or duration_minutes is None:
+        request.session['payment_popup'] = {
+            "type": "error",
+            "title": "שגיאה בתשלום",
+            "text": "חסר/שגוי: appointment_id או duration_minutes",
+        }
+        return redirect("home")
+
+    # --- שליפת הסלוט הראשי ונעילה למניעת מרוצי עדכון ---
+    base_appt = get_object_or_404(Appointment.objects.select_for_update(), id=appointment_id)
+
+    # --- חישוב מספר הסלוטים לפי 15 דק' ---
+    slot_count = max(1, math.ceil(duration_minutes / 15))
+
+    base_dt = datetime.combine(base_appt.date, base_appt.time)
+    times_needed = [(base_dt + timedelta(minutes=15 * i)).time() for i in range(slot_count)]
+
+    # --- האם יש שדות מיוחדים במודל? ---
+    field_names = {f.name for f in Appointment._meta.fields}
+    has_is_break = "is_break" in field_names
+    has_payment_reference = "payment_reference" in field_names
+
+    # --- שליפת הסלוטים הנדרשים לאותו תאריך ושעות ---
+    qs = Appointment.objects.select_for_update().filter(
+        date=base_appt.date,
+        time__in=times_needed,
+    )
+    if has_is_break:
+        qs = qs.filter(is_break=False)
+
+    appts = list(qs)
+    if len(appts) != slot_count:
+        request.session['payment_popup'] = {
+            "type": "error",
+            "title": "לא נתפס",
+            "text": "לא נמצאו כל סלוטי הזמן הנדרשים. נסי לבחור תור אחר.",
+        }
+        return redirect("home")
+
+    if any(getattr(a, "is_booked", False) for a in appts):
+        request.session['payment_popup'] = {
+            "type": "error",
+            "title": "לא נתפס",
+            "text": "חלק מהסלוטים כבר נתפסו. נסי לבחור תור אחר.",
+        }
+        return redirect("home")
+
+    # --- עדכון כל הסלוטים: שולם + נתפס (+ רפרנס אם קיים) ---
+    update_fields = ["is_paid", "is_booked"]
+    if has_payment_reference:
+        update_fields.append("payment_reference")
+
+    for a in appts:
+        a.is_paid = True
+        a.is_booked = True
+        if has_payment_reference:
+            a.payment_reference = payment_ref
+        a.save(update_fields=update_fields)
+
+    # --- מטען לפופאפ הביתה דרך session ---
+    request.session['payment_popup'] = {
+        "type": "success",
+        "title": "התשלום בוצע בהצלחה ✅",
+        "ref": payment_ref,
+        "date": base_appt.date.isoformat(),
+        "times": [t.strftime("%H:%M") for t in times_needed],
+        "duration_minutes": duration_minutes,
+        "participants": participants,
+        "total_price": total_price,  # יכול להיות None
+    }
+
+    return redirect("home")
 

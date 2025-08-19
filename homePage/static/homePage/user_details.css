@@ -57,7 +57,11 @@ html, body { min-height: 100dvh;  }
   color: black;
   outline: none;
   transition: border-color .2s, box-shadow .2s, transform .04s;
+    direction: ltr;
+  text-align: right;
 }
+
+
 
 /* יצוב טקסט לשדות לפני בחירה */
 input::placeholder{
@@ -69,8 +73,17 @@ input::placeholder{
 /* פוקוס רך לשדות */
 .details form input:focus,
 .details form select:focus{
-  border-color: var(--main-emerald);
-  box-shadow: 0 0 0 5px color-mix(in oklab, var(--main-emerald) 60%, transparent);
+  border-color: var(--main-color);
+}
+
+
+/*מכבה את הצבע המשלים של כרום*/
+.details form input:-webkit-autofill,
+.details form input:-webkit-autofill:hover,
+.details form input:-webkit-autofill:focus,
+.details form select:-webkit-autofill,
+.details form textarea:-webkit-autofill{
+  -webkit-box-shadow: 0 0 0 1000px var(--main-white) inset !important;
 }
 
 
@@ -162,8 +175,7 @@ input::placeholder{
 
 /*עיצוב התשלום הנבחר*/
 .payment-options input[type="radio"]:checked + .payment-option{
-  border-color: var(--main-emerald);
-  box-shadow: 0 0 0 5px color-mix(in oklab, var(--main-emerald) 20%, transparent);
+  border-color: var(--main-color);
 }
 
 /* ===========================
@@ -195,12 +207,6 @@ input::placeholder{
   border: 0;
 }
 
-.details form input:-webkit-autofill,
-.details form input:-webkit-autofill:focus {
-  -webkit-box-shadow: 0 0 0 1000px #fcfffc inset !important;
-  -webkit-text-fill-color: black !important;
-  background-image: none !important;
-}
 
 
 /* ===========================
@@ -251,19 +257,15 @@ input::placeholder{
   letter-spacing: .2px;
   cursor: pointer;
   font-size: 20px;
-  box-shadow: 0 10px 18px rgba(47,110,47,.22);
+  box-shadow: 0 10px 18px rgb(from var(--main-emerald) r g b / .22);
   transition: transform .06s ease, box-shadow .2s ease, filter .15s;
 }
 
-.details form button:hover{
-  transform: translateY(-1px);
-  box-shadow: 0 14px 26px rgba(47,110,47,.27);
-}
 
 /* כפתור המשך לתשלום לחוץ */
-.details form button:active{
+.details form button:hover{
   transform: translateY(0);
-  box-shadow: 0 8px 16px rgba(47,110,47,.22);
+  box-shadow: 0 8px 16px rgba(112, 74, 34, 0.15);
   filter: saturate(1.05);
 }
 
@@ -323,7 +325,7 @@ input::placeholder{
   display: flex; align-items: center; gap: 8px;
   padding: 10px 12px;
   background: var(--main-white);
-  border: 1px solid var(--main-border, #e6efe7);
+  border: 1px solid var(--main-color, #e6efe7);
   border-radius: 12px;
   border-inline-start: 4px solid var(--main-color, #2f6e2f); /* פס מותג */
   font-variant-numeric: tabular-nums;

@@ -2,9 +2,14 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Title</title>
+    <title>תשלום</title>
 </head>
 <body>
+    <!-- נניח שיש לך את appointment_id וה- duration_minutes כהקשר -->
+    <a class="btn"
+       href="{% url 'mock_payment_success' %}?appointment_id={{ appointment.id }}&duration_minutes={{ duration_minutes }}&participants={{ selected_participants }}&total_price={{ total_price }}">
+      סיום תשלום
+    </a>
 
 </body>
 </html>
