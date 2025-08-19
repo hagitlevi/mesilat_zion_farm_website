@@ -2,12 +2,15 @@ from django.http import Http404, HttpResponseBadRequest
 from django.views.decorators.csrf import csrf_exempt
 from homePage.models import ActivityRule, BusinessHours, Season, Appointment, Activity
 from datetime import datetime, timedelta, date, time
-from django.shortcuts import render, get_object_or_404
+from django.shortcuts import render, get_object_or_404, redirect
 from django.db.models import Q
 from decimal import Decimal
 import json
 from zoneinfo import ZoneInfo
 from .utils import group_consecutive_hours
+import re
+from django.db import transaction
+from django.utils import timezone
 
 
 VARIANT_TO_TYPE = {
@@ -225,10 +228,9 @@ def available_appointment_view(request, activity_id):
 
     # --- אם זו רכיבה בזריחה/לילה (או זוגית בטאבים sunrise/night) ואחרי 16:00 — לא מציגים תורים של היום ---
     is_sunrise_or_night = (
-            activity.name in {"רכיבה בזריחה", "רכיבת לילה"}
-            or (activity.name == "רכיבה זוגית" and variant in ("sunrise", "night"))
+        activity.name in {"רכיבה בזריחה", "רכיבת לילה"}
+        or (activity.name == "רכיבה זוגית" and variant in ("sunrise", "night"))
     )
-
     if is_sunrise_or_night and (selected_date is None or selected_date == today) and now_aw.hour >= 16:
         base_qs = base_qs.exclude(date=today)
 
@@ -260,6 +262,12 @@ def available_appointment_view(request, activity_id):
         rules_activity = activity
         apply_window, apply_cutoff = True, False
 
+    # --- אינדקס שעות פנויות לכל יום מתוך appts_qs לאחר כל הפילטרים ---
+    appts_list = list(appts_qs)  # נשתמש גם לבניית הסט וגם ללולאה
+    free_times_by_date = {}
+    for a in appts_list:
+        free_times_by_date.setdefault(a.date, set()).add(a.time)
+
     rules_cache = {}  # date -> (cutoff_min, win_start_dt, win_end_dt)
     def rules_for_date(the_date: date):
         if the_date in rules_cache:
@@ -273,7 +281,7 @@ def available_appointment_view(request, activity_id):
 
     grouped_appointments = {d: [] for d in durations}
 
-    for appt in appts_qs:
+    for appt in appts_list:
         start_dt = datetime.combine(appt.date, appt.time)
         cutoff_min, win_start_dt, win_end_dt = rules_for_date(appt.date)
 
@@ -290,11 +298,44 @@ def available_appointment_view(request, activity_id):
             if start_dt < now_naive + timedelta(minutes=cutoff_min):
                 continue
 
-        # בדיקה שהסיום לא חוצה סוף חלון
+        # --- NEW: בדיקת רצף סלוטים פנויים לכל משך d ---
+        free_set = free_times_by_date.get(appt.date, set())
+
+        # --- NEW: בדיקת רצף סלוטים פנויים לכל משך d + הפסקת 15 דק' אם d>30 ---
+        free_set = free_times_by_date.get(appt.date, set())
+
         for d in durations:
             end_dt = start_dt + timedelta(minutes=d)
+
+            # חלון סוף (ללא ההפסקה)
             if apply_window and win_end_dt and end_dt > win_end_dt:
                 continue
+
+            # כמה סלוטים של 15 דק' נדרשים למפגש עצמו
+            slots_needed = (d + 14) // 15  # ceil(d/15)
+
+            # כל סלוטי המפגש חייבים להיות פנויים
+            ok = True
+            for i in range(slots_needed):
+                t = (start_dt + timedelta(minutes=15 * i)).time()
+                if t not in free_set:
+                    ok = False
+                    break
+            if not ok:
+                continue
+
+            # אם המפגש ארוך מ-30 דק׳ – נדרשת גם "הפסקה" של 15 דק׳ בסוף
+            if d > 30:
+                buffer_start_dt = start_dt + timedelta(minutes=15 * slots_needed)  # מיד אחרי סוף המפגש
+                # אם יש חלון, ודאי שגם ההפסקה נכנסת לתוכו
+                if apply_window and win_end_dt and (buffer_start_dt + timedelta(minutes=15)) > win_end_dt:
+                    continue
+                buffer_time = buffer_start_dt.time()
+                # ההפסקה חייבת להיות סלוט פנוי (כלומר קיימת ב-appts_qs ולא תפוסה/הפסקה)
+                if buffer_time not in free_set:
+                    continue
+
+            # אם הגענו לכאן – יש רצף תקין וגם הפסקת 15 דק׳ (אם צריך)
             grouped_appointments[d].append({
                 "id": appt.id,
                 "date": appt.date,
@@ -466,116 +507,206 @@ def confirm_booking(request):
     }
     return render(request, "homePage/payment_page.html", context)
 
-
-
 import math
 from datetime import datetime, timedelta
-
 from django.db import transaction
 from django.shortcuts import get_object_or_404, redirect
 from django.utils import timezone
 
-@transaction.atomic
+from homePage.models import Appointment, Activity
+
+
+# --- עזר: לתפוס 15 דק' אחרי סוף התור ולהפוך אותן ל"הפסקה" ---
+def _capture_trailing_quarter_slot_as_break(base_appt, slot_count, field_names, activity_obj):
+    """
+    מנסה לתפוס סלוט נוסף של 15 דק' מיד אחרי סוף התור ולסמן אותו כהפסקה.
+    מחזיר את הרשומה שתפס (Appointment) או None אם לא נתפס.
+    - מסמן: is_booked=True, is_paid=False, is_break=True (+ us_break=True אם יש)
+    - מקשר פעילות אם יש activity או activities.
+    """
+    extra_start_dt = datetime.combine(base_appt.date, base_appt.time) + timedelta(minutes=15 * slot_count)
+    extra_time = extra_start_dt.time()
+
+    qs = Appointment.objects.select_for_update().filter(date=base_appt.date, time=extra_time)
+
+    # אל תתפוס הפסקות קיימות מכל סוג
+    if "is_break" in field_names:
+        qs = qs.filter(is_break=False)
+    if "us_break" in field_names:
+        qs = qs.filter(us_break=False)
+
+    extra = qs.first()
+    if not extra or getattr(extra, "is_booked", False):
+        return None
+
+    update_fields = []
+
+    # תפיסת הסלוט כהפסקה (לא משולם)
+    if "is_booked" in field_names:
+        extra.is_booked = True
+        update_fields.append("is_booked")
+    if "is_paid" in field_names:
+        extra.is_paid = False
+        update_fields.append("is_paid")
+
+    if "is_break" in field_names:
+        extra.is_break = True
+        update_fields.append("is_break")
+    if "us_break" in field_names:
+        extra.us_break = True
+        update_fields.append("us_break")
+
+    # פעילות (FK)
+    if activity_obj and "activity" in field_names:
+        extra.activity = activity_obj
+        update_fields.append("activity")
+
+    extra.save(update_fields=update_fields)
+
+    # פעילות (M2M)
+    if activity_obj and hasattr(extra, "activities"):
+        extra.activities.add(activity_obj)
+
+    return extra
+
+
+from decimal import Decimal
+import math
+from datetime import datetime, timedelta
+from django.db import transaction
+from django.shortcuts import get_object_or_404, redirect
+from django.utils import timezone
+from homePage.models import Appointment, Activity, Booking
+
 @transaction.atomic
 def mock_payment_success(request):
     """
-    מסמן תשלום כהושלם, תופס סלוטים בני 15 דק' לפי duration_minutes,
-    ואז מפנה למסך הבית עם פופאפ 'תשלום בוצע בהצלחה' (דרך session).
-    מצופה לקבל ב-GET: appointment_id, duration_minutes, (אופציונלי) participants, total_price, payment_ref.
-    """
+    יוצר Booking, תופס סלוטים של 15 דק' לפי duration_minutes,
+    מסמן אותם כשולמו/נתפסו, ותופס עוד 15 דק' בסוף כהפסקה (is_break=True) אם > 30 דקות.
+    לא מעדכן name/phone על Appointment.
+    שומר popup ב-session ומפנה ל-home.
 
-    # --- עזר להמרות בטוחות ---
-    def _to_int(val, default=None, min_value=None):
-        if val in (None, ""):
-            return default
+    מצפה: appointment_id, duration_minutes, (אופציונלי) participants, total_price, activity_id, payment_method, payment_ref,
+           (אופציונלי) customer_name / customer_phone / customer_email (ל-Booking).
+    """
+    data = request.GET if request.method == "GET" else request.POST
+
+    def _to_int(v, default=None, min_value=None):
+        if v in (None, ""): return default
         try:
-            n = int(val)
-            if min_value is not None and n < min_value:
-                return default
+            n = int(v)
+            if min_value is not None and n < min_value: return default
             return n
         except (TypeError, ValueError):
             return default
 
-    def _to_str_or_none(val):
-        return val if (val not in (None, "")) else None
+    def _str(v): return (v or "").strip()
 
-    # --- קריאת פרמטרים בצורה חסינה ---
-    appointment_id   = _to_int(request.GET.get("appointment_id"),   default=None, min_value=1)
-    duration_minutes = _to_int(request.GET.get("duration_minutes"), default=None, min_value=1)
-    participants     = _to_int(request.GET.get("participants"),     default=1,    min_value=1)
-    total_price      = _to_str_or_none(request.GET.get("total_price"))
-    payment_ref      = _to_str_or_none(request.GET.get("payment_ref")) or f"MOCK-{timezone.now().strftime('%Y%m%d%H%M%S')}"
+    appointment_id   = _to_int(data.get("appointment_id"),   min_value=1)
+    duration_minutes = _to_int(data.get("duration_minutes"), min_value=1)
+    participants     = _to_int(data.get("participants"),     default=1, min_value=1)
+    total_price_str  = _str(data.get("total_price"))
+    activity_id      = _to_int(data.get("activity_id"),      min_value=1)
+    payment_method   = _str(data.get("payment_method")) or "mock"
+    payment_ref      = _str(data.get("payment_ref")) or f"MOCK-{timezone.now().strftime('%Y%m%d%H%M%S')}"
 
-    if appointment_id is None or duration_minutes is None:
-        request.session['payment_popup'] = {
-            "type": "error",
-            "title": "שגיאה בתשלום",
-            "text": "חסר/שגוי: appointment_id או duration_minutes",
-        }
+    # פרטי לקוח ל-Booking (לא ל-Appointment)
+    customer_name    = _str(data.get("customer_name"))
+    customer_phone   = _str(data.get("customer_phone"))
+    customer_email   = _str(data.get("customer_email"))
+
+    if not appointment_id or not duration_minutes:
+        request.session['payment_popup'] = {"type":"error","title":"שגיאה","text":"חסרים פרמטרים"}
         return redirect("home")
 
-    # --- שליפת הסלוט הראשי ונעילה למניעת מרוצי עדכון ---
     base_appt = get_object_or_404(Appointment.objects.select_for_update(), id=appointment_id)
+    activity  = Activity.objects.filter(id=activity_id).first() if activity_id else None
 
-    # --- חישוב מספר הסלוטים לפי 15 דק' ---
-    slot_count = max(1, math.ceil(duration_minutes / 15))
-
+    # כמה סלוטים של 15 דק' צריך
+    slot_count = max(1, (duration_minutes + 14) // 15)
     base_dt = datetime.combine(base_appt.date, base_appt.time)
-    times_needed = [(base_dt + timedelta(minutes=15 * i)).time() for i in range(slot_count)]
+    times_needed = [(base_dt + timedelta(minutes=15*i)).time() for i in range(slot_count)]
 
-    # --- האם יש שדות מיוחדים במודל? ---
-    field_names = {f.name for f in Appointment._meta.fields}
-    has_is_break = "is_break" in field_names
-    has_payment_reference = "payment_reference" in field_names
-
-    # --- שליפת הסלוטים הנדרשים לאותו תאריך ושעות ---
+    # שליפת סלוטים לפגישה (פנויים, לא הפסקות)
     qs = Appointment.objects.select_for_update().filter(
         date=base_appt.date,
         time__in=times_needed,
+        is_booked=False,
+        is_break=False,
     )
-    if has_is_break:
-        qs = qs.filter(is_break=False)
-
     appts = list(qs)
-    if len(appts) != slot_count:
-        request.session['payment_popup'] = {
-            "type": "error",
-            "title": "לא נתפס",
-            "text": "לא נמצאו כל סלוטי הזמן הנדרשים. נסי לבחור תור אחר.",
-        }
+    if len(appts) != slot_count or any(a.is_booked for a in appts):
+        request.session['payment_popup'] = {"type":"error","title":"לא נתפס","text":"חסרים סלוטים פנויים"}
         return redirect("home")
 
-    if any(getattr(a, "is_booked", False) for a in appts):
-        request.session['payment_popup'] = {
-            "type": "error",
-            "title": "לא נתפס",
-            "text": "חלק מהסלוטים כבר נתפסו. נסי לבחור תור אחר.",
-        }
-        return redirect("home")
+    # יצירת ההזמנה
+    try:
+        total_price = Decimal(total_price_str) if total_price_str else None
+    except Exception:
+        total_price = None
 
-    # --- עדכון כל הסלוטים: שולם + נתפס (+ רפרנס אם קיים) ---
-    update_fields = ["is_paid", "is_booked"]
-    if has_payment_reference:
-        update_fields.append("payment_reference")
+    booking = Booking.objects.create(
+        activity=activity or base_appt.activity,  # fallback אם יש FK על הסלוט
+        customer_name=customer_name,
+        customer_phone=customer_phone,
+        customer_email=customer_email,
+        participants=participants or 1,
+        total_price=total_price,
+        payment_method=payment_method,
+        payment_ref=payment_ref,
+        status="paid",
+        start_dt=base_dt,
+        end_dt=base_dt + timedelta(minutes=duration_minutes),
+    )
 
+    # סימון סלוטי המפגש: שולם/נתפס, קישור להזמנה, לא הפסקה
     for a in appts:
+        a.booking = booking
         a.is_paid = True
         a.is_booked = True
-        if has_payment_reference:
-            a.payment_reference = payment_ref
-        a.save(update_fields=update_fields)
+        a.is_break = False
+        a.payment_reference = payment_ref
+        if activity and a.activity_id != activity.id:
+            a.activity = activity
+        a.save(update_fields=["booking", "is_paid", "is_booked", "is_break", "payment_reference", "activity"])
 
-    # --- מטען לפופאפ הביתה דרך session ---
+        # אם יש M2M activities ואת רוצה לשייך – אפשר:
+        if activity and hasattr(a, "activities"):
+            a.activities.add(activity)
+
+    # תפיסת "הפסקה" של 15 דק' אחרי סוף התור אם > 30 דק'
+    extra_appt = None
+    if duration_minutes > 30:
+        extra_start_dt = base_dt + timedelta(minutes=15 * slot_count)
+        extra = Appointment.objects.select_for_update().filter(
+            date=base_appt.date,
+            time=extra_start_dt.time(),
+            is_booked=False,
+            is_break=False,
+        ).first()
+        if extra:
+            extra.booking = booking
+            extra.is_paid = False
+            extra.is_booked = True
+            extra.is_break = True
+            if activity and extra.activity_id != activity.id:
+                extra.activity = activity
+            extra.save(update_fields=["booking", "is_paid", "is_booked", "is_break", "activity"])
+            extra_appt = extra
+            # אופציונלי: להציג גם את תחילת ההפסקה בפופאפ
+            times_needed.append(extra_start_dt.time())
+
+    # פופאפ הצלחה
     request.session['payment_popup'] = {
         "type": "success",
         "title": "התשלום בוצע בהצלחה ✅",
         "ref": payment_ref,
         "date": base_appt.date.isoformat(),
-        "times": [t.strftime("%H:%M") for t in times_needed],
+        "times": [t.strftime("%H:%M") for t in sorted(times_needed)],
         "duration_minutes": duration_minutes,
         "participants": participants,
-        "total_price": total_price,  # יכול להיות None
+        "total_price": str(total_price) if total_price is not None else None,
+        "booking_id": booking.id,
+        "extra_quarter_captured": bool(extra_appt),
     }
-
     return redirect("home")
-

@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import PageContent, Activity, Appointment, CustomSchedule
+from .models import PageContent, Activity, Appointment, CustomSchedule, Booking
 
 
 @admin.register(PageContent)
@@ -25,9 +25,6 @@ class AppointmentAdmin(admin.ModelAdmin):
     date_hierarchy = "date"
     ordering = ("-date", "time")
     search_fields = ("customer_name", "customer_phone")
-
-    # עובד רק אם במודל Appointment יש:
-    # activities = models.ManyToManyField(Activity, blank=True, related_name="appointments")
     filter_horizontal = ("activities",)
 
 
@@ -54,3 +51,19 @@ class BusinessHoursAdmin(admin.ModelAdmin):
 class ActivityRuleAdmin(admin.ModelAdmin):
     list_display = ("activity","season","start_time","end_time","assigned_only","booking_cutoff_minutes")
     filter_horizontal = ("days",)
+
+
+class AppointmentInline(admin.TabularInline):
+    model = Appointment
+    extra = 0
+    can_delete = False
+    fields = ("date", "time", "duration_minutes", "is_break", "is_booked", "is_paid", "payment_reference", "activity")
+    readonly_fields = fields
+
+@admin.register(Booking)
+class BookingAdmin(admin.ModelAdmin):
+    list_display  = ("id", "activity", "start_dt", "end_dt",
+                     "customer_name", "customer_phone", "status", "payment_ref", "total_price", "participants")
+    list_filter   = ("activity", "status", "start_dt")
+    search_fields = ("customer_name", "customer_phone", "customer_email", "payment_ref")
+    inlines = [AppointmentInline]
