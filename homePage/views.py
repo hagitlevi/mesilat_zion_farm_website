@@ -223,7 +223,14 @@ def available_appointment_view(request, activity_id):
     if selected_date is None or selected_date == today:
         base_qs = base_qs.exclude(date=today, time__lte=two_hours_ahead_time)
 
+    # --- אם זו רכיבה בזריחה/לילה (או זוגית בטאבים sunrise/night) ואחרי 16:00 — לא מציגים תורים של היום ---
+    is_sunrise_or_night = (
+            activity.name in {"רכיבה בזריחה", "רכיבת לילה"}
+            or (activity.name == "רכיבה זוגית" and variant in ("sunrise", "night"))
+    )
 
+    if is_sunrise_or_night and (selected_date is None or selected_date == today) and now_aw.hour >= 16:
+        base_qs = base_qs.exclude(date=today)
 
     # --- משכים + מקור סלוטים לפי הטאב ---
     if activity.name == "רכיבה זוגית" and variant in ("day", "sunrise", "night"):
