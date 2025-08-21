@@ -30,11 +30,13 @@
         </div>
 
 
+        {% url 'home' as home_url %}
         <div class="logo">
-            <a class="brand" href="{% url 'home' %}" aria-label="דף הבית">
-                <img src="{% static 'homePage/images/logo.png' %}" alt="חוות סילת ציון לוגו">
-            </a>
+          <a class="brand {% if request.path == home_url %}is-current{% endif %}" href="{{ home_url }}" aria-label="דף הבית">
+            <img src="{% static 'homePage/images/logo.png' %}" alt="חוות סילת ציון לוגו">
+          </a>
         </div>
+
 
 
         <div class="left-icons">

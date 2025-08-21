@@ -10,12 +10,16 @@
   <main class="reviews-wrap">
     <div class="reviews-header">
       {% if rating_count %}
-        <span class="avg">ממוצע: {{ rating_avg|floatformat:1 }} ★</span>
-        <span class="count">({{ rating_count }} ביקורות)</span>
+        <h2 class="rating-title">
+          דירוג: <span class="avg">{{ rating_avg|floatformat:1 }}</span>
+          <span class="star" aria-hidden="true">★</span>
+          <span class="count">({{ rating_count }} ביקורות)</span>
+        </h2>
       {% else %}
-        <span>עדיין אין ביקורות — תהיו הראשונים!</span>
+        <h2 class="rating-title">עדיין אין ביקורות — תהיו הראשונים!</h2>
       {% endif %}
     </div>
+
 
     <section class="reviews-grid">
       {% for r in reviews %}

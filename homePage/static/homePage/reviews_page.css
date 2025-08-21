@@ -93,7 +93,7 @@ button[type="submit"]:hover{filter:brightness(1.05);}
   border:1px solid var(--brown);
   border-radius:10px; padding:6px 10px; text-decoration:none; color:var(--text); background:#fff;
 }
-.pagination .current{background:var(--brown-light);}
+.pagination .current{background:var(--brown-light); text-align: center;}
 .empty-state{
   border:2px dashed var(--brown-light); padding:16px; border-radius:12px; text-align:center; color:#6b4a3a; background:#fff;
 }
@@ -102,4 +102,131 @@ button[type="submit"]:hover{filter:brightness(1.05);}
   color:#b00020;
   font-size:0.95rem;
   margin-top:6px;
+}
+
+:root{
+  --brown-dark:#5C4033;
+  --brown:#8B5E34;
+}
+
+.reviews-header{
+  text-align:center;
+  margin: 8px 0 18px;
+}
+
+.rating-title{
+  margin:0;
+  font-weight:900;
+  color:var(--brown-dark);
+  /* גודל גמיש: גדול בדסקטופ, נוח במובייל */
+  font-size: clamp(1.6rem, 4.2vw, 2.6rem);
+  line-height:1.2;
+}
+
+.rating-title .avg{
+  font-weight:900;
+}
+
+.rating-title .star{
+  color:var(--brown);
+  font-size:1.15em;     /* כוכב קצת יותר גדול מהמספר */
+  margin: 0 .25em;
+}
+
+.rating-title .count{
+  font-size:.6em;       /* מונה הביקורות קטן ועדין יותר */
+  color:#7b5a46;
+  font-weight:700;
+  margin-inline-start:.35em;
+}
+
+/* בסיס נוח למובייל */
+html {
+  font-size: 16px;
+  -webkit-text-size-adjust: 100%;
+}
+
+/* מסכים צרים – תני קפיצה קלה בגודל ברירת־מחדל */
+@media (max-width: 520px) {
+  html { font-size: 18px; }
+}
+
+/* כותרת דירוג בראש הדף */
+.reviews-header { text-align: center; margin: 10px 0 18px; }
+.rating-title {
+  margin: 0;
+  font-weight: 900;
+  color: var(--brown-dark, #5C4033);
+  font-size: clamp(1.4rem, 5vw, 2.2rem);
+  line-height: 1.25;
+}
+.rating-title .star { font-size: 1.2em; color: var(--brown, #8B5E34); }
+.rating-title .count { font-size: .7em; color: #7b5a46; }
+
+/* קלפים של ביקורות */
+.review-card{
+  padding: clamp(14px, 4.5vw, 20px);
+  border-radius: 16px;
+  box-shadow: 0 6px 18px rgba(139,94,52,.15);
+}
+.review-head{ display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap; }
+.review-who{ font-weight:800; max-width:100%; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+  font-size: clamp(1.5rem, 4.4vw, 1.25rem);
+}
+.stars{ color: var(--brown, #8B5E34); letter-spacing:.5px; font-size: clamp(2rem, 5.5vw, 1.6rem); }
+.review-comment{ margin:10px 0 6px; line-height:1.6; font-size: clamp(2.3rem, 4.6vw, 1.2rem); }
+.review-ts{ opacity:.75; font-size: clamp(1.4rem, 3.6vw, 1rem); }
+
+/* טופס */
+.review-form h3{ margin: 18px 0 10px; font-size: clamp(1.2rem, 5vw, 1.6rem); color: var(--brown-dark, #5C4033); }
+input[type="text"], textarea{
+  width:100%;
+  font-size: clamp(1rem, 4.4vw, 1.125rem);
+  padding: 12px 14px;
+  min-height: 44px;            /* יעד נגישות */
+  border-radius: 12px;
+}
+textarea{ min-height: 120px; line-height:1.5; }
+button[type="submit"]{
+  font-size: clamp(1rem, 4.4vw, 1.125rem);
+  padding: 12px 16px;
+  min-height: 48px;
+  border-radius: 12px;
+}
+
+/* כוכבים לבחירת דירוג – גדולים במגע */
+.stars-input{ display:inline-flex; flex-direction:row-reverse; gap:8px; }
+.stars-input input{ display:none; }
+.stars-input label{
+  cursor:pointer;
+  font-size: clamp(28px, 9vw, 40px);
+  color:#A47148;
+  filter: grayscale(1) opacity(.55);
+  transition: transform .1s, filter .2s;
+}
+.stars-input input:checked ~ label,
+.stars-input label:hover,
+.stars-input label:hover ~ label{
+  filter:none; transform:scale(1.05);
+}
+
+/* פאג'ינציה */
+.pagination{ display:flex; gap:10px; justify-content:center; margin:16px 0; }
+.pagination a, .pagination span{
+  padding: 10px 14px;
+  font-size: clamp(.95rem, 3.8vw, 1.05rem);
+  border-radius: 999px;
+}
+
+/* הודעת "אין תורים" – קריאה וברורה במובייל */
+.no-appointments{
+  margin: 14px auto;
+  max-width: 720px;
+  font-size: clamp(1.05rem, 4.8vw, 1.25rem);
+  padding: 12px 14px;
+}
+
+/* הגדלת אזורי לחיצה במכשירי מגע */
+@media (pointer: coarse) {
+  .slot-btn, .btn, .pagination a { min-height: 44px; }
 }

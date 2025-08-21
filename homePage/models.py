@@ -1,7 +1,8 @@
 from django.utils.translation import gettext_lazy as _
-from django.db import models                                  # בסיס מודלים של Django
+from django.db import models, transaction                                 # בסיס מודלים של Django
 from django.core.validators import MinValueValidator, MaxValueValidator  # ולידטורים לטווח
-
+from django.db.models.signals import pre_delete
+from django.dispatch import receiver
 
 ACTIVITY_TYPES = [
     ('basic', 'מתחילים'),
@@ -155,3 +156,43 @@ class SiteReview(models.Model):                               # מודל תגו�
     def __str__(self):
         who = self.name or "אנונימי"                         # אם אין שם—"אנונימי"
         return f"{who} ({self.rating}★)"                      # ייצוג נוח באדמין/קונסול
+
+
+
+
+# --- שחרור סלוטים כשמוחקים Booking ---
+def release_slots_for_booking(booking, using='default'):
+    """
+    משחרר את כל הסלוטים של ההזמנה:
+    - ניתוק מההזמנה
+    - סימון כפנוי (לא תפוס/לא הפסקה/לא משולם)
+    - איפוס פרטי לקוח/רפרנס
+    - איפוס activity ו-M2M activities (אם קיימים)
+    """
+    from .models import Appointment  # הימנעות מ-circular import אם מקומת במקום אחר
+
+    with transaction.atomic(using=using):
+        qs = Appointment.objects.using(using).select_for_update().filter(booking=booking)
+        appts = list(qs)
+
+        # לנקות קשרי M2M אי־אפשר בבאלק
+        for a in appts:
+            if hasattr(a, "activities"):
+                a.activities.clear()
+
+        # איפוס שדות בבאלק + ניתוק מההזמנה
+        Appointment.objects.using(using).filter(pk__in=[a.pk for a in appts]).update(
+            booking=None,
+            is_booked=False,
+            is_break=False,
+            is_paid=False,
+            payment_reference="",
+            activity=None,          # אצלך FK הזה nullable ✅
+            customer_name="",
+            customer_phone="",
+        )
+
+@receiver(pre_delete, sender=Booking)
+def release_on_booking_delete(sender, instance, using, **kwargs):
+    # לפני מחיקת ההזמנה – משחררים את כל הסלוטים שלה
+    release_slots_for_booking(instance, using=using)
