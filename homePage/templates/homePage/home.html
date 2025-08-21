@@ -29,6 +29,9 @@
                 החווה שלנו היא יותר ממקום – היא חוויה. מקום לחיבור בין אדם לסוס, בין משפחה לטבע. נשמח לארח אתכם באהבה, ולהפוך כל ביקור לחוויה בלתי נשכחת.</p>
         </section>
 
+
+
+
         <section class="activities">
             <h2>לפרטים והזמנת תורים:</h2>
             <ul>
@@ -103,10 +106,42 @@
     </div>
 </section>
 
+        <section class="reviews-wrap" dir="rtl">
+          <div class="reviews-header">
+            {% if reviews_total %}
+              <span class="avg">ממוצע: {{ reviews_avg|floatformat:1 }} ★</span>
+              <span class="count">({{ reviews_total }} ביקורות)</span>
+            {% else %}
+              <span>עדיין אין ביקורות — תהיו הראשונים!</span>
+            {% endif %}
+          </div>
+
+          <div class="reviews-grid">
+            {% for r in latest_reviews %}
+              <article class="review-card">
+                <header class="review-head">
+                  <strong class="review-who">{{ r.name|default:"אנונימי" }}</strong>
+                  <span class="stars" aria-label="{{ r.rating }} כוכבים">
+                    {% for i in "12345" %}
+                      {% if forloop.counter <= r.rating %}★{% else %}☆{% endif %}
+                    {% endfor %}
+                  </span>
+                </header>
+                {% if r.comment %}
+                  <p class="review-comment">{{ r.comment|truncatechars:180 }}</p>
+                {% endif %}
+                <small class="review-ts">{{ r.created_at|date:"d.m.Y H:i" }}</small>
+              </article>
+            {% endfor %}
+          </div>
+
+          <a class="see-all" href="{% url 'site_reviews' %}">לכל הביקורות ולהשארת תגובה →</a>
+        </section>
+
+
 {% endblock %}
 
 {% block footer %}
-
 <footer class="contact-section">
 
     <div class="follow-block" dir="rtl">
@@ -138,13 +173,12 @@
     </ul>
 
 </footer>
-
 {% endblock %}
 
 {% block scripts %}
-
 <script>
     const images = [
+        "{% static 'homePage/images/p15.jpg' %}",
         "{% static 'homePage/images/p1.jpg' %}",
         "{% static 'homePage/images/p2.jpg' %}",
         "{% static 'homePage/images/p3.jpg' %}",
@@ -156,6 +190,15 @@
         "{% static 'homePage/images/p9.jpg' %}",
         "{% static 'homePage/images/p10.jpg' %}",
         "{% static 'homePage/images/p11.jpg' %}",
+        "{% static 'homePage/images/p12.jpg' %}",
+        "{% static 'homePage/images/p13.jpg' %}",
+        "{% static 'homePage/images/p14.jpg' %}",
+        "{% static 'homePage/images/p16.jpg' %}",
+        "{% static 'homePage/images/p17.jpg' %}",
+        "{% static 'homePage/images/p18.jpg' %}",
+        "{% static 'homePage/images/p19.jpg' %}",
+        "{% static 'homePage/images/p20.jpg' %}",
+        "{% static 'homePage/images/p21.jpg' %}"
     ];
     images.forEach((src) => {
     const img = new Image();
@@ -269,5 +312,4 @@
     carouselContainer.addEventListener('mouseleave', () => startAutoSlide());
 
 </script>
-
 {% endblock %}

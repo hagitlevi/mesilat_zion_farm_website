@@ -11,6 +11,20 @@ from .utils import group_consecutive_hours
 import re
 from django.db import transaction
 from django.utils import timezone
+from decimal import Decimal
+from datetime import datetime, timedelta
+from django.db import transaction
+from django.shortcuts import get_object_or_404, redirect
+from django.utils import timezone
+from homePage.models import Appointment, Activity, Booking
+
+from django.shortcuts import render, redirect
+from django.contrib import messages
+from django.db.models import Avg, Count
+from django.views.decorators.http import require_http_methods
+from .forms import SiteReviewForm
+from .models import SiteReview
+
 
 
 VARIANT_TO_TYPE = {
@@ -32,10 +46,16 @@ def home(request):
     hours_rows = group_consecutive_hours(hours_rows) # קיבוץ רצפים זהים
     popup_payload = request.session.pop('payment_popup', None)  # קריאה חד-פעמית
     is_winter = (detect_season(timezone.localdate()) == Season.WINTER)
+    latest_reviews = list(SiteReview.objects.order_by('-created_at')[:4])  # ← 4 אחרונות
+    reviews_total  = SiteReview.objects.count()
+    reviews_avg    = SiteReview.objects.aggregate(avg=Avg('rating'))['avg'] or 0
     return render(request, "homePage/home.html", {
         "hours_rows": hours_rows,    # שם המפתח לא משתנה → אין שינוי בתבנית
         "is_winter": is_winter,
         "payment_popup_json": json.dumps(popup_payload) if popup_payload else None,
+        "latest_reviews": latest_reviews,
+        "reviews_total": reviews_total,
+        "reviews_avg": reviews_avg,
     })
 
 def riding_lessons_view(request):
@@ -192,6 +212,40 @@ def _durations_for_variant(variant: str):
 
     return [60]
 
+
+def _detect_season(d):
+    # קיץ: אפריל–ספטמבר; תרגישי חופשי לשנות
+    return Season.SUMMER if 4 <= d.month <= 9 else Season.WINTER
+
+def build_business_hours_rows(season=None):
+    """מחזיר רשימה מוכנה לתצוגה: [{label, closed, start, end}, ...] לפי ה-BusinessHours מהאדמין."""
+    if season is None:
+        season = _detect_season(timezone.localtime().date())
+
+    # Monday=0 ... Sunday=6; נציג לפי ראשון..שבת
+    day_map = {0: None, 1: None, 2: None, 3: None, 4: None, 5: None, 6: None}
+
+    qs = BusinessHours.objects.filter(season=season).prefetch_related("days")
+    for bh in qs:
+        for wd in bh.days.all():     # wd.code: 0..6
+            cur = day_map[wd.code]
+            if cur is None:
+                day_map[wd.code] = (bh.start_time, bh.end_time)
+            else:
+                s0, e0 = cur
+                day_map[wd.code] = (min(s0, bh.start_time), max(e0, bh.end_time))
+
+    heb = {6: "ראשון", 0: "שני", 1: "שלישי", 2: "רביעי", 3: "חמישי", 4: "שישי", 5: "שבת"}
+    order = [6, 0, 1, 2, 3, 4, 5]
+
+    rows = []
+    for code in order:
+        rng = day_map[code]
+        if rng is None:
+            rows.append({"label": heb[code], "closed": True, "start": None, "end": None})
+        else:
+            rows.append({"label": heb[code], "closed": False, "start": rng[0], "end": rng[1]})
+    return rows
 def available_appointment_view(request, activity_id):
     activity = get_object_or_404(Activity, id=activity_id)
     variant = (request.GET.get("variant") or "").lower()
@@ -343,47 +397,18 @@ def available_appointment_view(request, activity_id):
                 "end_time": end_dt.time(),
             })
 
+    total_slots = sum(len(v) for v in grouped_appointments.values())
+    has_slots = total_slots > 0
     context = {
         "activity": activity,
         "durations": durations,
         "grouped_appointments": grouped_appointments,
         "selected_date": selected_date,
+        "has_slots": has_slots,
     }
     return render(request, "homePage/available_appointment.html", context)
 
-def _detect_season(d):
-    # קיץ: אפריל–ספטמבר; תרגישי חופשי לשנות
-    return Season.SUMMER if 4 <= d.month <= 9 else Season.WINTER
-
-def build_business_hours_rows(season=None):
-    """מחזיר רשימה מוכנה לתצוגה: [{label, closed, start, end}, ...] לפי ה-BusinessHours מהאדמין."""
-    if season is None:
-        season = _detect_season(timezone.localtime().date())
-
-    # Monday=0 ... Sunday=6; נציג לפי ראשון..שבת
-    day_map = {0: None, 1: None, 2: None, 3: None, 4: None, 5: None, 6: None}
-
-    qs = BusinessHours.objects.filter(season=season).prefetch_related("days")
-    for bh in qs:
-        for wd in bh.days.all():     # wd.code: 0..6
-            cur = day_map[wd.code]
-            if cur is None:
-                day_map[wd.code] = (bh.start_time, bh.end_time)
-            else:
-                s0, e0 = cur
-                day_map[wd.code] = (min(s0, bh.start_time), max(e0, bh.end_time))
-
-    heb = {6: "ראשון", 0: "שני", 1: "שלישי", 2: "רביעי", 3: "חמישי", 4: "שישי", 5: "שבת"}
-    order = [6, 0, 1, 2, 3, 4, 5]
-
-    rows = []
-    for code in order:
-        rng = day_map[code]
-        if rng is None:
-            rows.append({"label": heb[code], "closed": True, "start": None, "end": None})
-        else:
-            rows.append({"label": heb[code], "closed": False, "start": rng[0], "end": rng[1]})
-    return rows
+from decimal import Decimal  # אם איננו בשימוש בטמפלט/חישובים נוספים, אפשר גם לוותר על הייבוא הזה
 
 def booking_form(request):
     appointment_id   = request.GET.get('appointment_id')
@@ -395,7 +420,7 @@ def booking_form(request):
     appointment = get_object_or_404(Appointment, id=appointment_id)
     activity    = get_object_or_404(Activity, id=activity_id)
 
-    # 1) מסננים וריאציות לפי שם → משך (לא מסננים לפי סוג כדי להציג את כולן לבחירה)
+    # 1) וריאציות לאותה פעילות (לפי שם) + סינון למשך אם הגיע
     qs = Activity.objects.filter(name=activity.name)
     try:
         if duration_minutes:
@@ -403,16 +428,16 @@ def booking_form(request):
     except (TypeError, ValueError):
         pass
 
-    # 2) וריאציות רלוונטיות להצגה ולחישוב
+    # 2) וריאציות רלוונטיות להצגה ולחישוב (בלי כפילות price)
     variants = list(
-        qs.values('activity_type', 'price', 'price').order_by('activity_type')
+        qs.values('activity_type', 'price').order_by('activity_type')
     )
 
-    # 3) מיפוי קוד → תווית ידידותית, ורשימת אופציות לטמפלייט (כולל מחיר ליחידה לכל סוג)
+    # 3) מיפוי קוד → תווית ידידותית, ואיסוף מחירים לאופציות בטמפלט
     choices_map = dict(Activity._meta.get_field('activity_type').choices)
     type_options = []
     for v in variants:
-        unit = v['price'] or v['price']
+        unit = v['price']  # מגיע כ-Decimal מה-ORM (או None)
         code = v['activity_type']
         type_options.append({
             'code': code,
@@ -420,35 +445,43 @@ def booking_form(request):
             'unit_price': unit,
         })
 
-    # 4) unit_price לפי סדר עדיפויות: (א) וריאציה יחידה, (ב) נבחר סוג, (ג) כל הווריאציות באותו מחיר
+    # 4) קביעה בטוחה של unit_price או טווח מחירים (כשיש וריאציות במחיר)
+    prices = {v['price'] for v in variants if v['price'] is not None}
     unit_price = None
-    if len(variants) == 1:
-        unit_price = variants[0]['price'] or variants[0]['price']
-    elif selected_type:
-        for v in variants:
-            if v['activity_type'] == selected_type:
-                unit_price = v['price'] or v['price']
-                break
-    else:
-        prices = { (v['price'] or v['price']) for v in variants }
-        if len(prices) == 1:
-            unit_price = prices.pop()
+    price_min = price_max = None
 
-    # 5) כמות שנבחרה
+    if len(variants) == 1:
+        unit_price = variants[0]['price']
+    elif selected_type:
+        match = next((v for v in variants if v['activity_type'] == selected_type), None)
+        unit_price = match['price'] if match else None
+    else:
+        if len(prices) == 1:
+            unit_price = next(iter(prices))
+        elif prices:
+            price_min, price_max = min(prices), max(prices)
+            unit_price = None  # מציגים טווח בטמפלט, לא מחשבים total_price עדיין
+
+    # 5) כמות משתתפים שנבחרה
     if activity.min_participants == activity.max_participants:
         selected_participants = activity.min_participants
     else:
         selected_participants = int(qty_raw) if (qty_raw and qty_raw.isdigit()) else None
 
-    # 6) סיכום כולל (רק אם יש מחיר ליחידה וגם יש כמות)
+    # 6) מחיר כולל — רק אם יש מחיר יחידה ברור
+    #    פעילויות שמחירן פר-הזמנה (כמו "טיול כרכרה") לא מוכפלות בכמות
     total_price = None
-    if unit_price is not None and selected_participants and activity.name != "טיול כרכרה":
-        total_price = Decimal(str(unit_price)) * Decimal(selected_participants)
-    else:
-        total_price = Decimal(str(unit_price))
-    # 7) טווח לבחירה בכמות
+    if unit_price is not None:
+        if activity.name != "טיול כרכרה" and selected_participants:
+            # unit_price הוא Decimal מה-ORM; כפל ב-int מחזיר Decimal
+            total_price = unit_price * selected_participants
+        else:
+            total_price = unit_price
+
+    # 7) טווח לבחירת כמות לתבנית
     participants_range = range(activity.min_participants, activity.max_participants + 1)
 
+    # 8) החזרת הקשר לטמפלט
     return render(request, 'homePage/user_details.html', {
         'appointment': appointment,
         'activity': activity,
@@ -456,9 +489,11 @@ def booking_form(request):
         'participants_range': participants_range,
         'type_options': type_options,
         'selected_type': selected_type,
-        'unit_price': unit_price,
+        'unit_price': unit_price,                 # מחיר יחידה אם קיים
+        'price_min': price_min,                   # אם אין unit_price – הציגי טווח
+        'price_max': price_max,
         'selected_participants': selected_participants,
-        'total_price': total_price,
+        'total_price': total_price,               # Decimal או None
     })
 
 @csrf_exempt
@@ -506,15 +541,6 @@ def confirm_booking(request):
         "payment_method": payment_method,
     }
     return render(request, "homePage/payment_page.html", context)
-
-import math
-from datetime import datetime, timedelta
-from django.db import transaction
-from django.shortcuts import get_object_or_404, redirect
-from django.utils import timezone
-
-from homePage.models import Appointment, Activity
-
 
 # --- עזר: לתפוס 15 דק' אחרי סוף התור ולהפוך אותן ל"הפסקה" ---
 def _capture_trailing_quarter_slot_as_break(base_appt, slot_count, field_names, activity_obj):
@@ -568,15 +594,6 @@ def _capture_trailing_quarter_slot_as_break(base_appt, slot_count, field_names, 
         extra.activities.add(activity_obj)
 
     return extra
-
-
-from decimal import Decimal
-import math
-from datetime import datetime, timedelta
-from django.db import transaction
-from django.shortcuts import get_object_or_404, redirect
-from django.utils import timezone
-from homePage.models import Appointment, Activity, Booking
 
 @transaction.atomic
 def mock_payment_success(request):
@@ -710,3 +727,34 @@ def mock_payment_success(request):
         "extra_quarter_captured": bool(extra_appt),
     }
     return redirect("home")
+
+from django.core.paginator import Paginator
+from django.views.decorators.http import require_http_methods
+from django.contrib import messages
+from .forms import SiteReviewForm
+
+@require_http_methods(["GET", "POST"])
+def site_reviews(request):
+    if request.method == "POST":
+        form = SiteReviewForm(request.POST)
+        if form.is_valid():
+            form.save()
+            messages.success(request, "תודה! הביקורת נשמרה.")
+            return redirect('site_reviews')  # אם יש namespace: redirect('homePage:site_reviews')
+        messages.error(request, "יש בעיה בפרטים. נסי שוב.")
+    else:
+        form = SiteReviewForm()
+
+    qs = SiteReview.objects.order_by('-created_at')
+    paginator = Paginator(qs, 10)  # 10 לעמוד
+    page_obj = paginator.get_page(request.GET.get('page'))
+
+    agg = qs.aggregate(avg=Avg('rating'))
+    return render(request, "homePage/site_reviews.html", {
+        "reviews": page_obj.object_list,
+        "page_obj": page_obj,
+        "rating_avg": agg['avg'] or 0,
+        "rating_count": qs.count(),
+        "form": form,
+    })
+

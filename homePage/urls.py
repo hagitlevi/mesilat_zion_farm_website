@@ -15,4 +15,7 @@ urlpatterns = [
     path('confirm-booking/', views.confirm_booking, name='confirm_booking'),
     path('booking-form/', views.booking_form, name='booking_form'),
     path("mock-payment-success/", views.mock_payment_success, name="mock_payment_success"),
+    path('reviews/', views.site_reviews, name='site_reviews'),  # ← זה השורה החשובה
+    path('reviews/', views.site_reviews, name='site_reviews'),
+
 ]

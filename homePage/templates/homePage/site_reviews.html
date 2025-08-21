@@ -1,0 +1,105 @@
+{% load static %}
+<!doctype html>
+<html lang="he" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <title>חוות דעת</title>
+  <link rel="stylesheet" href="{% static 'homePage/reviews_page.css' %}">
+</head>
+<body>
+  <main class="reviews-wrap">
+    <div class="reviews-header">
+      {% if rating_count %}
+        <span class="avg">ממוצע: {{ rating_avg|floatformat:1 }} ★</span>
+        <span class="count">({{ rating_count }} ביקורות)</span>
+      {% else %}
+        <span>עדיין אין ביקורות — תהיו הראשונים!</span>
+      {% endif %}
+    </div>
+
+    <section class="reviews-grid">
+      {% for r in reviews %}
+        <article class="review-card">
+          <header class="review-head">
+            <strong class="review-who">{{ r.name|default:"אנונימי" }}</strong>
+            <span class="stars" aria-label="{{ r.rating }} כוכבים">
+              {% for i in "12345" %}
+                {% if forloop.counter <= r.rating %}★{% else %}☆{% endif %}
+              {% endfor %}
+            </span>
+          </header>
+          {% if r.comment %}
+            <p class="review-comment">{{ r.comment|linebreaksbr }}</p>
+          {% endif %}
+          <small class="review-ts">{{ r.created_at|date:"d.m.Y H:i" }}</small>
+        </article>
+      {% empty %}
+        <p>אין עדיין ביקורות.</p>
+      {% endfor %}
+    </section>
+
+    {% if page_obj %}
+      <div class="pagination">
+        {% if page_obj.has_previous %}
+          <a href="?page=1">ראשון</a>
+          <a href="?page={{ page_obj.previous_page_number }}">הקודם</a>
+        {% endif %}
+        <span class="current">עמוד {{ page_obj.number }} מתוך {{ page_obj.paginator.num_pages }}</span>
+        {% if page_obj.has_next %}
+          <a href="?page={{ page_obj.next_page_number }}">הבא</a>
+          <a href="?page={{ page_obj.paginator.num_pages }}">אחרון</a>
+        {% endif %}
+      </div>
+    {% endif %}
+
+    <section class="review-form">
+      <h3>השאירו ביקורת</h3>
+      <form method="post" action="{% url 'site_reviews' %}" novalidate>
+        {% csrf_token %}
+        {{ form.website }}  {# honeypot נסתר #}
+
+        <input type="text" name="name" placeholder="שם (לא חובה)" value="{{ form.name.value|default_if_none:'' }}">
+
+        <div class="stars-input">
+          {% for val in '5,4,3,2,1'|cut:',' %}
+            <input
+              type="radio"
+              id="star{{ val }}"
+              name="rating"
+              value="{{ val }}"
+              {% if form.rating.value|stringformat:"s" == val %}checked{% endif %}
+              required>
+            <label for="star{{ val }}" title="{{ val }} כוכבים">★</label>
+          {% endfor %}
+        </div>
+
+        {% if form.rating.errors %}
+          <div class="field-error">{{ form.rating.errors.0 }}</div>
+        {% endif %}
+
+
+        <textarea name="comment" rows="3" placeholder="איך היה?">{{ form.comment.value|default_if_none:'' }}</textarea>
+        <button type="submit">שליחה</button>
+
+        {% if form.errors %}
+          <div class="errors">
+            {% for field, errs in form.errors.items %}
+              {% if field != "rating" %}
+                {% for e in errs %}
+                  <div>{{ e }}</div>
+                {% endfor %}
+              {% endif %}
+            {% endfor %}
+
+            {% if form.non_field_errors %}
+              {% for e in form.non_field_errors %}
+                <div>{{ e }}</div>
+              {% endfor %}
+            {% endif %}
+          </div>
+{% endif %}
+      </form>
+    </section>
+  </main>
+</body>
+</html>

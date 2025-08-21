@@ -99,9 +99,6 @@
 /*ריחוף מעף התורים*/
 .slot-btn:hover{background:var(--main-emerald)}
 
-/*כאשר אין תורים פנויים*/
-.no-appointments{color:#c00;font-weight:600}
-
 /*טאבים של כל הימים בשבוע*/
 .date-strip{
     display:flex;

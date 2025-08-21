@@ -27,13 +27,6 @@ button {
     direction: ltr;
 }
 
-/* הודעה כשאין תורים */
-.no-appointments {
-    color: red;
-    font-weight: bold;
-    text-align: center;
-}
-
 /*כאשר נלחץ על תור בשעה כלשהי*/
 .slot-btn:active{
     background-color: var(--main-emerald);
@@ -118,4 +111,32 @@ button {
 
 /* למנוע גלישה של פריטים בגריד */
 .appointments .slots > * { min-width: 0; }
+
+
+/* הודעה כשאין תורים */
+.no-appointments{
+  --accent: var(--brown, #8B5E34);
+  --ink: var(--brown-dark, #5C4033);
+
+  max-width: 880px;
+  margin: 28px auto;
+  padding: 14px 18px;
+
+  background: #fbf8f3;                /* גוון "נייר" עדין */
+  color: var(--ink);
+  border: 1px solid var(--main-color);
+  border-radius: 12px;
+
+  /* פס הדגשה לפי כיוון כתיבה (עובד גם RTL) */
+  border-inline-start: 6px solid var(--accent);
+
+  box-shadow: 0 1px 0 rgba(0,0,0,.03);
+  font-size: 1rem;
+  line-height: 1.7;
+  font-weight: 600;
+  text-align: center;
+}
+
+
+.no-appointments .btn:hover{ background:rgba(139,94,52,.06); }
 

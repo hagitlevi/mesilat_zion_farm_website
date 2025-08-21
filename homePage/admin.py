@@ -67,3 +67,13 @@ class BookingAdmin(admin.ModelAdmin):
     list_filter   = ("activity", "status", "start_dt")
     search_fields = ("customer_name", "customer_phone", "customer_email", "payment_ref")
     inlines = [AppointmentInline]
+
+from django.contrib import admin
+from .models import SiteReview
+
+@admin.register(SiteReview)
+class SiteReviewAdmin(admin.ModelAdmin):
+    list_display  = ('name', 'rating', 'created_at')      # הורדנו is_approved/email
+    list_filter   = ('rating',)
+    search_fields = ('name', 'comment')
+    ordering      = ('-created_at',)

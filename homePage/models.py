@@ -1,11 +1,7 @@
 from django.utils.translation import gettext_lazy as _
-from django.db import models
-from datetime import datetime, timedelta
-import math
-from django.db import transaction
-from django.http import HttpResponseBadRequest, JsonResponse
-from django.shortcuts import get_object_or_404
-from django.utils import timezone
+from django.db import models                                  # בסיס מודלים של Django
+from django.core.validators import MinValueValidator, MaxValueValidator  # ולידטורים לטווח
+
 
 ACTIVITY_TYPES = [
     ('basic', 'מתחילים'),
@@ -137,3 +133,25 @@ class Appointment(models.Model):
 
     def __str__(self):
         return f"{self.date} {self.time} {'- תפוס' if self.is_booked else '- פנוי'}"
+
+class SiteReview(models.Model):                               # מודל תגובה/דירוג לכל האתר
+    name = models.CharField(                                  # שם המגיב (רשות)
+        max_length=80,
+        blank=True
+    )
+    rating = models.PositiveSmallIntegerField(                # דירוג 1–5
+        validators=[MinValueValidator(1), MaxValueValidator(5)]
+    )
+    comment = models.TextField(                               # טקסט חופשי של התגובה (רשות)
+        blank=True
+    )
+    created_at = models.DateTimeField(auto_now_add=True)      # נוצר ב־save הראשון
+    updated_at = models.DateTimeField(auto_now=True)          # מתעדכן בכל save
+
+    class Meta:
+        ordering = ['-created_at']                            # תציגו מהחדש לישן
+        indexes = [models.Index(fields=['created_at'])]       # אינדקס מהיר לפי זמן יצירה
+
+    def __str__(self):
+        who = self.name or "אנונימי"                         # אם אין שם—"אנונימי"
+        return f"{who} ({self.rating}★)"                      # ייצוג נוח באדמין/קונסול

@@ -7,7 +7,7 @@
 
 {% block content %}
 
-    {% if not grouped_appointments %}
+    {% if not has_slots %}
       <p class="no-appointments">אין תורים זמינים לתאריך זה</p>
     {% else %}
       <div class="appointments-columns">
@@ -36,7 +36,7 @@
                     {% endfor %}
                   </ul>
                 {% else %}
-                  <p class="no-appointments">אין תורים למשך זה ביום הנבחר</p>
+                  <p class="no-appointments">אין תורים פנויים למשך זה ביום הנבחר</p>
                 {% endif %}
             </div>
         {% endfor %}
