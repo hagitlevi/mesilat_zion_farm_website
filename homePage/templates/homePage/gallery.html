@@ -6,33 +6,173 @@
 {% block extra_css %}
 <link rel="stylesheet" href="{% static 'homePage/gallery.css' %}">
 
+<style>
+  .gallery-section{max-width:1100px;margin:0 auto;padding:8px 16px 24px;}
+  .gallery-grid{
+    display:grid; gap:10px;
+    grid-template-columns:repeat(auto-fill,minmax(160px,1fr));
+  }
+  .gallery-grid a{ position:relative;display:block;border-radius:12px;overflow:hidden;background:#f3f3f3; }
+  .gallery-grid img{
+    width:100%; height:100%; aspect-ratio:1/1; object-fit:cover;
+    transition:transform .25s ease, filter .25s ease;
+  }
+  .gallery-grid a:hover img{ transform:scale(1.03); }
+
+  /* לייטבוקס ללא טקסטים/פעולות */
+  .lightbox{ position:fixed; inset:0; display:none; align-items:center; justify-content:center;
+             background:rgba(0,0,0,.88); z-index:2000; }
+  .lightbox.open{ display:flex; }
+  .lb-inner{ position:relative; max-width:96vw; max-height:90vh; }
+  .lb-img{
+    max-width:96vw; max-height:90vh; object-fit:contain; display:block; border-radius:8px;
+    box-shadow:0 10px 30px rgba(0,0,0,.35);
+  }
+  .lb-btn{
+    position:absolute; top:50%; transform:translateY(-50%);
+    border:none; background:rgba(0,0,0,.5); color:#fff; width:44px; height:44px;
+    border-radius:999px; cursor:pointer; font-size:22px; line-height:44px; text-align:center;
+    user-select:none;
+  }
+  .lb-prev{ right:100%; margin-right:10px; }
+  .lb-next{ left:100%;  margin-left:10px; }
+  .lb-close{
+    position:absolute; top:-12px; left:-12px; width:40px; height:40px; font-size:22px;
+    border:none; background:rgba(0,0,0,.55); color:#fff; border-radius:999px; cursor:pointer;
+  }
+  .lb-overlay-click{ position:fixed; inset:0; }
+
+  @media (max-width: 520px){
+    .gallery-grid{ grid-template-columns:repeat(auto-fill,minmax(120px,1fr)); gap:8px; }
+    .lb-btn{ width:40px; height:40px; font-size:20px; }
+    .lb-prev{ margin-right:6px; } .lb-next{ margin-left:6px; }
+  }
+</style>
 {% endblock %}
 
 {% block content %}
 <div class="gallery-section">
-    <div class="gallery-grid">
-        <img src="{% static 'homePage/images/p1.jpg' %}" alt="תמונה 1">
-        <img src="{% static 'homePage/images/p2.jpg' %}" alt="תמונה 2">
-        <img src="{% static 'homePage/images/p3.jpg' %}" alt="תמונה 3">
-        <img src="{% static 'homePage/images/p4.jpg' %}" alt="תמונה 4">
-        <img src="{% static 'homePage/images/p5.jpg' %}" alt="תמונה 5">
-        <img src="{% static 'homePage/images/p6.jpg' %}" alt="תמונה 6">
-        <img src="{% static 'homePage/images/p7.jpg' %}" alt="תמונה 7">
-        <img src="{% static 'homePage/images/p8.jpg' %}" alt="תמונה 8">
-        <img src="{% static 'homePage/images/p9.jpg' %}" alt="תמונה 9">
-        <img src="{% static 'homePage/images/p10.jpg' %}" alt="תמונה 10">
-        <img src="{% static 'homePage/images/p11.jpg' %}" alt="תמונה 11">
-        <img src="{% static 'homePage/images/p12.jpg' %}" alt="תמונה 12">
-        <img src="{% static 'homePage/images/p13.jpg' %}" alt="תמונה 13">
-        <img src="{% static 'homePage/images/p14.jpg' %}" alt="תמונה 14">
-        <img src="{% static 'homePage/images/p15.jpg' %}" alt="תמונה 15">
-        <img src="{% static 'homePage/images/p16.jpg' %}" alt="תמונה 16">
-        <img src="{% static 'homePage/images/p17.jpg' %}" alt="תמונה 17">
-        <img src="{% static 'homePage/images/p18.jpg' %}" alt="תמונה 18">
-        <img src="{% static 'homePage/images/p19.jpg' %}" alt="תמונה 19">
-        <img src="{% static 'homePage/images/p20.jpg' %}" alt="תמונה 20">
-        <img src="{% static 'homePage/images/p21.jpg' %}" alt="תמונה 21">
 
+  <div class="gallery-grid" id="galleryGrid">
+    {% comment %} עטיפת כל תמונה בלינק לפתיחה בלייטבוקס {% endcomment %}
+    <a href="{% static 'homePage/images/p1.jpg' %}" data-index="0"><img src="{% static 'homePage/images/p1.jpg' %}" alt="תמונה 1" loading="lazy" decoding="async"></a>
+    <a href="{% static 'homePage/images/p2.jpg' %}" data-index="1"><img src="{% static 'homePage/images/p2.jpg' %}" alt="תמונה 2" loading="lazy" decoding="async"></a>
+    <a href="{% static 'homePage/images/p3.jpg' %}" data-index="2"><img src="{% static 'homePage/images/p3.jpg' %}" alt="תמונה 3" loading="lazy" decoding="async"></a>
+    <a href="{% static 'homePage/images/p4.jpg' %}" data-index="3"><img src="{% static 'homePage/images/p4.jpg' %}" alt="תמונה 4" loading="lazy" decoding="async"></a>
+    <a href="{% static 'homePage/images/p5.jpg' %}" data-index="4"><img src="{% static 'homePage/images/p5.jpg' %}" alt="תמונה 5" loading="lazy" decoding="async"></a>
+    <a href="{% static 'homePage/images/p6.jpg' %}" data-index="5"><img src="{% static 'homePage/images/p6.jpg' %}" alt="תמונה 6" loading="lazy" decoding="async"></a>
+    <a href="{% static 'homePage/images/p7.jpg' %}" data-index="6"><img src="{% static 'homePage/images/p7.jpg' %}" alt="תמונה 7" loading="lazy" decoding="async"></a>
+    <a href="{% static 'homePage/images/p8.jpg' %}" data-index="7"><img src="{% static 'homePage/images/p8.jpg' %}" alt="תמונה 8" loading="lazy" decoding="async"></a>
+    <a href="{% static 'homePage/images/p9.jpg' %}" data-index="8"><img src="{% static 'homePage/images/p9.jpg' %}" alt="תמונה 9" loading="lazy" decoding="async"></a>
+    <a href="{% static 'homePage/images/p10.jpg' %}" data-index="9"><img src="{% static 'homePage/images/p10.jpg' %}" alt="תמונה 10" loading="lazy" decoding="async"></a>
+    <a href="{% static 'homePage/images/p11.jpg' %}" data-index="10"><img src="{% static 'homePage/images/p11.jpg' %}" alt="תמונה 11" loading="lazy" decoding="async"></a>
+    <a href="{% static 'homePage/images/p12.jpg' %}" data-index="11"><img src="{% static 'homePage/images/p12.jpg' %}" alt="תמונה 12" loading="lazy" decoding="async"></a>
+    <a href="{% static 'homePage/images/p13.jpg' %}" data-index="12"><img src="{% static 'homePage/images/p13.jpg' %}" alt="תמונה 13" loading="lazy" decoding="async"></a>
+    <a href="{% static 'homePage/images/p14.jpg' %}" data-index="13"><img src="{% static 'homePage/images/p14.jpg' %}" alt="תמונה 14" loading="lazy" decoding="async"></a>
+    <a href="{% static 'homePage/images/p15.jpg' %}" data-index="14"><img src="{% static 'homePage/images/p15.jpg' %}" alt="תמונה 15" loading="lazy" decoding="async"></a>
+    <a href="{% static 'homePage/images/p16.jpg' %}" data-index="15"><img src="{% static 'homePage/images/p16.jpg' %}" alt="תמונה 16" loading="lazy" decoding="async"></a>
+    <a href="{% static 'homePage/images/p17.jpg' %}" data-index="16"><img src="{% static 'homePage/images/p17.jpg' %}" alt="תמונה 17" loading="lazy" decoding="async"></a>
+    <a href="{% static 'homePage/images/p18.jpg' %}" data-index="17"><img src="{% static 'homePage/images/p18.jpg' %}" alt="תמונה 18" loading="lazy" decoding="async"></a>
+    <a href="{% static 'homePage/images/p19.jpg' %}" data-index="18"><img src="{% static 'homePage/images/p19.jpg' %}" alt="תמונה 19" loading="lazy" decoding="async"></a>
+    <a href="{% static 'homePage/images/p20.jpg' %}" data-index="19"><img src="{% static 'homePage/images/p20.jpg' %}" alt="תמונה 20" loading="lazy" decoding="async"></a>
+    <a href="{% static 'homePage/images/p21.jpg' %}" data-index="20"><img src="{% static 'homePage/images/p21.jpg' %}" alt="תמונה 21" loading="lazy" decoding="async"></a>
+    <a href="{% static 'homePage/images/p22.jpg' %}" data-index="21"><img src="{% static 'homePage/images/p22.jpg' %}" alt="תמונה 22" loading="lazy" decoding="async"></a>
+    <a href="{% static 'homePage/images/p23.jpg' %}" data-index="22"><img src="{% static 'homePage/images/p23.jpg' %}" alt="תמונה 23" loading="lazy" decoding="async"></a>
+    <a href="{% static 'homePage/images/p24.jpg' %}" data-index="23"><img src="{% static 'homePage/images/p24.jpg' %}" alt="תמונה 24" loading="lazy" decoding="async"></a>
+    <a href="{% static 'homePage/images/p25.jpg' %}" data-index="24"><img src="{% static 'homePage/images/p25.jpg' %}" alt="תמונה 25" loading="lazy" decoding="async"></a>
+    <a href="{% static 'homePage/images/p26.jpg' %}" data-index="25"><img src="{% static 'homePage/images/p26.jpg' %}" alt="תמונה 26" loading="lazy" decoding="async"></a>
+    <a href="{% static 'homePage/images/p27.jpg' %}" data-index="26"><img src="{% static 'homePage/images/p27.jpg' %}" alt="תמונה 27" loading="lazy" decoding="async"></a>
+    <a href="{% static 'homePage/images/p28.jpg' %}" data-index="27"><img src="{% static 'homePage/images/p28.jpg' %}" alt="תמונה 28" loading="lazy" decoding="async"></a>
+    <a href="{% static 'homePage/images/p29.jpg' %}" data-index="28"><img src="{% static 'homePage/images/p29.jpg' %}" alt="תמונה 29" loading="lazy" decoding="async"></a>
+    <a href="{% static 'homePage/images/p30.jpg' %}" data-index="29"><img src="{% static 'homePage/images/p30.jpg' %}" alt="תמונה 30" loading="lazy" decoding="async"></a>
+    <a href="{% static 'homePage/images/p31.jpg' %}" data-index="30"><img src="{% static 'homePage/images/p31.jpg' %}" alt="תמונה 31" loading="lazy" decoding="async"></a>
+    <a href="{% static 'homePage/images/p32.jpg' %}" data-index="31"><img src="{% static 'homePage/images/p32.jpg' %}" alt="תמונה 32" loading="lazy" decoding="async"></a>
+    <a href="{% static 'homePage/images/p33.jpg' %}" data-index="32"><img src="{% static 'homePage/images/p33.jpg' %}" alt="תמונה 33" loading="lazy" decoding="async"></a>
+    <a href="{% static 'homePage/images/p34.jpg' %}" data-index="33"><img src="{% static 'homePage/images/p34.jpg' %}" alt="תמונה 34" loading="lazy" decoding="async"></a>
+    <a href="{% static 'homePage/images/p35.jpg' %}" data-index="34"><img src="{% static 'homePage/images/p35.jpg' %}" alt="תמונה 35" loading="lazy" decoding="async"></a>
+    <a href="{% static 'homePage/images/p36.jpg' %}" data-index="35"><img src="{% static 'homePage/images/p36.jpg' %}" alt="תמונה 36" loading="lazy" decoding="async"></a>
+    <a href="{% static 'homePage/images/p37.jpg' %}" data-index="36"><img src="{% static 'homePage/images/p37.jpg' %}" alt="תמונה 37" loading="lazy" decoding="async"></a>
+  </div>
+
+  <!-- לייטבוקס ללא קישורי הורדה/פתיחה וללא טקסטים -->
+  <div class="lightbox" id="lightbox" aria-modal="true" role="dialog" aria-label="תצוגת תמונה">
+    <div class="lb-overlay-click" data-close></div>
+
+    <div class="lb-inner" id="lbInner">
+      <button type="button" class="lb-close" aria-label="סגור" data-close>&times;</button>
+      <button type="button" class="lb-btn lb-prev" aria-label="תמונה קודמת" id="lbPrev">‹</button>
+      <img class="lb-img" id="lbImg" src="" alt="">
+      <button type="button" class="lb-btn lb-next" aria-label="תמונה הבאה" id="lbNext">›</button>
     </div>
+  </div>
+
 </div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function(){
+  const grid = document.getElementById('galleryGrid');
+  const items = Array.from(grid.querySelectorAll('a'));
+  const lb = document.getElementById('lightbox');
+  const lbImg = document.getElementById('lbImg');
+  const lbPrev = document.getElementById('lbPrev');
+  const lbNext = document.getElementById('lbNext');
+  let idx = 0, touchX = null;
+
+  function openAt(i){
+    idx = (i + items.length) % items.length;
+    const a = items[idx];
+    const full = a.getAttribute('href');
+    const img = a.querySelector('img');
+    lbImg.src = full;
+    lbImg.alt = img.alt || '';
+    // פרילוד לשכנים
+    new Image().src = items[(idx+1)%items.length].href;
+    new Image().src = items[(idx-1+items.length)%items.length].href;
+
+    lb.classList.add('open');
+    lbNext.focus({preventScroll:true});
+    window.addEventListener('keydown', onKey);
+  }
+
+  function close(){
+    lb.classList.remove('open');
+    lbImg.src = '';
+    window.removeEventListener('keydown', onKey);
+  }
+
+  function next(){ openAt(idx+1); }
+  function prev(){ openAt(idx-1); }
+
+  function onKey(e){
+    if(e.key === 'Escape'){ close(); }
+    else if(e.key === 'ArrowRight'){ next(); }
+    else if(e.key === 'ArrowLeft'){ prev(); }
+    else if(e.key === 'Home'){ openAt(0); }
+    else if(e.key === 'End'){ openAt(items.length-1); }
+  }
+
+  items.forEach((a, i) => {
+    a.addEventListener('click', (ev) => {
+      ev.preventDefault();
+      openAt(i);
+    });
+  });
+
+  document.querySelectorAll('[data-close]').forEach(el => el.addEventListener('click', close));
+  lbNext.addEventListener('click', next);
+  lbPrev.addEventListener('click', prev);
+
+  document.getElementById('lbInner').addEventListener('click', (e) => e.stopPropagation());
+
+  lb.addEventListener('touchstart', (e) => { touchX = e.changedTouches[0].clientX; }, {passive:true});
+  lb.addEventListener('touchend', (e) => {
+    if(touchX == null) return;
+    const dx = e.changedTouches[0].clientX - touchX;
+    if(Math.abs(dx) > 40){ dx < 0 ? next() : prev(); }
+    touchX = null;
+  }, {passive:true});
+})();
+</script>
 {% endblock %}

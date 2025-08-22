@@ -218,15 +218,142 @@ button[type="submit"]{
   border-radius: 999px;
 }
 
-/* הודעת "אין תורים" – קריאה וברורה במובייל */
-.no-appointments{
-  margin: 14px auto;
-  max-width: 720px;
-  font-size: clamp(1.05rem, 4.8vw, 1.25rem);
-  padding: 12px 14px;
-}
-
 /* הגדלת אזורי לחיצה במכשירי מגע */
 @media (pointer: coarse) {
   .slot-btn, .btn, .pagination a { min-height: 44px; }
 }
+
+/* --- 1) כל הביקורות באותו גודל, במיוחד האחרונה --- */
+.reviews-grid{ --card-fs: clamp(14px, 0.95vw, 16px); }
+.review-card{ font-size: var(--card-fs); }
+.reviews-grid > .review-card:last-child{ font-size: var(--card-fs) !important; }
+/* כדי שלא יהיו אלמנטים פנימיים שמגדילים לבד */
+.review-card *{ font-size: inherit; }
+
+/* --- 2) מניעת גלישה במובייל (גוגל/אימבד/טקסט ארוך) --- */
+.reviews-wrap, .review-card{
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  box-sizing: border-box;
+}
+.review-card img,
+.review-card iframe,
+.review-card video{
+  max-width: 100%;
+  height: auto;
+  display: block;
+}
+
+/* אם יש הטמעה/באנר של גוגל (התאימי לשמות המחלקות אצלך אם שונים) */
+.google-embed, .google-badge, .g-review, .gmb-widget, .gmap-embed{
+  max-width: 100%;
+  overflow: hidden;
+  display: block;
+}
+
+/* כוכבי הדירוג שלא יגלשו לרוחב במסכים צרים */
+.stars-input{
+  display: inline-flex;
+  gap: 6px;
+  max-width: 100%;
+  flex-wrap: nowrap;
+}
+.stars-input input{           /* מסתיר את כפתורי ה-radio עצמם */
+  position: absolute; inset: 0; opacity: 0; width: 1px; height: 1px;
+}
+.stars-input label{ line-height: 1; }
+
+/* התאמות למסכים ממש צרים */
+@media (max-width: 480px){
+  .stars-input label{ font-size: 7vw; }  /* מצטמצם יפה במובייל */
+  .reviews-wrap{ padding-inline: 10px; }
+  .rating-title{ display: flex; flex-wrap: wrap; gap: 6px; }
+}
+
+
+/* === Hotfix: גדלי טקסט הגיוניים + מניעת גלישה === */
+
+/* קונטיינר – אם ה-HTML שלך משתמש ב .reviews-wrap (לא .reviews-page) */
+.reviews-wrap { max-width: 1100px; margin-inline: auto; padding: 0 16px 24px; }
+
+/* 1) תיקון clamp הפוכים – min חייב להיות קטן מ-max */
+.review-who      { font-size: clamp(0.95rem, 1.1vw, 1.25rem) !important; }
+.stars           { font-size: clamp(0.90rem, 1.1vw, 1.40rem) !important; }
+.review-comment  { font-size: clamp(0.95rem, 1.1vw, 1.20rem) !important; }
+.review-ts       { font-size: clamp(0.75rem, 1.0vw, 0.95rem) !important; }
+
+/* 2) שכל הכרטיסים יהיו עקביים, גם האחרונה */
+.reviews-grid{ --card-fs: clamp(14px, 0.95vw, 16px); }
+.review-card{ font-size: var(--card-fs) !important; }
+.reviews-grid > .review-card:last-child{ font-size: var(--card-fs) !important; }
+/* לאפשר לירושה לעבוד כדי שלא יהיו חריגות נקודתיות */
+.review-card *{ font-size: inherit !important; }
+
+/* 3) Flex + אליפסיס בלי גלישה לרוחב */
+.review-head{ min-width: 0; }  /* מאפשר לכותרת “להישבר” אם צריך */
+.review-who { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* 4) מניעת גלילה אופקית ומדיה מגיבה */
+html, body{ max-width: 100%; overflow-x: hidden; }
+.reviews-wrap, .review-card{ box-sizing: border-box; overflow-wrap: anywhere; word-break: break-word; }
+.review-card img,
+.review-card iframe,
+.review-card video{ max-width: 100%; height: auto; display: block; }
+
+/* 5) וידג'טים של גוגל/אימבד – לא לחרוג מהרוחב */
+.google-embed, .google-badge, .g-review, .gmb-widget, .gmap-embed{
+  display:block; max-width:100%; overflow:hidden;
+}
+
+/* 6) כוכבי דירוג במובייל – גדולים אך לא שוברים שורה */
+.stars-input{ display:inline-flex; flex-wrap:nowrap; gap:6px; max-width:100%; }
+.stars-input input{ position:absolute; inset:0; width:1px; height:1px; opacity:0; }
+.stars-input label{ line-height:1; font-size: clamp(24px, 8vw, 36px); }
+
+/* 7) אם עדיין גדול מדי במובייל, נבטל את הגדלת הבסיס שם */
+@media (max-width: 520px){
+  html { font-size: 16px; }           /* היה אצלך 18px – זה מקטין מעט ובטוח */
+  .reviews-wrap { padding-inline: 10px; }
+  .rating-title{ display:flex; flex-wrap:wrap; gap:6px; }
+}
+
+
+/* 🔧 בלוק "השאירו ביקורת" לא יחרוג מהרוחב */
+
+/* תני לעמודות ה-Grid אפשרות להצטמצם */
+.page-layout{
+  grid-template-columns: minmax(0, 1.7fr) minmax(0, 1fr);
+}
+.page-layout > *{ min-width: 0; }  /* קריטי ב-Grid כדי למנוע גלישה */
+
+/* טור הטופס/הבלוק עצמו */
+.form-col,
+.review-form{
+  min-width: 0;
+  max-width: 100%;
+}
+
+/* ודאי שכל מה שבטופס נספר בתוך הרוחב (padding+border) */
+.review-form,
+.review-form *{
+  box-sizing: border-box;
+}
+
+/* הטופס לעולם לא יחרוג מהרוחב */
+.review-form form{ width: 100%; }
+.form-box{ max-width: 100%; overflow: hidden; }
+
+/* שדות לא יעברו את הקונטיינר */
+input[type="text"],
+textarea{
+  max-width: 100%;
+}
+
+/* במובייל עדיף לבטל sticky אם הוא גורם לגלישה אנכית/אופקית */
+@media (max-width: 900px){
+  .page-layout{ grid-template-columns: 1fr; }
+  .form-col{ position: static; }
+}
+
+/* חלופה: להדר fixed (תמיד מוצמד למסך) + פיצוי רווח למעלה */
+body > header{ position: fixed !important; inset: 0 0 auto 0; z-index: 5000; }

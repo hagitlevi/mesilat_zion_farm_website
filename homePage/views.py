@@ -527,6 +527,7 @@ def confirm_booking(request):
     # 2) או העברת זה לדף סיכום/תשלום:
     appointment = get_object_or_404(Appointment, id=appointment_id)
     activity    = get_object_or_404(Activity, id=activity_id)
+    total_price = request.POST.get("total_price")
 
     context = {
         "appointment": appointment,
@@ -539,6 +540,7 @@ def confirm_booking(request):
         "participants": participants,
         "activity_type": activity_type,
         "payment_method": payment_method,
+        "total_price": total_price,
     }
     return render(request, "homePage/payment_page.html", context)
 
@@ -627,10 +629,13 @@ def mock_payment_success(request):
     payment_method   = _str(data.get("payment_method")) or "mock"
     payment_ref      = _str(data.get("payment_ref")) or f"MOCK-{timezone.now().strftime('%Y%m%d%H%M%S')}"
 
+    first_name = _str(data.get("first_name"))
+    last_name = _str(data.get("last_name"))
+
     # פרטי לקוח ל-Booking (לא ל-Appointment)
-    customer_name    = _str(data.get("customer_name"))
-    customer_phone   = _str(data.get("customer_phone"))
-    customer_email   = _str(data.get("customer_email"))
+    customer_name = _str(data.get("customer_name")) or " ".join(x for x in [first_name, last_name] if x)
+    customer_phone = _str(data.get("customer_phone")) or _str(data.get("phone"))
+    customer_email = _str(data.get("customer_email")) or _str(data.get("gmail")) or _str(data.get("email"))
 
     if not appointment_id or not duration_minutes:
         request.session['payment_popup'] = {"type":"error","title":"שגיאה","text":"חסרים פרמטרים"}

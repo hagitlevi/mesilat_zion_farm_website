@@ -1,13 +1,30 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="he" dir="rtl">
 <head>
-    <meta charset="UTF-8">
-    <title>תשלום</title>
+  <meta charset="UTF-8">
+  <title>תשלום</title>
 </head>
 <body>
-    <a href="{% url 'mock_payment_success' %}?appointment_id={{ appointment.id }}&duration_minutes={{ duration_minutes }}&activity_id={{ activity.id }}">
-      סיום תשלום
-    </a>
+
+  <form method="post" action="{% url 'mock_payment_success' %}">
+    {% csrf_token %}
+
+    <!-- מזהים חיוניים -->
+    <input type="hidden" name="appointment_id"   value="{{ appointment.id }}">
+    <input type="hidden" name="activity_id"      value="{{ activity.id }}">
+    <input type="hidden" name="duration_minutes" value="{{ duration_minutes }}">
+    <input type="hidden" name="participants"     value="{{ participants }}">
+    <input type="hidden" name="total_price"      value="{{ total_price }}">
+    <input type="hidden" name="payment_method"   value="{{ payment_method }}">
+
+    <!-- פרטי הלקוח כפי שנאספו בדף הקודם -->
+    <!-- מאחדים first+last לשדה אחד שה־view יודע לקרוא -->
+    <input type="hidden" name="customer_name"    value="{{ first_name }} {{ last_name }}">
+    <input type="hidden" name="customer_phone"   value="{{ phone }}">
+    <input type="hidden" name="customer_email"   value="{{ gmail }}">
+
+    <button type="submit">סיום תשלום</button>
+  </form>
 
 </body>
 </html>
