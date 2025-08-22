@@ -34,7 +34,7 @@ VARIANT_TO_TYPE = {
 }
 
 VARIANT_TO_TARGET_ACTIVITY_NAME = {
-    "day":     None,              # סלוטים ללא שיוך
+    "day":     None,
     "sunrise": "רכיבה בזריחה",
     "night":   "רכיבת לילה",
 }
@@ -59,7 +59,8 @@ def home(request):
     })
 
 def riding_lessons_view(request):
-    return render(request, 'homePage/riding_lessons.html')
+    activity = get_object_or_404(Activity, name="שיעורי רכיבה/ טיפולית")
+    return render(request, 'homePage/riding_lessons.html', {'activity': activity})
 
 def night_riding_view(request):
     if detect_season(timezone.localdate()) == Season.WINTER:

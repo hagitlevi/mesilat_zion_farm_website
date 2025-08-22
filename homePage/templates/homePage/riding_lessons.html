@@ -1,9 +1,15 @@
-{% extends 'homePage/base.html' %}
+{% extends "homePage/base_booking.html" %}
+{% load static %}
 
-{% block title %}שיעורי רכיבה - חוות מסילת ציון{% endblock %}
+{% block specific_title %}שיעורי רכיבה - חוות מסילת ציון{% endblock %}
 
-{% block content %}
-    <section class="about">
-        <h2>שיעורי רכיבה</h2>
-    </section>
+{% block image_src %}{% static 'homePage/images/riding-lessons.jpg' %}{% endblock %}
+
+{% block image_alt %}רכיבת ילדים{% endblock %}
+
+{% block description_text %}
+    שיעורי רכיבה! 🐎<br>
+    מחפשים פעילות בלתי נשכחת לילדים? בואו ליהנות מרכיבת סוסים קצרה של 10 דקות בשטח הפתוח – לא במגרש סגור!<br>
+    החוויה מתבצעת בליווי צמוד של מדריך מקצועי, שמחזיק את הסוס על הקרקע ומבטיח בטיחות מרבית<br>
+    במחיר של 50 ש"ח בלבד, הזדמנות מושלמת לילדים ליהנות מרכיבה ראשונה בטוחה ומהנה<br>
 {% endblock %}

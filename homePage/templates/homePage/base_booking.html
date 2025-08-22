@@ -27,104 +27,107 @@
         </ul>
     </div>
 
-    {% block appointment_title %}
-    <div class="appointment_title">הזמנת רכיבה</div>
-    {% endblock %}
+    {% if activity.name != "שיעורי רכיבה/ טיפולית" %}
+        {% block appointment_title %}
+        <div class="appointment_title">הזמנת רכיבה</div>
+        {% endblock %}
 
-    <div class="date-strip" id="date-strip"></div>
-    {% if activity.name == "רכיבה זוגית" %}
-      <div class="variant-strip" id="variant-strip"></div>
+        <div class="date-strip" id="date-strip"></div>
+        {% if activity.name == "רכיבה זוגית" %}
+          <div class="variant-strip" id="variant-strip"></div>
+        {% endif %}
+        <div id="appointments-container">
+        <p>טוען תורים...</p>
+        </div>
     {% endif %}
-    <div id="appointments-container">
-    <p>טוען תורים...</p>
-    </div>
 {% endblock %}
+{% if activity.name != "שיעורי רכיבה/ טיפולית" %}
+    {% block scripts %}
+    <script>
+    document.addEventListener("DOMContentLoaded", function () {
+      const activityId = "{{ activity.id }}";
+      const strip = document.getElementById("date-strip");
+      const variantStrip = document.getElementById("variant-strip");
+      const container = document.getElementById("appointments-container");
 
-{% block scripts %}
-<script>
-document.addEventListener("DOMContentLoaded", function () {
-  const activityId = "{{ activity.id }}";
-  const strip = document.getElementById("date-strip");
-  const variantStrip = document.getElementById("variant-strip");
-  const container = document.getElementById("appointments-container");
-
-  const today = new Date();
-  const days = [];
-  let d = new Date(today);
-  while (days.length < 6) { // רק 6 ימים
-    if (d.getDay() !== 6) { // לא שבת
-      days.push({
-        iso: d.toISOString().slice(0,10),
-        label: `${d.toLocaleDateString('he-IL', { weekday: 'short' })} | ${d.toLocaleDateString('he-IL', { day: '2-digit', month: '2-digit' })}`
-      });
-    }
-    d.setDate(d.getDate() + 1);
-  }
-
-  // === וריאנטים רק לרכיבה זוגית ===
-  const hasVariants = !!variantStrip;        // true רק בעמוד רכיבה זוגית
-  const VARIANTS = [
-    { key: 'day',     label: 'רכיבה ביום'   },
-    { key: 'sunrise', label: 'רכיבה בזריחה' },
-    { key: 'night',   label: 'רכיבה בלילה'  },
-  ];
-  let currentVariant = 'day'; // ברירת מחדל, יתעלם אם אין וריאנטים
-  let currentDateIso = days[0].iso;
-
-  // בניית כפתורי ימים
-  days.forEach((dayObj, idx) => {
-    const btn = document.createElement("button");
-    btn.className = "date-chip" + (idx === 0 ? " active" : "");
-    btn.textContent = dayObj.label;
-    btn.dataset.date = dayObj.iso;
-    btn.addEventListener("click", () => {
-      document.querySelectorAll(".date-chip").forEach(b => b.classList.remove("active"));
-      btn.classList.add("active");
-      currentDateIso = dayObj.iso;
-      loadForDate(currentDateIso, true);
-    });
-    strip.appendChild(btn);
-  });
-
-  // בניית כפתורי וריאנטים רק אם צריך
-  if (hasVariants) {
-    VARIANTS.forEach((v, idx) => {
-      const b = document.createElement("button");
-      b.className = "variant-chip" + (idx === 0 ? " active" : "");
-      b.textContent = v.label;
-      b.dataset.key = v.key;
-      b.addEventListener("click", () => {
-        document.querySelectorAll(".variant-chip").forEach(x => x.classList.remove("active"));
-        b.classList.add("active");
-        currentVariant = v.key;
-        loadForDate(currentDateIso, true);
-      });
-      variantStrip.appendChild(b);
-    });
-  }
-
-  // טעינת ברירת מחדל
-  loadForDate(currentDateIso, false);
-
-  function loadForDate(iso, shouldScroll=false) {
-    container.innerHTML = "<p>טוען תורים...</p>";
-    const baseUrl = `{% url 'available_appointment' 0 %}`.replace('/0/', `/${activityId}/`);
-    const url = hasVariants
-      ? `${baseUrl}?date=${iso}&variant=${currentVariant}`
-      : `${baseUrl}?date=${iso}`;
-    fetch(url)
-      .then(r => r.text())
-      .then(html => {
-        container.innerHTML = html;
-        if (shouldScroll && strip) {
-          strip.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      const today = new Date();
+      const days = [];
+      let d = new Date(today);
+      while (days.length < 6) { // רק 6 ימים
+        if (d.getDay() !== 6) { // לא שבת
+          days.push({
+            iso: d.toISOString().slice(0,10),
+            label: `${d.toLocaleDateString('he-IL', { weekday: 'short' })} | ${d.toLocaleDateString('he-IL', { day: '2-digit', month: '2-digit' })}`
+          });
         }
-      })
-      .catch(err => {
-        console.error(err);
-        container.innerHTML = "<p>שגיאה בטעינת התורים.</p>";
+        d.setDate(d.getDate() + 1);
+      }
+
+      // === וריאנטים רק לרכיבה זוגית ===
+      const hasVariants = !!variantStrip;        // true רק בעמוד רכיבה זוגית
+      const VARIANTS = [
+        { key: 'day',     label: 'רכיבה ביום'   },
+        { key: 'sunrise', label: 'רכיבה בזריחה' },
+        { key: 'night',   label: 'רכיבה בלילה'  },
+      ];
+      let currentVariant = 'day'; // ברירת מחדל, יתעלם אם אין וריאנטים
+      let currentDateIso = days[0].iso;
+
+      // בניית כפתורי ימים
+      days.forEach((dayObj, idx) => {
+        const btn = document.createElement("button");
+        btn.className = "date-chip" + (idx === 0 ? " active" : "");
+        btn.textContent = dayObj.label;
+        btn.dataset.date = dayObj.iso;
+        btn.addEventListener("click", () => {
+          document.querySelectorAll(".date-chip").forEach(b => b.classList.remove("active"));
+          btn.classList.add("active");
+          currentDateIso = dayObj.iso;
+          loadForDate(currentDateIso, true);
+        });
+        strip.appendChild(btn);
       });
-  }
-});
-</script>
-{% endblock %}
+
+      // בניית כפתורי וריאנטים רק אם צריך
+      if (hasVariants) {
+        VARIANTS.forEach((v, idx) => {
+          const b = document.createElement("button");
+          b.className = "variant-chip" + (idx === 0 ? " active" : "");
+          b.textContent = v.label;
+          b.dataset.key = v.key;
+          b.addEventListener("click", () => {
+            document.querySelectorAll(".variant-chip").forEach(x => x.classList.remove("active"));
+            b.classList.add("active");
+            currentVariant = v.key;
+            loadForDate(currentDateIso, true);
+          });
+          variantStrip.appendChild(b);
+        });
+      }
+
+      // טעינת ברירת מחדל
+      loadForDate(currentDateIso, false);
+
+      function loadForDate(iso, shouldScroll=false) {
+        container.innerHTML = "<p>טוען תורים...</p>";
+        const baseUrl = `{% url 'available_appointment' 0 %}`.replace('/0/', `/${activityId}/`);
+        const url = hasVariants
+          ? `${baseUrl}?date=${iso}&variant=${currentVariant}`
+          : `${baseUrl}?date=${iso}`;
+        fetch(url)
+          .then(r => r.text())
+          .then(html => {
+            container.innerHTML = html;
+            if (shouldScroll && strip) {
+              strip.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }
+          })
+          .catch(err => {
+            console.error(err);
+            container.innerHTML = "<p>שגיאה בטעינת התורים.</p>";
+          });
+      }
+    });
+    </script>
+    {% endblock %}
+{% endif %}
