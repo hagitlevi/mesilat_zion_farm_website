@@ -11,6 +11,26 @@
         <img src="{% block image_src %}{% endblock %}" alt="{% block image_alt %}{% endblock %}">
         <p class="text_on_picture">
             {% block description_text %}{% endblock %}
+                {% if activity.name != "צילומים" and activity.name != "טיול כרכרה" %}
+                    <ul class="ride-facts">
+                      {% if activity.name != "רכיבת ילדים" %}
+                        <li><strong>משקל מקסימלי לרוכב:</strong> עד 90 ק״ג</li>
+                      {% endif %}
+                      <li><strong>סגנון הרכיבה:</strong> רכיבה רגועה</li>
+                      <li><strong>מיקום:</strong> יער בורמה – נופים יפים</li>
+                      <li><strong>ניסיון קודם:</strong> אין צורך</li>
+                      {% if activity.name != "רכיבת ילדים" and activity.name != "שיעורי רכיבה/ טיפולית" %}
+                        <li><strong>גיל:</strong> 10+</li>
+                      {% elif activity.name == "רכיבת ילדים" %}
+                        <li><strong>גיל:</strong> 3-10</li>
+                      {% else %}
+                        <li><strong>גיל:</strong> 3+</li>
+                      {% endif %}
+                      {% if activity.name != "רכיבת ילדים" %}
+                          <li><strong>אופן הרכיבה:</strong> כל רוכב על סוס משלו, המדריך מוביל מקדימה</li>
+                      {% endif %}
+                    </ul>
+                {% endif %}
         </p>
     </div>
 

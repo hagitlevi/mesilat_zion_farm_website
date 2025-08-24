@@ -1,36 +1,196 @@
-/*בלוק עליון של התמונה*/
+/* ===== General Width/Spacing ===== */
+:root {
+  --brand: var(--main-color, #2f6e2f);
+  --content-max: 1100px;
+}
+
+/* ===== Image + Text Container (No Overlap) ===== */
 .top-image-container {
-    position: relative;
-    width: 90%;
-    max-width: 800px;
-    display: flex;
-    overflow: hidden;
-    margin: 10px auto;
-    justify-content: center;
-    align-items: end;
+  display: grid;
+  grid-template-areas: "media text";
+  grid-template-columns: minmax(0, 1.15fr) minmax(320px, 0.85fr);
+  align-items: stretch;
+
+  width: min(var(--content-max), 92vw);
+  margin: 30px auto 10px;
+/* קרמל חמים */
+/* שוקולד כהה */
+  background: radial-gradient(circle at 30% 20%, rgba(223,205,186,.18), rgba(255,255,255,.97) 60%);
+  border-radius: 18px;
+  overflow: hidden;
 }
 
-.top-image-container img {
-    width: 100%;
-    height: auto;
+.top-image-container p{
     margin: 0;
-    display: block;
-    object-fit: cover;
 }
 
-/*עיצוב הטקסט שעל התמונה למעלה*/
-.text_on_picture {
-    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-    position: absolute;
-    background-color: rgba(255, 255, 255, 0.5);
-    padding: 10px 15px;
-    border-radius: 8px;
-    color: #000;
-    text-align: center;
-    font-weight: bold;
-    font-size: clamp(14px, 2.5vw, 36px);
-    max-width: 90%;
+/* Image – Fixed aspect ratio, no height:100% or scaling */
+.top-image-container > img {
+  display: block;
+  width: 100%;
+  min-height: 320px;
+  object-position: center;
+  transform: none !important;
+  height: auto !important;
+  aspect-ratio: auto !important;  /* אל תכריחי יחס 16:10 */
+  object-fit: contain;
+  border-radius: 18px;
+
 }
+
+/* Text */
+.text_on_picture {
+  grid-area: text;
+  position: static !important;
+  direction: rtl;
+  padding: clamp(16px, 2.2vw, 24px);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  background: linear-gradient(180deg, rgba(184, 227, 172, 0.07), #fff 70%);
+  border-inline-start: 6px solid var(--brand);
+  color: #1d1d1d;
+  font-size: clamp(16px, 2.2vw, 20px);
+  line-height: 1.6;
+  text-align: center;
+}
+
+.text_on_picture h2 {
+  margin: 0 0 8px;
+  font-size: clamp(20px, 2.8vw, 28px);
+  font-weight: 800;
+}
+
+/* Mobile */
+@media (max-width: 860px) {
+  .top-image-container {
+    grid-template-columns: 1fr;
+    grid-template-areas: "media" "text";
+  }
+
+  .top-image-container > img {
+    aspect-ratio: 16 / 10;
+    min-height: 220px;
+  }
+
+  .text_on_picture {
+    border-inline-start: none;
+    border-top: 6px solid var(--brand);
+    padding: 18px;
+  }
+}
+
+
+/* ===== Facts block (no <h2>) ===== */
+.ride-facts{
+  /* הגדרות כלליות */
+  --content-max: 1100px;
+  --brand: var(--main-color, #2f6e2f);
+
+  direction: rtl;
+  text-align: right;
+  box-sizing: border-box;
+
+  /* מרכוז ורוחב */
+  max-width: var(--content-max);
+  width: min(92vw, var(--content-max));
+  margin: 0 auto 0px !important;
+
+  padding: 16px;
+  background: radial-gradient(circle at 30% 20%, rgba(223,205,186,.18), rgba(255,255,255,.97) 60%);
+  border: 1px solid rgba(0,0,0,.06);
+  border-radius: 18px;
+  box-shadow: 0 12px 28px rgba(0,0,0,.10);
+
+  /* פריסה דו-עמודתית */
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0,1fr));
+  gap: 12px 16px;
+
+  /* ביטול כל הזחות ישנות */
+  position: static !important;
+  left: auto !important;
+  right: auto !important;
+  transform: none !important;
+
+  /* למקרה שההורה הוא GRID/FLEX */
+  grid-column: 1 / -1 !important;
+  justify-self: center !important;
+  align-self: start !important;
+  flex: 0 0 100% !important;
+}
+
+/* כותרת אוטומטית לפני הרשימה */
+.ride-facts::before{
+  /*content: "חשוב לקרוא לפני"; /* אפשר לשנות טקסט כאן */
+  grid-column: 1 / -1;
+  display: block;
+  margin: 0 6px 10px;
+  font-weight: 900;
+  font-size: clamp(20px, 2.6vw, 28px);
+  color: #111;
+}
+
+/* פריט בודד */
+.ride-facts li{
+  position: relative;
+  padding: 14px;
+  padding-inline-start: 42px;     /* מקום לאייקון בצד ימין ב-RTL */
+  padding-inline-end: 14px;
+  background: #fff;
+  border: 1px solid rgba(0,0,0,.06);
+  border-radius: 14px;
+  box-shadow: 0 6px 16px rgba(0,0,0,.05);
+  line-height: 1.65;
+  transition: transform .08s ease, box-shadow .2s ease;
+}
+
+/* אייקון עגול */
+.ride-facts li::before{
+  content: "🐎"; /* אפשר להחליף ל-"✓"  */
+  position: absolute;
+  inset-inline-start: 12px;       /* ימין ב-RTL */
+  top: 50%;
+  transform: translateY(-50%);
+  width: 22px; height: 22px;
+  display: grid; place-items: center;
+  border-radius: 50%;
+  background: var(--main-bright);
+  color: #fff;
+  font-size: 13px; font-weight: 900;
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--main-color) 20%, transparent);
+}
+
+
+/* הדגשת תווית בתוך פריט */
+.ride-facts strong{ font-weight: 800; color: #111; }
+
+/* מובייל: עמודה אחת */
+@media (max-width: 700px){
+  .ride-facts{ grid-template-columns: 1fr; padding: 14px; gap: 10px; }
+  .ride-facts li{ padding: 12px; padding-inline-start: 40px; }
+  .ride-facts li::before{ width: 20px; height: 20px; font-size: 12px; }
+}
+
+
+.ride-facts > li{
+  list-style: none !important;        /* אם יש כלל גלובלי על LI */
+}
+
+
+/* רווח בין התמונה לפס החום (בעמודה של הטקסט) */
+.top-image-container{
+  column-gap: clamp(10px, 2vw, 20px); /* רק אופקי */
+  row-gap: 0;
+}
+@media (max-width: 860px){
+  .top-image-container{
+    column-gap: 0;   /* במובייל אין צורך ברווח אופקי */
+    row-gap: 20px;   /* רווח אנכי קטן בין התמונה לטקסט */
+  }
+}
+
+
 
 /*בלוק של מדיניות החזרות*/
 .cancellation-policy {
@@ -42,6 +202,7 @@
     max-width: calc(100% - 40px);
     direction: rtl;
     margin: 0 auto;
+    margin-top: 40px;
 }
 
 .cancellation-policy p {
