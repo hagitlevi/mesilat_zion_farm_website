@@ -16,6 +16,7 @@ import os
 GOOGLE_PLACE_ID = os.getenv("GOOGLE_PLACE_ID", "PASTE_YOUR_PLACE_ID_HERE")
 GOOGLE_PLACES_API_KEY = os.getenv("GOOGLE_PLACES_API_KEY", "")
 
+
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -111,7 +112,7 @@ AUTH_PASSWORD_VALIDATORS = [
 
 LANGUAGE_CODE = 'en-us'
 
-TIME_ZONE = 'UTC'
+TIME_ZONE = "Asia/Jerusalem"
 
 USE_I18N = True
 

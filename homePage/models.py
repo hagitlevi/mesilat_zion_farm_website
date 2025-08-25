@@ -3,6 +3,8 @@ from django.db import models, transaction                                 # בס
 from django.core.validators import MinValueValidator, MaxValueValidator  # ולידטורים לטווח
 from django.db.models.signals import pre_delete
 from django.dispatch import receiver
+from django.utils import timezone
+
 
 ACTIVITY_TYPES = [
     ('basic', 'מתחילים'),
@@ -25,6 +27,10 @@ class Activity(models.Model):
     activity_type = models.CharField(max_length=20, choices=ACTIVITY_TYPES, default='none')
     duration_minutes = models.IntegerField(choices=[(10, '10 דקות'), (30, '30 דקות'), (45, '45 דקות'), (60, 'שעה'), (90, 'שעה וחצי'), (120, 'שעתיים')], default=30)
 
+    class Meta:
+        verbose_name = "פעילות"
+        verbose_name_plural = "פעילויות"
+
     def __str__(self):
         return self.name
 
@@ -33,6 +39,10 @@ class CustomSchedule(models.Model):
     start_time = models.TimeField()
     end_time = models.TimeField()
     is_active = models.BooleanField(default=True)  # האם יש תורים בכלל ביום הזה
+
+    class Meta:
+        verbose_name = "לוח זמנים מיוחד"
+        verbose_name_plural = "לוחות זמנים מיוחדים"
 
     def __str__(self):
         return f"{self.date}: {self.start_time} - {self.end_time}" if self.is_active else f"{self.date}: לא פעיל"
@@ -105,8 +115,13 @@ class Booking(models.Model):
     created_at    = models.DateTimeField(auto_now_add=True)
     updated_at    = models.DateTimeField(auto_now=True)
 
+    class Meta:
+        verbose_name = "הזמנה"
+        verbose_name_plural = "הזמנות"
+
     def __str__(self):
-        return f"#{self.id} {self.activity} {self.customer_name} {self.start_dt:%Y-%m-%d %H:%M}"
+        local_dt = timezone.localtime(self.start_dt)  # המרה ל־TZ שהוגדר ב־settings.py
+        return f"#{self.id} | {self.activity} | {self.customer_name} | {local_dt:%Y-%m-%d - %H:%M}"
 
 class Appointment(models.Model):
     date = models.DateField()
@@ -127,6 +142,10 @@ class Appointment(models.Model):
         related_name="appointments"
     )
 
+    class Meta:
+        verbose_name = "תור"
+        verbose_name_plural = "תורים"
+
     def __str__(self):
         return f"{self.date} {self.time} {'- תפוס' if self.is_booked else '- פנוי'}"
 
@@ -146,7 +165,9 @@ class SiteReview(models.Model):                               # מודל תגו�
 
     class Meta:
         ordering = ['-created_at']                            # תציגו מהחדש לישן
-        indexes = [models.Index(fields=['created_at'])]       # אינדקס מהיר לפי זמן יצירה
+        indexes = [models.Index(fields=['created_at'])]
+        verbose_name = "ביקורת"
+        verbose_name_plural = "ביקורות"
 
     def __str__(self):
         who = self.name or "אנונימי"                         # אם אין שם—"אנונימי"
