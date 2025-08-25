@@ -193,7 +193,8 @@ def _durations_for_variant(variant: str):
                               .exclude(activity_type__icontains="לילה")
                               .exclude(activity_type__icontains="זריחה"))
         mins = distinct_minutes(qs)
-        return mins or [30, 45, 60]
+        return mins or [30, 45, 60, 90, 120]
+
 
     if variant == "sunrise":
         qs = Activity.objects.filter(name="רכיבה זוגית", activity_type__iexact=VARIANT_TO_TYPE["sunrise"])
@@ -211,8 +212,7 @@ def _durations_for_variant(variant: str):
         mins = distinct_minutes(qs)
         return mins or [90]
 
-    return [60]
-
+    return []
 
 def _detect_season(d):
     # קיץ: אפריל–ספטמבר; תרגישי חופשי לשנות
@@ -421,13 +421,39 @@ def booking_form(request):
     appointment = get_object_or_404(Appointment, id=appointment_id)
     activity    = get_object_or_404(Activity, id=activity_id)
 
-    # 1) וריאציות לאותה פעילות (לפי שם) + סינון למשך אם הגיע
+    # קביעה מאיזה וריאנט הגענו (רק לזוגית)
+    variant = None
+    if activity.name == "רכיבה זוגית":
+        appt_names = set()
+        if hasattr(appointment, "activities"):
+            appt_names = set(appointment.activities.values_list("name", flat=True))
+
+        if "רכיבה בזריחה" in appt_names:
+            variant = "sunrise"
+        elif "רכיבת לילה" in appt_names:
+            variant = "night"
+        else:
+            variant = "day"
+    is_couple_day = (variant == "day") #אם אנחנו ברכיבה זוגית ביום
+
+
     qs = Activity.objects.filter(name=activity.name)
     try:
         if duration_minutes:
             qs = qs.filter(duration_minutes=int(duration_minutes))
     except (TypeError, ValueError):
         pass
+
+    # צמצום ספציפי לזוגית:
+    if activity.name == "רכיבה זוגית":
+        if variant == "day":
+            qs = (qs.exclude(activity_type__icontains="couple_sunrise")
+                  .exclude(activity_type__icontains="couple_night"))
+        elif variant == "sunrise":
+            qs = qs.filter(activity_type__icontains="couple_sunrise")
+        elif variant == "night":
+            qs = qs.filter(activity_type__icontains="couple_night")
+
 
     # 2) וריאציות רלוונטיות להצגה ולחישוב (בלי כפילות price)
     variants = list(
@@ -447,21 +473,55 @@ def booking_form(request):
         })
 
     # 4) קביעה בטוחה של unit_price או טווח מחירים (כשיש וריאציות במחיר)
-    prices = {v['price'] for v in variants if v['price'] is not None}
+    prices_qs = list(
+        qs.exclude(price__isnull=True).values_list('price', flat=True).distinct()
+    )
     unit_price = None
     price_min = price_max = None
 
-    if len(variants) == 1:
-        unit_price = variants[0]['price']
-    elif selected_type:
-        match = next((v for v in variants if v['activity_type'] == selected_type), None)
-        unit_price = match['price'] if match else None
-    else:
-        if len(prices) == 1:
-            unit_price = next(iter(prices))
-        elif prices:
-            price_min, price_max = min(prices), max(prices)
-            unit_price = None  # מציגים טווח בטמפלט, לא מחשבים total_price עדיין
+    # קודם כל מנסים לקחת מחיר ישירות מ"רכיבה זוגית" לפי ה-activity_type המדויק
+    if activity.name == "רכיבה זוגית" and variant in ("day", "sunrise", "night") and duration_minutes:
+        try:
+            d = int(duration_minutes)
+            vt = VARIANT_TO_TYPE[variant]  # "רכיבה זוגית ביום"/"בזריחה"/"בלילה"
+            unit_price = (Activity.objects
+                          .filter(name="רכיבה זוגית",
+                                  activity_type__iexact=vt,
+                                  duration_minutes=d)
+                          .exclude(price__isnull=True)
+                          .values_list('price', flat=True)
+                          .first())
+        except (TypeError, ValueError):
+            pass
+
+    # אם המשתמש בחר activity_type מפורש – נכבד אותו (עדיין מתוך qs המסונן)
+    if unit_price is None and selected_type:
+        unit_price = next(
+            (v['price'] for v in variants
+             if v['activity_type'] == selected_type and v['price'] is not None),
+            None
+        )
+
+    # ואם עדיין אין – ננסה להסיק ממחיר יחיד בכל הווריאציות ב-qs (אותו משך)
+    if unit_price is None:
+        if len(prices_qs) == 1:
+            unit_price = prices_qs[0]
+        elif len(prices_qs) > 1:
+            price_min, price_max = min(prices_qs), max(prices_qs)
+
+    # אחרון: רק אם עדיין לא נמצא מחיר, ניפול למחיר מתוך "רכיבת לילה"/"רכיבה בזריחה"
+    if (unit_price is None and activity.name == "רכיבה זוגית"
+            and variant in ("night", "sunrise") and duration_minutes):
+        try:
+            d = int(duration_minutes)
+            fallback_name = "רכיבת לילה" if variant == "night" else "רכיבה בזריחה"
+            unit_price = (Activity.objects
+                          .filter(name=fallback_name, duration_minutes=d)
+                          .exclude(price__isnull=True)
+                          .values_list('price', flat=True)
+                          .first())
+        except (TypeError, ValueError):
+            pass
 
     # 5) כמות משתתפים שנבחרה
     if activity.min_participants == activity.max_participants:
@@ -479,6 +539,23 @@ def booking_form(request):
         else:
             total_price = unit_price
 
+    is_couple_day = False
+    if activity.name == "רכיבה זוגית":
+        # אם לסלוט יש שיוך מפורש ל"רכיבת לילה"/"רכיבה בזריחה" → לא יום
+        names = set()
+        if hasattr(appointment, "activities") and appointment.activities.exists():
+            names = set(appointment.activities.values_list("name", flat=True))
+        else:
+            ap_act = getattr(appointment, "activity", None)
+            if ap_act:
+                names = {ap_act.name}
+
+        is_couple_day = not (("רכיבת לילה" in names) or ("רכיבה בזריחה" in names))
+
+    wine = request.GET.get("wine") if is_couple_day else None
+    if wine not in {"white", "red", "none"}:
+        wine = None
+
     # 7) טווח לבחירת כמות לתבנית
     participants_range = range(activity.min_participants, activity.max_participants + 1)
 
@@ -495,6 +572,8 @@ def booking_form(request):
         'price_max': price_max,
         'selected_participants': selected_participants,
         'total_price': total_price,               # Decimal או None
+        'wine': wine,
+        'is_couple_day': is_couple_day,
     })
 
 @csrf_exempt
@@ -512,6 +591,7 @@ def confirm_booking(request):
     gmail            = request.POST.get("gmail")
     participants     = request.POST.get("participants")
     activity_type    = request.POST.get("activity_type")
+    wine = request.POST.get("wine")
 
     # *** החדשה: בחירת אמצעי תשלום ***
     payment_method   = request.POST.get("payment_method")  # 'credit_card' / 'bit' / 'paybox'
@@ -542,6 +622,7 @@ def confirm_booking(request):
         "activity_type": activity_type,
         "payment_method": payment_method,
         "total_price": total_price,
+        "wine": wine,
     }
     return render(request, "homePage/payment_page.html", context)
 
@@ -668,6 +749,17 @@ def mock_payment_success(request):
     except Exception:
         total_price = None
 
+
+    wine = (data.get("wine") or "").strip().lower()   # חדש
+    if wine not in ("white", "red", "none"):
+        wine = ""
+    details_payload = {}
+    if wine:
+        wine_he = {"white": "יין לבן", "red": "יין אדום", "none": "בלי יין"}[wine]
+        details_payload["wine"] = wine_he
+    details_txt = f"יין: {wine_he}" if wine else None
+
+
     booking = Booking.objects.create(
         activity=activity or base_appt.activity,  # fallback אם יש FK על הסלוט
         customer_name=customer_name,
@@ -680,6 +772,7 @@ def mock_payment_success(request):
         status="paid",
         start_dt=base_dt,
         end_dt=base_dt + timedelta(minutes=duration_minutes),
+        details=details_txt,
     )
 
     # סימון סלוטי המפגש: שולם/נתפס, קישור להזמנה, לא הפסקה

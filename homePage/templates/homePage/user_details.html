@@ -11,7 +11,7 @@
 <section class="details">
 
 {# --- טופס GET קטן: יוצג רק אם צריך לבחור סוג/כמות --- #}
-{% if activity.min_participants != activity.max_participants or type_options|length > 1 and activity.name != "רכיבה זוגית" %}
+{% if type_options|length > 1 and activity.name != "רכיבה זוגית"  or activity.min_participants != activity.max_participants or is_couple_day %}
     <form id="calc-form" method="get" action="{% url 'booking_form' %}" class="selector-form" novalidate>
       <input type="hidden" name="appointment_id"   value="{{ appointment.id }}">
       <input type="hidden" name="activity_id"      value="{{ activity.id }}">
@@ -42,6 +42,17 @@
       {% else %}
         <input type="hidden" name="participants" value="{{ activity.min_participants }}">
       {% endif %}
+
+      {# חדש: בחירת צבע היין — מוצג רק ברכיבה זוגית ביום #}
+        {% if is_couple_day %}
+          <select id="wine" name="wine" required onchange="this.form.requestSubmit()">
+            <option value="" disabled {% if not wine %}selected{% endif %} hidden>בחירת צבע היין</option>
+            <option value="white" {% if wine == 'white' %}selected{% endif %}>יין לבן</option>
+            <option value="red"   {% if wine == 'red' %}selected{% endif %}>יין אדום</option>
+            <option value="none"  {% if wine == 'none' %}selected{% endif %}>בלי יין</option>
+          </select>
+        {% endif %}
+
     </form>
 {% endif %}
 
@@ -67,11 +78,12 @@
             <span class="sum">{{ total_price|floatformat:"-2" }} ₪</span>
           </div>
         {% endif %}
-  {% else %}
+  {% elif activity.name != "רכיבה זוגית" %}
     <div class="price-row">
       <span class="label">המחיר תלוי בצבע הסוס שתבחרו</span>
     </div>
   {% endif %}
+
 
   {# ==== טופס POST לפרטים ותשלום ==== #}
   <form method="POST" action="{% url 'confirm_booking' %}" id="booking-form" novalidate>
@@ -87,6 +99,11 @@
     {% else %}
       <input type="hidden" name="activity_type" value="{{ type_options.0.code }}">
     {% endif %}
+      {# מעביר את בחירת היין הלאה רק אם מדובר בזוגית ביום #}
+    {% if is_couple_day %}
+      <input type="hidden" name="wine" value="{{ wine|default_if_none:'' }}">
+    {% endif %}
+
 
     {# (אופציונלי) לשלוח גם את unit/total להצגה בעמוד הבא; החיוב תמיד יחושב בשרת #}
     {% if unit_price %}<input type="hidden" name="unit_price"  value="{{ unit_price }}">{% endif %}

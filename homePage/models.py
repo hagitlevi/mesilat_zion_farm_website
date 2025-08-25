@@ -105,6 +105,7 @@ class Booking(models.Model):
     payment_method= models.CharField(max_length=20, blank=True)  # 'credit_card'/'bit'/...
     payment_ref   = models.CharField(max_length=64, blank=True)
     status        = models.CharField(max_length=10, choices=STATUS_CHOICES, default="pending")
+    details       = models.CharField("פרטים/הערות", blank=True, null=True)
     start_dt      = models.DateTimeField()   # נוח להצגה וסינון
     end_dt        = models.DateTimeField()
     created_at    = models.DateTimeField(auto_now_add=True)
