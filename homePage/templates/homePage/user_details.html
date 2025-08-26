@@ -114,30 +114,16 @@
     <input type="tel"   name="phone"      placeholder="טלפון"    required>
     <input type="email" name="gmail"      placeholder="מייל"     required>
 
-    <!-- בחירת תשלום (חובה) -->
-    <fieldset class="payment-fieldset">
-      <legend>בחר אפשרות לתשלום</legend>
 
-      <div class="payment-options">
-        <input type="radio" id="pay-cc" name="payment_method" value="credit_card" required>
-        <label class="payment-option" for="pay-cc">
-          <span class="title">כרטיס אשראי</span><br>
-          <span class="desc">תשלום מאובטח בכרטיס אשראי. אישור והקבלה יישלחו מיד לאחר ביצוע העסקה.</span>
-        </label>
-
-        <input type="radio" id="pay-bit" name="payment_method" value="bit">
-        <label class="payment-option" for="pay-bit">
-          <span class="title">Bit</span><br>
-          <span class="desc">נשלח אליכם בקשת תשלום ב־Bit לאחר אישור ההזמנה. הקבלה תצורף אוטומטית למייל.</span>
-        </label>
-
-        <input type="radio" id="pay-paybox" name="payment_method" value="paybox">
-        <label class="payment-option" for="pay-paybox">
-          <span class="title">PayBox</span><br>
-          <span class="desc">אפשר לשלם דרך PayBox בלחיצה על קישור שנשלח אליכם. הקבלה תישלח למייל.</span>
-        </label>
-      </div>
-    </fieldset>
+    <div class="legal-consent">
+      <label class="checkbox">
+        <input type="checkbox" id="accept_terms" name="accept_terms" required>
+        קראתי ואני מאשר/ת את
+        <a href="{% url 'terms' %}">תנאי השימוש</a>
+        <a href="{% url 'privacy' %}">ומדיניות הפרטיות</a>
+      </label>
+      <div class="field-error" id="accept-terms-error" aria-live="polite"></div>
+    </div>
 
     <!-- הודעת תשומת-לב לפני התשלום -->
     <div class="notice notice-warn" role="alert" aria-live="polite">
@@ -204,6 +190,20 @@
     return ok;
   }
 
+  function validateConsent(force=false){
+    const cb = form.elements.accept_terms;
+    if (!cb) return true;
+    const err = document.getElementById('accept-terms-error');
+    const ok = cb.checked;
+    if (!ok && (force || submitted)) {
+      if (err) err.textContent = 'יש לאשר את התנאים לפני המשך לתשלום';
+      return false;
+    }
+    if (err) err.textContent = '';
+    return true;
+  }
+
+
   // מאזינים לשדות כדי לנקות/להראות שגיאות תוך כדי
   function wireLiveValidation(el, test, msg){
     if (!el) return;
@@ -221,32 +221,11 @@
   wireLiveValidation(participantsSelect, v=>!!v, 'בחרו מספר רוכבים');
   wireLiveValidation(activityTypeSelect, v=>!!v, 'בחרו את צבע הסוס');
 
-  // אמצעי תשלום (רדיו)
-  function validatePayment(force=false){
-    const radios = form.querySelectorAll('input[name="payment_method"]');
-    if (!radios.length) return true;
-    const anyChecked = Array.from(radios).some(r => r.checked);
-
-    let err = document.getElementById('payment-error');
-    if (!err){
-      err = document.createElement('div');
-      err.id = 'payment-error';
-      err.className = 'field-error';
-      err.setAttribute('aria-live', 'polite');
-      const fs = form.querySelector('.payment-fieldset');
-      (fs || form).appendChild(err);
-    }
-    if (!anyChecked && (force || submitted)){
-      err.textContent = 'נא לבחור אמצעי תשלום';
-      return false;
-    }
-    err.textContent = '';
-    return true;
-  }
 
   // ולידציה מלאה לפני שליחת ה-POST
   function validateAll(force=false){
     let ok = true;
+    ok &= validateConsent(force);
     ok &= validateField(form.elements.first_name, v=>v.length>0, 'נא למלא שם פרטי', force);
     ok &= validateField(form.elements.last_name,  v=>v.length>0, 'נא למלא שם משפחה', force);
     ok &= validateField(form.elements.phone,      v=>rePhoneIL.test(v), 'מספר טלפון לא תקין', force);
@@ -261,7 +240,6 @@
       ok &= validateField(activityTypeSelect, v=>!!v, 'בחרו צבע הסוס', force);
     }
 
-    ok &= validatePayment(force);
     return !!ok;
   }
 
@@ -269,7 +247,7 @@
     submitted = true;
     if (!validateAll(true)){
       e.preventDefault();
-      const firstInvalid = document.querySelector('.is-invalid') || document.getElementById('payment-error');
+      const firstInvalid = document.querySelector('.is-invalid');
       if (firstInvalid && firstInvalid.scrollIntoView){
         firstInvalid.scrollIntoView({behavior:'smooth', block:'center'});
       }

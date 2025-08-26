@@ -1,0 +1,36 @@
+{% extends "homePage/base.html" %}
+{% load static %}
+{% block title %}ביטול עסקה - חוות מסילת ציון{% endblock %}
+{% block extra_css %}
+<link rel="stylesheet" href="{% static 'homePage/cancel_request.css' %}">
+
+{% endblock %}
+
+{% block content %}
+<section class="cancel-wrapper" dir="rtl">
+  <h1>בקשת ביטול עסקה</h1>
+  <p>שם מלא וטלפון שנרשמו בעת הרכישה</p>
+
+  <form method="post" novalidate>
+    {% csrf_token %}
+    {{ form.honeypot }}
+    <div class="form-grid">
+      <label>שם מלא {{ form.full_name }}</label>
+      <label>טלפון {{ form.phone }}</label>
+      <label>מס׳ הזמנה (כפי שמופיע באישור ההזמנה) {{ form.order_id }}</label>
+      <label>אימייל (לא חובה) {{ form.email }}</label>
+      <label>סיבת ביטול (לא חובה) {{ form.reason }}</label>
+      {{ form.booking }} {{ form.appointment }}
+    </div>
+
+    {% if form.non_field_errors %}
+      <div class="errors">{{ form.non_field_errors }}</div>
+    {% endif %}
+
+    <button type="submit" class="btn btn-primary">שליחת בקשה</button>
+  </form>
+</section>
+{% endblock %}
+
+
+

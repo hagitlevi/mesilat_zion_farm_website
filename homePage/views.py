@@ -1,30 +1,19 @@
+from homePage.models import ActivityRule, BusinessHours, Season, Appointment, Activity, Booking
+from .forms import SiteReviewForm, CancelRequestForm
+from .models import SiteReview, CancellationRequest
 from django.http import Http404, HttpResponseBadRequest
 from django.views.decorators.csrf import csrf_exempt
-from homePage.models import ActivityRule, BusinessHours, Season, Appointment, Activity
+from django.views.decorators.http import require_http_methods
+from django.db.models import Q, Avg
+from django.db import transaction
+from django.shortcuts import get_object_or_404, redirect, render
+from django.contrib import messages
+from django.utils import timezone
+from django.core.paginator import Paginator
 from datetime import datetime, timedelta, date, time
-from django.shortcuts import render, get_object_or_404, redirect
-from django.db.models import Q
-from decimal import Decimal
-import json
 from zoneinfo import ZoneInfo
 from .utils import group_consecutive_hours
-import re
-from django.db import transaction
-from django.utils import timezone
-from decimal import Decimal
-from datetime import datetime, timedelta
-from django.db import transaction
-from django.shortcuts import get_object_or_404, redirect
-from django.utils import timezone
-from homePage.models import Appointment, Activity, Booking
-
-from django.shortcuts import render, redirect
-from django.contrib import messages
-from django.db.models import Avg, Count
-from django.views.decorators.http import require_http_methods
-from .forms import SiteReviewForm
-from .models import SiteReview
-
+import json
 
 
 VARIANT_TO_TYPE = {
@@ -247,6 +236,7 @@ def build_business_hours_rows(season=None):
         else:
             rows.append({"label": heb[code], "closed": False, "start": rng[0], "end": rng[1]})
     return rows
+
 def available_appointment_view(request, activity_id):
     activity = get_object_or_404(Activity, id=activity_id)
     variant = (request.GET.get("variant") or "").lower()
@@ -593,12 +583,6 @@ def confirm_booking(request):
     activity_type    = request.POST.get("activity_type")
     wine = request.POST.get("wine")
 
-    # *** החדשה: בחירת אמצעי תשלום ***
-    payment_method   = request.POST.get("payment_method")  # 'credit_card' / 'bit' / 'paybox'
-
-    # ולידציה בסיסית בצד שרת
-    if payment_method not in ("credit_card", "bit", "paybox"):
-        return HttpResponseBadRequest("Payment method is required")
 
     # דוגמאות לשימוש:
     # 1) שמירה במסד (אם יש שדה מתאים במודל ההזמנה שלך)
@@ -620,7 +604,6 @@ def confirm_booking(request):
         "gmail": gmail,
         "participants": participants,
         "activity_type": activity_type,
-        "payment_method": payment_method,
         "total_price": total_price,
         "wine": wine,
     }
@@ -708,7 +691,7 @@ def mock_payment_success(request):
     participants     = _to_int(data.get("participants"),     default=1, min_value=1)
     total_price_str  = _str(data.get("total_price"))
     activity_id      = _to_int(data.get("activity_id"),      min_value=1)
-    payment_method   = _str(data.get("payment_method")) or "mock"
+    payment_method = "manual"
     payment_ref      = _str(data.get("payment_ref")) or f"MOCK-{timezone.now().strftime('%Y%m%d%H%M%S')}"
 
     first_name = _str(data.get("first_name"))
@@ -827,11 +810,6 @@ def mock_payment_success(request):
     }
     return redirect("home")
 
-from django.core.paginator import Paginator
-from django.views.decorators.http import require_http_methods
-from django.contrib import messages
-from .forms import SiteReviewForm
-
 @require_http_methods(["GET", "POST"])
 def site_reviews(request):
     if request.method == "POST":
@@ -856,4 +834,76 @@ def site_reviews(request):
         "rating_count": qs.count(),
         "form": form,
     })
+
+
+def _client_ip(request):
+    xff = request.META.get("HTTP_X_FORWARDED_FOR")
+    return xff.split(",")[0].strip() if xff else request.META.get("REMOTE_ADDR")
+
+def _find_booking_by_payment_ref(payment_ref: str):
+    ref = (payment_ref or "").strip()
+    if not ref:
+        return None
+    # חיפוש לא-תלוי-רישיות בשדה payment_ref
+    return Booking.objects.filter(payment_ref__iexact=ref).order_by("-id").first()
+
+
+@require_http_methods(["GET", "POST"])
+def cancel_request_view(request):
+    initial = {}
+
+    # פרה־פייל לפי booking_id (כמו שהיה)
+    booking_id = request.GET.get("booking_id")
+    if booking_id and booking_id.isdigit():
+        b = Booking.objects.filter(pk=int(booking_id)).first()
+        if b:
+            initial["booking"] = b
+            appt = getattr(b, "appointment", None)
+            if appt:
+                initial["appointment"] = appt
+                try:
+                    if hasattr(appt, "date") and hasattr(appt, "time") and appt.date and appt.time:
+                        initial["start_dt"] = datetime.combine(appt.date, appt.time)
+                    elif hasattr(appt, "start_dt") and appt.start_dt:
+                        initial["start_dt"] = appt.start_dt
+                except Exception:
+                    pass
+
+    if request.method == "POST":
+        form = CancelRequestForm(request.POST, initial=initial)
+        if form.is_valid():
+            obj: CancellationRequest = form.save(commit=False)
+            obj.channel = "web"
+            obj.ip_address = _client_ip(request)
+            obj.user_agent = request.META.get("HTTP_USER_AGENT", "")[:255]
+
+            # השמה אוטומטית של Booking אם הוזן payment_ref
+            if not obj.booking and obj.order_id:
+                b = _find_booking_by_payment_ref(obj.order_id)
+                if b:
+                    obj.booking = b
+
+            # שאיבת התור מתוך ה-Booking אם יש
+            if not obj.appointment and obj.booking and hasattr(obj.booking, "appointment"):
+                obj.appointment = obj.booking.appointment
+
+            # חישוב start_dt אם חסר
+            if (not obj.start_dt) and obj.appointment:
+                try:
+                    if hasattr(obj.appointment, "date") and hasattr(obj.appointment, "time"):
+                        obj.start_dt = datetime.combine(obj.appointment.date, obj.appointment.time)
+                    elif hasattr(obj.appointment, "start_dt") and obj.appointment.start_dt:
+                        obj.start_dt = obj.appointment.start_dt
+                except Exception:
+                    pass
+
+            obj.save()
+
+            # ❌ אין שליחת מיילים כאן.
+            messages.success(request, "קיבלנו את בקשת הביטול שלך ונחזור אליך בהקדם.")
+            return redirect("home")
+    else:
+        form = CancelRequestForm(initial=initial)
+
+    return render(request, "homePage/cancel_request.html", {"form": form})
 

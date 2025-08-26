@@ -1,5 +1,8 @@
 from django.urls import path
 from . import views
+from .views import cancel_request_view
+from django.views.generic import TemplateView
+
 urlpatterns = [
     path('', views.home, name='home'),
     path('riding-lessons/', views.riding_lessons_view, name='riding_lessons'),
@@ -16,5 +19,9 @@ urlpatterns = [
     path('booking-form/', views.booking_form, name='booking_form'),
     path("mock-payment-success/", views.mock_payment_success, name="mock_payment_success"),
     path('reviews/', views.site_reviews, name='site_reviews'),
+    path("cancel-request/", cancel_request_view, name="cancel_request"),
+    path("terms/", TemplateView.as_view(template_name="homePage/terms.html"), name="terms"),
+    path("privacy/", TemplateView.as_view(template_name="homePage/privacy.html"), name="privacy"),
+    path("cancel-policy/", TemplateView.as_view(template_name="homePage/cancel_policy.html"), name="cancel_policy"),
 
 ]

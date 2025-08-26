@@ -169,8 +169,15 @@
           {% if row.closed %}סגור{% else %}{{ row.start|time:"H:i" }}–{{ row.end|time:"H:i" }}{% endif %}
         </li>
       {% endfor %}
-      <li><strong>*רכיבות לילה וזריחה יהיו אחרי שעות הפעילות בתיאום מראש בלבד!</strong></li>
     </ul>
+    <div class="privacy">
+        <a href="{% url 'terms' %}">תנאי השימוש</a>,
+        <a href="{% url 'privacy' %}">מדיניות פרטיות</a>
+        <a href="{% url 'cancel_request' %}">ביטול עסקה</a>
+    </div>
+
+    <p>© {% now "Y" %} חוות מסילת ציון — כל הזכויות שמורות.</p>
+
 
 </footer>
 {% endblock %}

@@ -1,6 +1,5 @@
 from django.contrib import admin
-from .models import Activity, Appointment, CustomSchedule, Booking
-
+from .models import Activity, Appointment, CustomSchedule, Booking, SiteReview,CancellationRequest
 
 @admin.register(Activity)
 class ActivityAdmin(admin.ModelAdmin):
@@ -61,8 +60,6 @@ class BookingAdmin(admin.ModelAdmin):
     search_fields = ("customer_name", "customer_phone", "customer_email", "payment_ref")
     inlines = [AppointmentInline]
 
-from django.contrib import admin
-from .models import SiteReview
 
 @admin.register(SiteReview)
 class SiteReviewAdmin(admin.ModelAdmin):
@@ -70,3 +67,25 @@ class SiteReviewAdmin(admin.ModelAdmin):
     list_filter   = ('rating',)
     search_fields = ('name', 'comment')
     ordering      = ('-created_at',)
+
+
+@admin.register(CancellationRequest)
+class CancellationRequestAdmin(admin.ModelAdmin):
+    list_display = ("id", "full_name", "phone", "order_id",
+                    "booking_col", "appointment_col",
+                    "start_dt", "status", "created_at")
+    list_filter = ("status", "channel", "created_at")
+    search_fields = (
+        "full_name", "phone", "email", "order_id",
+        "booking__payment_ref",  # חיפוש לפי מספר ההזמנה ב-Booking
+        "appointment__id",
+    )
+
+    def booking_col(self, obj):
+        return obj.booking_id or "-"
+    booking_col.short_description = "Booking"
+
+    def appointment_col(self, obj):
+        appt = obj.appointment_resolved
+        return appt.id if appt else "-"
+    appointment_col.short_description = "Appointment"

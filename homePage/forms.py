@@ -1,5 +1,5 @@
 from django import forms
-from .models import SiteReview
+from .models import SiteReview, CancellationRequest
 
 class SiteReviewForm(forms.ModelForm):
     website = forms.CharField(required=False, widget=forms.HiddenInput)  # honeypot נסתר
@@ -33,3 +33,38 @@ class SiteReviewForm(forms.ModelForm):
         if not r:
             raise forms.ValidationError("יש לבחור דירוג כוכבים.")
         return r
+
+class CancelRequestForm(forms.ModelForm):
+    # אנטי-ספאם פשוט
+    honeypot = forms.CharField(required=False, widget=forms.HiddenInput)
+
+    class Meta:
+        model = CancellationRequest
+        fields = [
+            "full_name", "phone", "email",
+            "order_id",
+            "start_dt", "reason",
+            "booking", "appointment",
+        ]
+        widgets = {
+            "start_dt": forms.DateTimeInput(attrs={"type": "datetime-local", "dir": "rtl"}),
+            "reason": forms.Textarea(attrs={"rows": 3}),
+            "booking": forms.HiddenInput(),
+            "appointment": forms.HiddenInput(),
+        }
+        labels = {
+            "full_name": "שם מלא",
+            "phone": "טלפון",
+            "email": "אימייל (לא חובה)",
+            "order_id": "מס׳ הזמנה (כפי שמופיע באישור)",
+            "start_dt": "מועד הרכיבה (אם ידוע)",
+            "reason": "סיבת ביטול (אופציונלי)",
+        }
+
+    def clean(self):
+        cleaned = super().clean()
+        if cleaned.get("honeypot"):
+            raise forms.ValidationError("שגיאה בהגשה. נסו שוב.")
+        if not (cleaned.get("order_id") or cleaned.get("start_dt")):
+            raise forms.ValidationError("חובה להזין מס׳ הזמנה")
+        return cleaned

@@ -173,6 +173,79 @@ class SiteReview(models.Model):                               # מודל תגו�
         who = self.name or "אנונימי"                         # אם אין שם—"אנונימי"
         return f"{who} ({self.rating}★)"                      # ייצוג נוח באדמין/קונסול
 
+class CancellationRequest(models.Model):
+    CHANNELS = [("web", "אתר"), ("phone", "טלפון"), ("whatsapp", "וואטסאפ")]
+    STATUSES = [("pending", "ממתין"), ("approved", "אושר"), ("rejected", "נדחה"), ("refunded", "זוכה")]
+
+    full_name  = models.CharField("שם מלא", max_length=120)
+    phone      = models.CharField("טלפון", max_length=20)
+    email      = models.EmailField("אימייל (לא חובה)", blank=True)
+
+    # זה השדה שהלקוח מקליד — המספר שמופיע לו באישור תשלום/הזמנה
+    order_id   = models.CharField("מס׳ הזמנה (payment_ref)", max_length=80)
+
+    # קישור להזמנה (Booking) אם נמצאה לפי payment_ref
+    booking    = models.ForeignKey(
+        "homePage.Booking",  # אם ה-Booking באפליקציה אחרת: "payments.Booking"
+        null=True, blank=True, on_delete=models.SET_NULL,
+        related_name="cancellation_requests", verbose_name="Booking"
+    )
+
+    # קישור לתור (אם יש קשר כזה ב-Booking שלך)
+    appointment = models.ForeignKey(
+        "homePage.Appointment",
+        null=True, blank=True, on_delete=models.SET_NULL,
+        related_name="cancellation_requests", verbose_name="Appointment"
+    )
+
+    start_dt   = models.DateTimeField("מועד השירות (אם ידוע)", null=True, blank=True)
+    reason     = models.TextField("סיבת ביטול (אופציונלי)", blank=True)
+
+    channel    = models.CharField("ערוץ", max_length=20, choices=CHANNELS, default="web")
+    status     = models.CharField("סטטוס", max_length=20, choices=STATUSES, default="pending")
+
+    created_at = models.DateTimeField("נוצר ב־", auto_now_add=True)
+    ip_address = models.GenericIPAddressField("IP", null=True, blank=True)
+    user_agent = models.CharField("User-Agent", max_length=255, blank=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        verbose_name = "בקשת ביטול עסקה"
+        verbose_name_plural = "בקשות ביטול עסקה"
+
+    @property
+    def appointment_resolved(self):
+        if self.appointment:
+            return self.appointment
+        if self.booking and hasattr(self.booking, "appointment"):
+            return getattr(self.booking, "appointment")
+        return None
+
+    @property
+    def activity_display(self):
+        appt = self.appointment_resolved
+        try:
+            return str(appt.activity) if appt and hasattr(appt, "activity") else ""
+        except Exception:
+            return ""
+
+    def save(self, *args, **kwargs):
+        # אם אין תור משויך ויש כזה דרך Booking – נשלים
+        if not self.appointment and self.booking and hasattr(self.booking, "appointment"):
+            self.appointment = self.booking.appointment
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        base = f"#{self.id} {self.full_name}"
+        if self.order_id:
+            base += f" | הזמנה: {self.order_id}"
+        if self.activity_display:
+            base += f" | פעילות: {self.activity_display}"
+        if self.start_dt:
+            local = timezone.localtime(self.start_dt)
+            base += f" | מועד: {local:%Y-%m-%d %H:%M}"
+        return base
+
 
 
 

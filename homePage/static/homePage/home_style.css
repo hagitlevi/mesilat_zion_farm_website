@@ -411,3 +411,14 @@ footer.contact-section .follow-block > * { margin: 0; }               /* איפ�
   border: 1px solid var(--brown-dark);
 }
 .see-all:hover{ filter: brightness(1.05); }
+
+
+
+.privacy a:hover,
+.privacy a:focus {
+  color: #0842c4;            /* גוון מעט כהה במעבר/פוקוס */
+}
+.privacy a{
+  color: #06338a;          /* התאימי לצבע המותג */
+  text-decoration: underline;
+}

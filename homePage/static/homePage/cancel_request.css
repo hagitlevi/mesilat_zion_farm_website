@@ -1,0 +1,136 @@
+/* =======================
+   Cancel Request — Styling
+   עובד עם המבנה שהדבקת (label + שדה בפנים)
+   ======================= */
+
+:root{
+  --mz-green: var(--main-color, #2f6e2f);
+  --mz-bg: #f7fbf6;
+  --mz-card: #ffffff;
+  --mz-border: #e3e8e2;
+  --mz-text: #111;
+  --mz-muted: #667085;
+  --mz-error: #b00020;
+  --mz-focus: #0ea5e9;
+}
+
+/* רקע רך לעמוד */
+body {
+  background: var(--mz-bg);
+}
+
+/* מעטפת הדף */
+.cancel-wrapper{
+  max-width: 900px;
+  margin: 28px auto;
+  padding: clamp(14px, 2vw, 26px);
+  background: var(--mz-card);
+  border: 1px solid var(--mz-border);
+  border-radius: 16px;
+  box-shadow: 0 6px 18px rgba(0,0,0,.06);
+}
+
+/* כותרת ותיאור */
+.cancel-wrapper h1{
+  margin: 0 0 10px;
+  font-size: clamp(22px, 3.2vw, 34px);
+  color: var(--mz-green);
+  line-height: 1.2;
+}
+.cancel-wrapper > p{
+  margin: 0 0 16px;
+  color: var(--mz-muted);
+}
+
+/* גריד של השדות */
+.form-grid{
+  display: grid;
+  gap: 14px;
+  grid-template-columns: 1fr;
+}
+@media (min-width: 760px){
+  .form-grid{ grid-template-columns: 1fr 1fr; }
+}
+
+/* כל שורה (label) מכילה את הכותרת והשדה */
+.form-grid label{
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-weight: 600;
+  color: var(--mz-text);
+}
+
+/* עיצוב לשדות עצמם (input/textarea/select) */
+.form-grid label input,
+.form-grid label textarea,
+.form-grid label select{
+  width: 100%;
+  font-weight: 400;
+  font-size: 16px;
+  color: var(--mz-text);
+  background: #fff;
+  border: 1px solid var(--mz-border);
+  border-radius: 10px;
+  padding: 11px 12px;
+  transition: border-color .2s, box-shadow .2s;
+}
+
+/* datetime-local */
+.form-grid label input[type="datetime-local"]{
+  direction: rtl;
+}
+
+/* מצב פוקוס */
+.form-grid label input:focus,
+.form-grid label textarea:focus,
+.form-grid label select:focus{
+  outline: none;
+  border-color: var(--mz-focus);
+  box-shadow: 0 0 0 3px rgba(14,165,233,.18);
+}
+
+/* הפיכת שדה 'סיבת ביטול' לשורה רחבה */
+.form-grid label:has(textarea){
+  grid-column: 1 / -1;
+}
+.form-grid label textarea{
+  min-height: 100px;
+  resize: vertical;
+}
+
+/* הודעות שגיאה כלליות של הטופס */
+.errors{
+  margin-top: 10px;
+  border: 1px solid #ffd4d4;
+  background: #fff3f3;
+  color: var(--mz-error);
+  padding: 10px 12px;
+  border-radius: 10px;
+  font-size: 14px;
+}
+
+/* כפתורים */
+.btn{
+  appearance: none;
+  border: 0;
+  border-radius: 12px;
+  padding: 12px 18px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: transform .06s ease, box-shadow .2s ease, background .2s;
+}
+.btn-primary{
+  background: var(--mz-green);
+  color: #fff;
+  box-shadow: 0 6px 14px rgba(47,110,47,.18);
+}
+.btn-primary:hover{
+  background: #ab9074;
+  transform: translateY(-1px);
+}
+
+/* מרווח לפני הכפתור */
+form .btn-primary{
+  margin-top: 10px;
+}
