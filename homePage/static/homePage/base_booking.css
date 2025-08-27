@@ -201,7 +201,7 @@
     color: #222;
     max-width: calc(100% - 40px);
     direction: rtl;
-    margin: 0 auto;
+    margin: 20px auto;
     margin-top: 40px;
 }
 
@@ -358,10 +358,10 @@
   display:inline-flex; align-items:center; gap:10px;
   padding:10px 14px;
   border-radius:22px;
-  border:1px solid #ddd;
+  border:1px solid #000;
   /* מסגרת גרדיאנט עדינה */
   background-color: var(--main-bright);
-  color:white;
+  color:#000;
   font-weight:700; font-size:15px;
   box-shadow: 0 6px 18px rgba(47,110,47,.12);
   cursor:pointer; transition: transform .05s, box-shadow .2s, filter .2s;
@@ -409,4 +409,9 @@
   box-shadow: 0 10px 24px rgba(47,110,47,.16);
 }
 
+/* צובע רק את האייקון */
+.fancy-date-picker .fa-calendar-days{
+  color: black;   /* החליפי לצבע שרוצה */
+  font-size: 1.2em;               /* אופציונלי: הגדלת האייקון */
+}
 

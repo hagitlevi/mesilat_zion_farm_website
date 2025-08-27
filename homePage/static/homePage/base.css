@@ -21,7 +21,7 @@ header{
     top: 0;
     left: 0;
     right: 0;
-    z-index: 1000;
+    z-index: 10000;
     box-sizing: border-box;
 }
 
@@ -75,4 +75,64 @@ body {
     margin: 0;
     padding: 0;
     background: var(--main-background)!important;
+}
+
+.privacy{
+  width: 80%;                  /* הבלוק כולו 80% */
+  margin: 0 auto;              /* מרכז את הבלוק */
+  border-top: 1px solid var(--main-color); /* פס בגובה 4px */
+  padding-top: 12px;
+  text-align: center;
+}
+
+
+
+.privacy a{
+  color: #1f2973;          /* התאימי לצבע המותג */
+  text-decoration: none;
+}
+
+footer{
+    background-color: var(--main-bright);
+    font-size: 0.9em;
+    line-height: 1.6;
+}
+
+.rights{
+    padding-bottom: 10px;
+    margin: 0;
+    text-align: center;
+}
+
+
+.social-bar {
+  display: flex;
+  gap: 14px;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 10px;
+  padding-top: 10px;
+}
+
+.social-bar .icon {
+  width: 36px;
+  height: 36px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #000;                 /* האייקון לבן */
+  border: 1px solid #000;
+  border-radius: 50%;
+  text-decoration: none;
+  transition: transform .15s ease, background .2s ease, border-color .2s ease, color .2s ease;
+}
+
+
+.social-bar .icon i { font-size: 18px; line-height: 1; }
+
+
+/* אופציונלי: הגדלה בניידים */
+@media (max-width: 480px) {
+  .social-bar .icon { width: 40px; height: 40px; }
+  .social-bar .icon i { font-size: 20px; }
 }

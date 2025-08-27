@@ -6,7 +6,10 @@ html, body { min-height: 100dvh;  }
 /* ===========================
    מעטפת הסקשן והטופס
    =========================== */
-.details { padding: clamp(16px, 3vw, 36px);}
+.details {
+  padding: clamp(16px, 3vw, 36px);
+  margin-bottom: 50px;
+}
 
 .details form{
   direction: rtl;

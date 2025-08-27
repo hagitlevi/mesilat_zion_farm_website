@@ -182,26 +182,21 @@ footer.contact-section {
     color: #000;
     text-align: center;
     direction: rtl;
-    font-size: 0.95em;
+    font-size: 0.9em;
+    padding-top: 10px;
 }
 
 .tel-color{
     color: inherit;
 }
 
-footer h3 {
-    margin-bottom: 5px;
-    color: var(--main-color);
-    margin-top:0 ;
-}
-
 .hours-list {
     list-style: none;
-    padding: 0;
-    font-size: 0.80em;
+    font-size: 1em;
     max-width: 260px;
     margin: auto;
     text-align: center;
+    padding-top:15px ;
 }
 
 .hours-list li {
@@ -221,30 +216,6 @@ footer.contact-section .follow-block{
   text-align: center;
 }
 
-footer.contact-section .follow-handle a{
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  text-decoration: none;
-  color: #1f1f1f;
-  padding: 6px 10px;
-  transition: color .2s, border-color .2s, transform .1s;
-    margin-bottom: 10px;
-}
-
-footer.contact-section .follow-handle a:hover{
-  color: var(--main-color, #2f6e2f);
-  transform: translateY(-1px);
-}
-
-footer.contact-section .follow-handle i{
-  font-size: 18px; /* אייקון טיקטוק */
-}
-
-/* במובייל: טיפה צמצום ריווח */
-@media (max-width:600px){
-  footer.contact-section .follow-handle a{ padding: 6px 8px; gap: 6px; }
-}
 
 /* מצמצם רווח בין הכותרת לקישור בפוטר */
 footer.contact-section .follow-block > * { margin: 0; }               /* איפוס כללי */
@@ -414,11 +385,3 @@ footer.contact-section .follow-block > * { margin: 0; }               /* איפ�
 
 
 
-.privacy a:hover,
-.privacy a:focus {
-  color: #0842c4;            /* גוון מעט כהה במעבר/פוקוס */
-}
-.privacy a{
-  color: #06338a;          /* התאימי לצבע המותג */
-  text-decoration: underline;
-}

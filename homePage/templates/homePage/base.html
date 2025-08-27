@@ -58,7 +58,29 @@
     </main>
 
     <footer>
+
       {% block footer %}{% endblock %}
+        <div class="social-bar" dir="ltr" aria-label="רשתות חברתיות">
+          <a class="icon facebook" href="https://www.facebook.com/share/1BcUjJUQyo/ " target="_blank" rel="noopener" aria-label="Facebook" title="Facebook">
+            <i class="fa-brands fa-facebook-f" aria-hidden="true"></i>
+          </a>
+          <a class="icon instagram" href="https://www.instagram.com/mesilatzionfarm/" target="_blank" rel="noopener" aria-label="Instagram" title="Instagram">
+            <i class="fa-brands fa-instagram" aria-hidden="true"></i>
+          </a>
+          <a class="icon tiktok" href="https://www.tiktok.com/@mesilat_zion_farm22" target="_blank" rel="noopener" aria-label="TikTok" title="TikTok">
+            <i class="fa-brands fa-tiktok" aria-hidden="true"></i>
+          </a>
+        </div>
+
+        <div class="privacy">
+            למילוי טופס לביטול הזמנה או בקשת החזר
+            <a href="{% url 'cancel_request' %}">לחצו כאן</a><br>
+            <a href="{% url 'terms' %}">  תנאי השימוש  </a>   |
+            <a href="{% url 'privacy' %}">  מדיניות פרטיות  </a><br>
+        </div>
+
+     <p class="rights">© {% now "Y" %} חוות מסילת ציון — כל הזכויות שמורות</p>
+
     </footer>
 
     {% block scripts %}{% endblock %}
@@ -239,6 +261,7 @@ body.modal-open { overflow: hidden; }
 
 </style>
 {% endif %}
+
 
 <script>
 (function () {

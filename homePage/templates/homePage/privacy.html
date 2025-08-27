@@ -1,27 +1,194 @@
 {% extends "homePage/base.html" %}
 {% load static %}
 
-{% block title %}מדיניות פרטיות - חוות מסילת ציון{% endblock %}
+{% block title %}מדיניות פרטיות – חוות מסילת ציון{% endblock %}
+
+{% block extra_css %}
+<style>
+  :root{
+    --policy-bg: var(--main-background, #faf7ed);
+    --policy-paper: var(--main-white, #faf7f2);
+    --policy-accent: var(--main-color, #704a22);
+    --policy-accent-2: var(--main-muted, #6b786f);
+    --policy-border: var(--main-border, #faf0dc);
+  }
+  .policy-page{max-width: 1024px; margin: 0 auto; padding: 10px 16px 28px;}
+  .policy-hero{
+    background: linear-gradient(135deg, var(--policy-accent), #8B5E34);
+    color:#fff; border-radius:18px; padding:18px 16px; position:relative; overflow:hidden;
+    box-shadow: 0 14px 30px rgba(0,0,0,.08);
+  }
+  .policy-hero h1{margin:0 0 6px; font-weight:900; font-size: clamp(1.4rem, 4.6vw, 2.2rem);}
+  .policy-hero p{margin:0; opacity:.95}
+  .policy-meta{display:flex; gap:10px; flex-wrap:wrap; margin-top:10px}
+  .chip{display:inline-flex; align-items:center; gap:8px; padding:6px 10px; border-radius:999px;
+        background: rgba(255,255,255,.15); border:1px solid rgba(255,255,255,.35); font-weight:700}
+
+  .policy-section{ background: var(--policy-paper); border:1px solid var(--policy-border);
+    border-radius:14px; padding:14px 16px; margin-top:14px; box-shadow: 0 8px 24px rgba(0,0,0,.05); }
+  .policy-section h2{ margin:0 0 8px; color: var(--policy-accent); font-size: clamp(1.05rem, 3.8vw, 1.35rem); }
+  .policy-section h3{ margin:8px 0 6px; color: var(--policy-accent-2); font-size: 1rem; }
+  .policy-section p{ margin:6px 0; line-height:1.65; }
+  .policy-section ul{ margin:6px 0 6px 1.2em; padding:0; line-height:1.65; }
+
+  .notice{ background:#fffbe6; border:1px solid #f1e1a6; color:#4a3b00; padding:10px 12px; border-radius:10px; }
+
+  .cookie-table{ width:100%; border-collapse: collapse; margin-top:8px; font-size: .975rem; }
+  .cookie-table th, .cookie-table td{ border:1px solid var(--policy-border); padding:8px 10px; text-align: start; }
+  .cookie-table th{ background: #fff6ea; color:#5c3a1d; }
+
+  .muted{ color:#000; }
+</style>
+{% endblock %}
 
 {% block content %}
-<section dir="rtl" style="max-width:900px;margin:24px auto;padding:0 12px;line-height:1.8">
-  <h1>מדיניות פרטיות</h1>
-  <p>עודכן: __/__/20__</p>
+<main class="policy-page" dir="rtl">
+  <section class="policy-hero">
+    <h1>מדיניות פרטיות – חוות מסילת ציון</h1>
+    <p>מדיניות זו מסבירה כיצד אנו אוספים, משתמשים, שומרים ומשתפים מידע אישי בעת שימוש באתר ובשירותי החווה, בהתאם לדיני ישראל (חוק הגנת הפרטיות, תקנות אבטחת מידע) ובכפוף לעקרונות ה‑GDPR למבקרים מחוץ לישראל.</p>
+    <div class="policy-meta">
+      <span class="chip">עודכן: <time datetime="{{ today|default:None }}">[מלאו תאריך]</time></span>
+      <span class="chip">מפעיל האתר: חוות מסילת ציון</span>
+    </div>
+  </section>
 
-  <h2>איזה מידע אנו אוספים</h2>
-  <p>פרטים שמסרת (שם, טלפון, אימייל, פרטי הזמנה), ונתונים טכניים בסיסיים הדרושים לתפעול ואבטחה.</p>
+  <section class="policy-section">
+    <h2>תחולה והגדרות</h2>
+    <p>המדיניות חלה על האתר והשירותים המקוונים של חוות מסילת ציון (להלן: "החווה", "אנחנו"). "מידע אישי" הוא כל מידע על אדם מזוהה או שניתן לזהותו באופן סביר. השימוש באתר מהווה הסכמה למדיניות זו.</p>
+  </section>
 
-  <h2>למה אנו משתמשים במידע</h2>
-  <ul>
-    <li>טיפול בהזמנות ובקשות ביטול</li>
-    <li>שירות לקוחות ותיעוד עסקאות</li>
-    <li>אבטחת מידע ותפעול האתר</li>
-  </ul>
+  <section id="who" class="policy-section">
+    <h2>מי אנחנו וכיצד ליצור קשר</h2>
+    <p><strong>חוות מסילת ציון</strong> – פעילות החווה מתקיימת ביער סמוך למושב מסילת ציון (אין כתובת רחוב מדויקת).</p>
+    <p>טלפון/ווטסאפ: <strong>055‑8859569</strong>. דוא"ל: <span class="muted">mormoriyalevi@gmail.com</span>.</p>
+  </section>
 
-  <h2>שיתוף מידע</h2>
-  <p>עם ספקי תשתית/סליקה לצורך מתן השירות בלבד, לפי הסכמי סודיות.</p>
+  <section id="data" class="policy-section">
+    <h2>אילו נתונים אנו אוספים</h2>
+    <h3>1) הזמנת תורים ותשלום</h3>
+    <ul>
+      <li>פרטי זיהוי ליצירת קשר: שם פרטי ושם משפחה, טלפון נייד; אימייל אם נמסר.</li>
+      <li>פרטי ההזמנה: פעילות/מסלול, משך, תאריך ושעה, מספר משתתפים, תוספות/הערות, מזהה הזמנה ומצב תשלום.</li>
+    </ul>
+    <p class="notice"><strong>תשלומים:</strong> עיבוד אמצעי התשלום יתבצע ע"י ספק סליקה חיצוני שייבחר. באתר החווה לא נשמרים מספרי כרטיס אשראי.</p>
 
-  <h2>משך שמירה וזכויות</h2>
-  <p>נשמור לפי צורך/דין. ניתן לפנות אלינו לבקשת עיון/תיקון/מחיקה ב-___@___ או ___-_______.</p>
-</section>
+    <h3>2) בקשת ביטול/זיכוי</h3>
+    <p>בטופס הביטול נאספים <strong>מספר/קוד הזמנה</strong> ופרטי קשר מינימליים (כגון שם/טלפון) לצורך אימות ובירור.</p>
+
+    <h3>3) ביקורות באתר</h3>
+    <p>בעת פרסום ביקורת אנו שומרים ומציגים: שם כפי שהוזן (אפשר גם כינוי/אנונימי), דירוג, תוכן הביקורת, תאריך ושעה.</p>
+
+    <h3>4) תקשורת</h3>
+    <p>מידע שמועבר בשיחה/ווטסאפ/הודעה (למשל תיאום הגעה) עשוי להישמר ביומני מערכת לצורך תיעוד השירות.</p>
+
+    <h3>5) מידע טכני וקוקיות חיוניות</h3>
+    <p>נתוני שימוש סטנדרטיים (כגון כתובת IP, סוג דפדפן, דפי הפניה) וכן קוקיות הכרחיות לאבטחה ולהפעלת האתר.</p>
+  </section>
+
+  <section id="uses" class="policy-section">
+    <h2>מטרות עיבוד ובסיס משפטי</h2>
+    <ul>
+      <li><strong>קיום הזמנה והענקת השירות</strong> – ניהול תורים, תיאום ועדכונים (בסיס: קיום חוזה/נקיטת צעדים לפני כריתתו).</li>
+      <li><strong>טיפול בבקשות ביטול/זיכוי</strong> – אימות פרטים והחזר בהתאם למדיניות (בסיס: קיום חוזה/חובה חוקית).</li>
+      <li><strong>אבטחה ותפעול האתר</strong> – שמירה על תקינות, מניעת הונאה ושיפור חווית שימוש (בסיס: אינטרס לגיטימי).</li>
+      <li><strong>עמידה בדין</strong> – שמירת מסמכים חשבונאיים ועמידה בדרישות רשויות (בסיס: חובה משפטית).</li>
+      <li><strong>תוכן משתמשים</strong> – הצגת ביקורות שבחרתם לפרסם (בסיס: הסכמה/אינטרס לגיטימי – לפי העניין).</li>
+    </ul>
+    <p class="muted">אין לנו כיום דיוור שיווקי/פרסום התנהגותי באתר.</p>
+  </section>
+
+  <section id="cookies" class="policy-section">
+    <h2>קוקיות (Cookies)</h2>
+    <p>נכון לעדכון זה אנו משתמשים בקוקיות חיוניות בלבד להפעלת האתר. איננו משתמשים בקוקיות פרסום או ניתוח התנהגותי.</p>
+    <table class="cookie-table" aria-label="טבלת קוקיות">
+      <thead>
+        <tr>
+          <th>שם הקוקי</th>
+          <th>ספק</th>
+          <th>מטרה</th>
+          <th>סוג</th>
+          <th>משך שמירה משוער</th>
+          <th>מאפיינים</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><code>csrftoken</code></td>
+          <td>האתר (Django)</td>
+          <td>הגנה על טפסים מפני בקשות מזויפות (CSRF)</td>
+          <td>קבוע</td>
+          <td>עד שנה</td>
+          <td>SameSite=Lax</td>
+        </tr>
+        <tr>
+          <td><code>sessionid</code></td>
+          <td>האתר (Django)</td>
+          <td>זיהוי סשן לחיבור בקשות בזמן גלישה</td>
+          <td>סשן/קבוע*</td>
+          <td>עד 14 יום או עד סגירת הדפדפן *</td>
+          <td>HttpOnly, SameSite=Lax</td>
+        </tr>
+      </tbody>
+    </table>
+    <p class="muted">* משך הזמן תלוי בהגדרות השרת/סביבה. אם יתווספו בעתיד כלי מדידה/שיווק – נעדכן את המדיניות ונציג הודעת בחירה מתאימה.</p>
+  </section>
+
+  <section id="share" class="policy-section">
+    <h2>שיתוף מידע עם צדדים שלישיים</h2>
+    <p>אנו משתפים מידע רק ככל הנדרש להפעלת השירותים ולפי דין:</p>
+    <ul>
+      <li>ספק סליקה (ייבחר) – עיבוד תשלומים/החזרים. פרטי כרטיס אינם נשמרים אצלנו.</li>
+      <li>ספק אחסון/שרת (ייבחר) – אירוח האתר ותפעולו.</li>
+      <li>ספקי תקשורת – שליחת הודעות/שיחות לצורכי תיאום ותמיכה.</li>
+      <li>רשויות/גורמים מוסמכים – כאשר אנו מחויבים או לשם הגנה על זכויותינו.</li>
+    </ul>
+    <p><strong>אין מכירת מידע אישי.</strong> ספקים פועלים כמעבדי מידע ומחויבים לשמירה ראויה על פרטיות ואבטחה.</p>
+  </section>
+
+  <section class="policy-section">
+    <h2>שמירת מידע (Retention)</h2>
+    <ul>
+      <li>נתוני הזמנות, חיובים וקבלות – עד 7 שנים לצורכי חשבונאות ודין.</li>
+      <li>בקשות ביטול/זיכוי – עד 3 שנים ממועד סגירת הבקשה.</li>
+      <li>ביקורות באתר – עד בקשה להסרה או לפי שיקול דעתנו בהתאם לתנאי השימוש.</li>
+      <li>קוקיות – לפי הטבלה לעיל.</li>
+    </ul>
+  </section>
+
+  <section id="security" class="policy-section">
+    <h2>אבטחת מידע</h2>
+    <p>אנו מיישמים אמצעי אבטחה סבירים בהתאם לתקנות הגנת הפרטיות (אבטחת מידע), לרבות הצפנת תעבורה (HTTPS), בקרות גישה, הפרדת הרשאות, תיעוד פעולות ועדכון רכיבים. למרות מאמצינו, אין אבטחה מוחלטת.</p>
+  </section>
+
+  <section class="policy-section">
+    <h2>העברה מחוץ לישראל</h2>
+    <p>נכון לעכשיו שירותי הפיתוח פועלים בישראל. אם נשתמש בשירותים מחוץ לישראל, נוודא מנגנוני הגנה מתאימים להעברת מידע (למשל התחייבויות חוזיות מתאימות) ונעדכן את המדיניות.</p>
+  </section>
+
+  <section id="rights" class="policy-section">
+    <h2>הזכויות שלכם</h2>
+    <p>בהתאם לדין ניתן לבקש לעיין במידע שנאסף אודותיכם, לתקנו אם נמצא שגוי, לבקש מחיקה או הקפאת שימוש מסוים. כאשר העיבוד מבוסס על הסכמה – ניתן לבטל הסכמה בכל עת באמצעות פנייה אלינו.</p>
+    <p>נבחן כל בקשה לפי החוק ונשיב תוך זמן סביר. ייתכן שנבקש אמצעי זיהוי.</p>
+  </section>
+
+  <section class="policy-section">
+    <h2>קטינים</h2>
+    <p>ההזמנות מבוצעות ע"י בגירים. פעילויות לילדים נעשות בתיאום הורה/אפוטרופוס. אם פורסם בטעות מידע של קטין בניגוד למדיניות, ניתן לפנות אלינו להסרה.</p>
+  </section>
+
+  <section class="policy-section">
+    <h2>קישורים ושירותים של צד שלישי</h2>
+    <p>האתר עשוי לכלול קישורים לשירותי צד שלישי (לרבות עמודי רשתות חברתיות). השימוש באותם שירותים כפוף למדיניותם. אנו לא אחראים לנוהגיהם.</p>
+  </section>
+
+  <section id="changes" class="policy-section">
+    <h2>שינויים במדיניות</h2>
+    <p>נעדכן מדיניות זו מעת לעת כדי לשקף שינויים בשירותים או בדרישות החוק. תאריך העדכון מופיע בראש העמוד, ובשינויים מהותיים נבליט את ההודעה באתר.</p>
+  </section>
+
+  <section id="contact" class="policy-section">
+    <h2>יצירת קשר</h2>
+    <p>לבקשות בנושאי פרטיות, מימוש זכויות, ביטול הסכמה או תלונות – ניתן לפנות אלינו בטלפון/ווטסאפ <strong>055‑8859569</strong>. כשייפתח ערוץ דוא"ל ייעודי – נעדכן כאן.</p>
+  </section>
+</main>
 {% endblock %}
