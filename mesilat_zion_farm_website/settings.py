@@ -69,6 +69,7 @@ TEMPLATES = [
                 'django.template.context_processors.request',
                 'django.contrib.auth.context_processors.auth',
                 'django.contrib.messages.context_processors.messages',
+
             ],
         },
     },
@@ -117,6 +118,10 @@ TIME_ZONE = "Asia/Jerusalem"
 USE_I18N = True
 
 USE_TZ = True
+
+# ==== Policy Versions (for consent & UI logic) ====
+TERMS_VERSION   = "1.3"      # עדכני כשמשנים את תנאי השימוש
+PRIVACY_VERSION = "1.2"      # עדכני כשמשנים את מדיניות הפרטיות
 
 
 # Static files (CSS, JavaScript, Images)

@@ -8,6 +8,10 @@
 {% endblock %}
 
 {% block content %}
+{% if request.GET.consent_error %}
+  <div class="errors" role="alert">יש לאשר את תנאי השימוש ומדיניות הפרטיות לפני המשך לתשלום.</div>
+{% endif %}
+
 <section class="details">
 
 {# --- טופס GET קטן: יוצג רק אם צריך לבחור סוג/כמות --- #}
@@ -112,18 +116,10 @@
     <input type="text"  name="first_name" placeholder="שם פרטי"  required>
     <input type="text"  name="last_name"  placeholder="שם משפחה" required>
     <input type="tel"   name="phone"      placeholder="טלפון"    required>
-    <input type="email" name="gmail"      placeholder="מייל"     required>
+    <input type="email" name="email"      placeholder="מייל"     required>
 
 
-    <div class="legal-consent">
-      <label class="checkbox">
-        <input type="checkbox" id="accept_terms" name="accept_terms" required>
-        קראתי ואני מאשר/ת את
-        <a href="{% url 'terms' %}">תנאי השימוש</a>
-        <a href="{% url 'privacy' %}">ומדיניות הפרטיות</a>
-      </label>
-      <div class="field-error" id="accept-terms-error" aria-live="polite"></div>
-    </div>
+    <div id="consent-area" class="legal-consent"></div>
 
     <!-- הודעת תשומת-לב לפני התשלום -->
     <div class="notice notice-warn" role="alert" aria-live="polite">
@@ -141,120 +137,85 @@
 
 {% block scripts %}
 <script>
-(function () {
-  const form = document.getElementById('booking-form');   // טופס ה-POST
-  if (!form) return;
+(function(){
+  const form = document.getElementById('booking-form');
+  const phoneInput = form ? form.elements.phone : null;   // name="phone"
+  const consentArea = document.getElementById('consent-area');
+  const CONSENT_URL = "{% url 'booking_form' %}?ajax=consent&phone=";
 
-  let submitted = false;
+  if (!form || !phoneInput || !consentArea) return;
 
-  // שולפים את הסלקטים הגלויים שנמצאים בטופס ה-GET (אם קיימים בעמוד)
-  const participantsSelect = document.getElementById('participants');
-  const activityTypeSelect = document.getElementById('activity_type');
-
-  // Regex בסיסי לישראל
+  // ולידציה בסיסית לישראל (אותה אחת שיש לך)
   const rePhoneIL = /^0(5\d{8}|[2-9]\d{7})$/;
-  const reEmail   = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-  // עוזרים לשגיאות
-  function ensureErrNode(el){
-    if (!el) return null;
-    let n = el.nextElementSibling;
-    if (!n || !n.classList || !n.classList.contains('field-error')) {
-      n = document.createElement('div');
-      n.className = 'field-error';
-      n.setAttribute('aria-live', 'polite');
-      el.after(n);
+  // דה-באונס לבקשת הסטטוס
+  let t = null;
+  phoneInput.addEventListener('input', function(){
+    if (t) clearTimeout(t);
+    t = setTimeout(checkConsent, 250);
+  });
+
+  // בפעם הראשונה אם כבר מולא טלפון (למשל back)
+  if ((phoneInput.value || '').trim().length > 0) {
+    checkConsent();
+  }
+
+  function normalizeIL(p){
+    let d = (p||"").replace(/\D/g,'');
+    if (d.startsWith('972')) d = '0' + d.slice(3);
+    return d;
+  }
+
+  function checkConsent(){
+    const raw = (phoneInput.value || '').trim();
+    const norm = normalizeIL(raw);
+    // מנקים תצוגה אם אין טלפון תקין
+    if (!rePhoneIL.test(norm)) {
+      consentArea.innerHTML = "";     // לא מציגים כלום עד שיש טלפון תקין
+      return;
     }
-    return n;
-  }
-  function setError(el, text){
-    const box = ensureErrNode(el);
-    if (box) box.textContent = text || '';
-    if (el && el.classList) el.classList.toggle('is-invalid', !!text);
-    if (text){
-      el.setAttribute('aria-invalid', 'true');
-      if (box && !box.id) box.id = (el.name || el.id || 'fld') + '-error';
-      if (box) el.setAttribute('aria-describedby', box.id);
-    } else {
-      el.removeAttribute('aria-invalid');
-      el.removeAttribute('aria-describedby');
-    }
-  }
-  function validateField(el, test, msg, force=false){
-    if (!el) return true;
-    const val = (el.value || '').trim();
-    const shouldValidate = force || submitted || val.length > 0;
-    if (!shouldValidate){ setError(el, ''); return true; }
-    const ok = !!test(val);
-    setError(el, ok ? '' : msg);
-    return ok;
+    fetch(CONSENT_URL + encodeURIComponent(norm), {credentials:'same-origin'})
+      .then(r => r.json())
+      .then(data => {
+        renderConsent(data && data.needs_consent === true);
+      })
+      .catch(() => {
+        // במקרה של שגיאה – נדרוש הסכמה בצד הבקאנד בכל מקרה, כאן נשאיר ריק.
+        consentArea.innerHTML = "";
+      });
   }
 
-  function validateConsent(force=false){
-    const cb = form.elements.accept_terms;
-    if (!cb) return true;
-    const err = document.getElementById('accept-terms-error');
-    const ok = cb.checked;
-    if (!ok && (force || submitted)) {
-      if (err) err.textContent = 'יש לאשר את התנאים לפני המשך לתשלום';
-      return false;
-    }
-    if (err) err.textContent = '';
-    return true;
-  }
-
-
-  // מאזינים לשדות כדי לנקות/להראות שגיאות תוך כדי
-  function wireLiveValidation(el, test, msg){
-    if (!el) return;
-    const evt = (el.tagName === 'SELECT') ? 'change' : 'input';
-    el.addEventListener(evt, () => validateField(el, test, msg));
-    el.addEventListener('blur', () => validateField(el, test, msg));
-  }
-
-  wireLiveValidation(form.elements.first_name, v=>v.length>0, 'נא למלא שם פרטי');
-  wireLiveValidation(form.elements.last_name,  v=>v.length>0, 'נא למלא שם משפחה');
-  wireLiveValidation(form.elements.phone,      v=>rePhoneIL.test(v), 'מספר טלפון לא תקין');
-  wireLiveValidation(form.elements.gmail,      v=>reEmail.test(v),   'כתובת מייל לא תקינה');
-
-  // חובה גם על הסלקטים של טופס ה-GET (אם קיימים)
-  wireLiveValidation(participantsSelect, v=>!!v, 'בחרו מספר רוכבים');
-  wireLiveValidation(activityTypeSelect, v=>!!v, 'בחרו את צבע הסוס');
-
-
-  // ולידציה מלאה לפני שליחת ה-POST
-  function validateAll(force=false){
-    let ok = true;
-    ok &= validateConsent(force);
-    ok &= validateField(form.elements.first_name, v=>v.length>0, 'נא למלא שם פרטי', force);
-    ok &= validateField(form.elements.last_name,  v=>v.length>0, 'נא למלא שם משפחה', force);
-    ok &= validateField(form.elements.phone,      v=>rePhoneIL.test(v), 'מספר טלפון לא תקין', force);
-    ok &= validateField(form.elements.gmail,      v=>reEmail.test(v),   'כתובת מייל לא תקינה', force);
-
-    // אם יש select גלוי לכמות – הוא חובה
-    if (participantsSelect){
-      ok &= validateField(participantsSelect, v=>!!v, 'בחרו מספר רוכבים', force);
-    }
-    // אם יש select גלוי לסוג פעילות – הוא חובה
-    if (activityTypeSelect){
-      ok &= validateField(activityTypeSelect, v=>!!v, 'בחרו צבע הסוס', force);
-    }
-
-    return !!ok;
-  }
-
-  form.addEventListener('submit', (e) => {
-    submitted = true;
-    if (!validateAll(true)){
-      e.preventDefault();
-      const firstInvalid = document.querySelector('.is-invalid');
-      if (firstInvalid && firstInvalid.scrollIntoView){
-        firstInvalid.scrollIntoView({behavior:'smooth', block:'center'});
+  function renderConsent(needs){
+      if (!needs) {
+        // כבר קיימת הסכמה לגרסאות הנוכחיות → לא מציגים כלום
+        consentArea.innerHTML = "";
+        return;
       }
-      if (firstInvalid && firstInvalid.focus) firstInvalid.focus();
+      // צריך הסכמה → מציגים צ'קבוקס חובה
+      consentArea.innerHTML = `
+        <label class="checkbox">
+          <input type="checkbox" id="accept_terms" name="accept_terms" required>
+          קראתי ואני מאשר/ת את
+          <a href="{% url 'terms' %}" target="_blank" rel="noopener">תנאי השימוש</a>
+          ו־<a href="{% url 'privacy' %}" target="_blank" rel="noopener">מדיניות הפרטיות</a>
+        </label>
+        <div class="field-error" id="accept-terms-error" aria-live="polite"></div>
+      `;
+  }
+
+  // ולידציית הגשה: אם הצ'קבוקס מוצג נבדוק שהוא מסומן; אם יש hidden – נמשיך.
+  form.addEventListener('submit', function(e){
+    const cb = form.querySelector('input[type="checkbox"][name="accept_terms"]');
+    const hidden = form.querySelector('input[type="hidden"][name="accept_terms"]');
+    if (cb && !cb.checked) {
+      e.preventDefault();
+      const err = document.getElementById('accept-terms-error');
+      if (err) err.textContent = 'יש לאשר את התנאים לפני המשך לתשלום';
+      cb.focus();
     }
   });
 })();
 </script>
 {% endblock %}
+
 

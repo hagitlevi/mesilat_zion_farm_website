@@ -14,6 +14,12 @@ from datetime import datetime, timedelta, date, time
 from zoneinfo import ZoneInfo
 from .utils import group_consecutive_hours
 import json
+from django.conf import settings
+from django.http import JsonResponse
+from django.views.decorators.http import require_GET
+from .models import TermsConsent
+from urllib.parse import urlencode
+from django.urls import reverse
 
 
 VARIANT_TO_TYPE = {
@@ -400,8 +406,417 @@ def available_appointment_view(request, activity_id):
     return render(request, "homePage/available_appointment.html", context)
 
 from decimal import Decimal  # אם איננו בשימוש בטמפלט/חישובים נוספים, אפשר גם לוותר על הייבוא הזה
+@csrf_exempt
+@csrf_exempt
+def confirm_booking(request):
+    if request.method != "POST":
+        return HttpResponseBadRequest("Invalid method")
+
+    # שדות מהטופס:
+    appointment_id   = request.POST.get("appointment_id")
+    activity_id      = request.POST.get("activity_id")
+    duration_minutes = request.POST.get("duration_minutes")
+    first_name       = request.POST.get("first_name")
+    last_name        = request.POST.get("last_name")
+    phone_raw        = request.POST.get("phone")
+    email            = request.POST.get("email") or request.POST.get("email")  # תואם לאחור
+    participants     = request.POST.get("participants")
+    activity_type    = request.POST.get("activity_type")
+    wine             = request.POST.get("wine")
+
+    # --- שלב 5: אכיפת הסכמה לפי טלפון (ללא קוקיז) ---
+    full_name = " ".join(x for x in [(first_name or "").strip(), (last_name or "").strip()] if x)
+    phone_norm = _normalize_phone_il(phone_raw)
+    if not _has_consent_by_phone(phone_norm):
+        # אם אין רישום הסכמה לגרסאות הנוכחיות – חייב לבוא accept_terms מהטופס
+        if not request.POST.get("accept_terms"):
+            # מחזירים את המשתמש לדף המילוי עם פרמטר שגיאה + כל מה שצריך ב-GET
+            qs = urlencode({
+                "appointment_id": appointment_id or "",
+                "activity_id": activity_id or "",
+                "duration_minutes": duration_minutes or "",
+                "participants": participants or "",
+                "activity_type": activity_type or "",
+                "wine": wine or "",
+                "consent_error": "1",
+            })
+        else:
+            # יש הסכמה חדשה – נשמור אותה ב-DB (כאן עדיין אין Booking; מעביר None)
+            _save_consent_by_phone(request, phone=phone_norm, full_name=full_name)
+
+    # --- המשך הזרימה שלך כרגיל (יצירת דף תשלום) ---
+    appointment = get_object_or_404(Appointment, id=appointment_id)
+    activity    = get_object_or_404(Activity, id=activity_id)
+    total_price = request.POST.get("total_price")
+
+    context = {
+        "appointment": appointment,
+        "activity": activity,
+        "duration_minutes": duration_minutes,
+        "first_name": first_name,
+        "last_name": last_name,
+        "phone": phone_raw,
+        "email": email,
+        "participants": participants,
+        "activity_type": activity_type,
+        "total_price": total_price,
+        "wine": wine,
+    }
+    return render(request, "homePage/payment_page.html", context)
+
+# --- עזר: לתפוס 15 דק' אחרי סוף התור ולהפוך אותן ל"הפסקה" ---
+def _capture_trailing_quarter_slot_as_break(base_appt, slot_count, field_names, activity_obj):
+    """
+    מנסה לתפוס סלוט נוסף של 15 דק' מיד אחרי סוף התור ולסמן אותו כהפסקה.
+    מחזיר את הרשומה שתפס (Appointment) או None אם לא נתפס.
+    - מסמן: is_booked=True, is_paid=False, is_break=True (+ us_break=True אם יש)
+    - מקשר פעילות אם יש activity או activities.
+    """
+    extra_start_dt = datetime.combine(base_appt.date, base_appt.time) + timedelta(minutes=15 * slot_count)
+    extra_time = extra_start_dt.time()
+
+    qs = Appointment.objects.select_for_update().filter(date=base_appt.date, time=extra_time)
+
+    # אל תתפוס הפסקות קיימות מכל סוג
+    if "is_break" in field_names:
+        qs = qs.filter(is_break=False)
+    if "us_break" in field_names:
+        qs = qs.filter(us_break=False)
+
+    extra = qs.first()
+    if not extra or getattr(extra, "is_booked", False):
+        return None
+
+    update_fields = []
+
+    # תפיסת הסלוט כהפסקה (לא משולם)
+    if "is_booked" in field_names:
+        extra.is_booked = True
+        update_fields.append("is_booked")
+    if "is_paid" in field_names:
+        extra.is_paid = False
+        update_fields.append("is_paid")
+
+    if "is_break" in field_names:
+        extra.is_break = True
+        update_fields.append("is_break")
+    if "us_break" in field_names:
+        extra.us_break = True
+        update_fields.append("us_break")
+
+    # פעילות (FK)
+    if activity_obj and "activity" in field_names:
+        extra.activity = activity_obj
+        update_fields.append("activity")
+
+    extra.save(update_fields=update_fields)
+
+    # פעילות (M2M)
+    if activity_obj and hasattr(extra, "activities"):
+        extra.activities.add(activity_obj)
+
+    return extra
+
+@transaction.atomic
+def mock_payment_success(request):
+    """
+    יוצר Booking, תופס סלוטים של 15 דק' לפי duration_minutes,
+    מסמן אותם כשולמו/נתפסו, ותופס עוד 15 דק' בסוף כהפסקה (is_break=True) אם > 30 דקות.
+    לא מעדכן name/phone על Appointment.
+    שומר popup ב-session ומפנה ל-home.
+
+    מצפה: appointment_id, duration_minutes, (אופציונלי) participants, total_price, activity_id, payment_method, payment_ref,
+           (אופציונלי) customer_name / customer_phone / customer_email (ל-Booking).
+    """
+    data = request.GET if request.method == "GET" else request.POST
+
+    def _to_int(v, default=None, min_value=None):
+        if v in (None, ""): return default
+        try:
+            n = int(v)
+            if min_value is not None and n < min_value: return default
+            return n
+        except (TypeError, ValueError):
+            return default
+
+    def _str(v): return (v or "").strip()
+
+    appointment_id   = _to_int(data.get("appointment_id"),   min_value=1)
+    duration_minutes = _to_int(data.get("duration_minutes"), min_value=1)
+    participants     = _to_int(data.get("participants"),     default=1, min_value=1)
+    total_price_str  = _str(data.get("total_price"))
+    activity_id      = _to_int(data.get("activity_id"),      min_value=1)
+    payment_method = "manual"
+    payment_ref      = _str(data.get("payment_ref")) or f"MOCK-{timezone.now().strftime('%Y%m%d%H%M%S')}"
+
+    first_name = _str(data.get("first_name"))
+    last_name = _str(data.get("last_name"))
+
+    # פרטי לקוח ל-Booking (לא ל-Appointment)
+    customer_name = _str(data.get("customer_name")) or " ".join(x for x in [first_name, last_name] if x)
+    customer_phone = _str(data.get("customer_phone")) or _str(data.get("phone"))
+    customer_email = _str(data.get("customer_email")) or _str(data.get("email")) or _str(data.get("email"))
+
+    if not appointment_id or not duration_minutes:
+        request.session['payment_popup'] = {"type":"error","title":"שגיאה","text":"חסרים פרמטרים"}
+        return redirect("home")
+
+    base_appt = get_object_or_404(Appointment.objects.select_for_update(), id=appointment_id)
+    activity  = Activity.objects.filter(id=activity_id).first() if activity_id else None
+
+    # כמה סלוטים של 15 דק' צריך
+    slot_count = max(1, (duration_minutes + 14) // 15)
+    base_dt = datetime.combine(base_appt.date, base_appt.time)
+    times_needed = [(base_dt + timedelta(minutes=15*i)).time() for i in range(slot_count)]
+
+    # שליפת סלוטים לפגישה (פנויים, לא הפסקות)
+    qs = Appointment.objects.select_for_update().filter(
+        date=base_appt.date,
+        time__in=times_needed,
+        is_booked=False,
+        is_break=False,
+    )
+    appts = list(qs)
+    if len(appts) != slot_count or any(a.is_booked for a in appts):
+        request.session['payment_popup'] = {"type":"error","title":"לא נתפס","text":"חסרים סלוטים פנויים"}
+        return redirect("home")
+
+    # יצירת ההזמנה
+    try:
+        total_price = Decimal(total_price_str) if total_price_str else None
+    except Exception:
+        total_price = None
+
+
+    wine = (data.get("wine") or "").strip().lower()   # חדש
+    if wine not in ("white", "red", "none"):
+        wine = ""
+    details_payload = {}
+    if wine:
+        wine_he = {"white": "יין לבן", "red": "יין אדום", "none": "בלי יין"}[wine]
+        details_payload["wine"] = wine_he
+    details_txt = f"יין: {wine_he}" if wine else None
+
+
+    booking = Booking.objects.create(
+        activity=activity or base_appt.activity,  # fallback אם יש FK על הסלוט
+        customer_name=customer_name,
+        customer_phone=customer_phone,
+        customer_email=customer_email,
+        participants=participants or 1,
+        total_price=total_price,
+        payment_method=payment_method,
+        payment_ref=payment_ref,
+        status="paid",
+        start_dt=base_dt,
+        end_dt=base_dt + timedelta(minutes=duration_minutes),
+        details=details_txt,
+    )
+
+    # סימון סלוטי המפגש: שולם/נתפס, קישור להזמנה, לא הפסקה
+    for a in appts:
+        a.booking = booking
+        a.is_paid = True
+        a.is_booked = True
+        a.is_break = False
+        a.payment_reference = payment_ref
+        if activity and a.activity_id != activity.id:
+            a.activity = activity
+        a.save(update_fields=["booking", "is_paid", "is_booked", "is_break", "payment_reference", "activity"])
+
+        # אם יש M2M activities ואת רוצה לשייך – אפשר:
+        if activity and hasattr(a, "activities"):
+            a.activities.add(activity)
+
+    # תפיסת "הפסקה" של 15 דק' אחרי סוף התור אם > 30 דק'
+    extra_appt = None
+    if duration_minutes > 30:
+        extra_start_dt = base_dt + timedelta(minutes=15 * slot_count)
+        extra = Appointment.objects.select_for_update().filter(
+            date=base_appt.date,
+            time=extra_start_dt.time(),
+            is_booked=False,
+            is_break=False,
+        ).first()
+        if extra:
+            extra.booking = booking
+            extra.is_paid = False
+            extra.is_booked = True
+            extra.is_break = True
+            if activity and extra.activity_id != activity.id:
+                extra.activity = activity
+            extra.save(update_fields=["booking", "is_paid", "is_booked", "is_break", "activity"])
+            extra_appt = extra
+            # אופציונלי: להציג גם את תחילת ההפסקה בפופאפ
+            times_needed.append(extra_start_dt.time())
+
+    # פופאפ הצלחה
+    request.session['payment_popup'] = {
+        "type": "success",
+        "title": "התשלום בוצע בהצלחה ✅",
+        "ref": payment_ref,
+        "date": base_appt.date.isoformat(),
+        "times": [t.strftime("%H:%M") for t in sorted(times_needed)],
+        "duration_minutes": duration_minutes,
+        "participants": participants,
+        "total_price": str(total_price) if total_price is not None else None,
+        "booking_id": booking.id,
+        "extra_quarter_captured": bool(extra_appt),
+    }
+    return redirect("home")
+
+@require_http_methods(["GET", "POST"])
+def site_reviews(request):
+    if request.method == "POST":
+        form = SiteReviewForm(request.POST)
+        if form.is_valid():
+            form.save()
+            messages.success(request, "תודה! הביקורת נשמרה.")
+            return redirect('site_reviews')  # אם יש namespace: redirect('homePage:site_reviews')
+        messages.error(request, "יש בעיה בפרטים. נסי שוב.")
+    else:
+        form = SiteReviewForm()
+
+    qs = SiteReview.objects.order_by('-created_at')
+    paginator = Paginator(qs, 10)  # 10 לעמוד
+    page_obj = paginator.get_page(request.GET.get('page'))
+
+    agg = qs.aggregate(avg=Avg('rating'))
+    return render(request, "homePage/site_reviews.html", {
+        "reviews": page_obj.object_list,
+        "page_obj": page_obj,
+        "rating_avg": agg['avg'] or 0,
+        "rating_count": qs.count(),
+        "form": form,
+    })
+
+
+def _client_ip(request):
+    xff = request.META.get("HTTP_X_FORWARDED_FOR")
+    return xff.split(",")[0].strip() if xff else request.META.get("REMOTE_ADDR")
+
+def _find_booking_by_payment_ref(payment_ref: str):
+    ref = (payment_ref or "").strip()
+    if not ref:
+        return None
+    # חיפוש לא-תלוי-רישיות בשדה payment_ref
+    return Booking.objects.filter(payment_ref__iexact=ref).order_by("-id").first()
+@require_http_methods(["GET", "POST"])
+def cancel_request_view(request):
+    initial = {}
+
+    # פרה־פייל לפי booking_id (כמו שהיה)
+    booking_id = request.GET.get("booking_id")
+    if booking_id and booking_id.isdigit():
+        b = Booking.objects.filter(pk=int(booking_id)).first()
+        if b:
+            initial["booking"] = b
+            appt = getattr(b, "appointment", None)
+            if appt:
+                initial["appointment"] = appt
+                try:
+                    if hasattr(appt, "date") and hasattr(appt, "time") and appt.date and appt.time:
+                        initial["start_dt"] = datetime.combine(appt.date, appt.time)
+                    elif hasattr(appt, "start_dt") and appt.start_dt:
+                        initial["start_dt"] = appt.start_dt
+                except Exception:
+                    pass
+
+    if request.method == "POST":
+        form = CancelRequestForm(request.POST, initial=initial)
+        if form.is_valid():
+            obj: CancellationRequest = form.save(commit=False)
+            obj.channel = "web"
+            obj.ip_address = _client_ip(request)
+            obj.user_agent = request.META.get("HTTP_USER_AGENT", "")[:255]
+
+            # השמה אוטומטית של Booking אם הוזן payment_ref
+            if not obj.booking and obj.order_id:
+                b = _find_booking_by_payment_ref(obj.order_id)
+                if b:
+                    obj.booking = b
+
+            # שאיבת התור מתוך ה-Booking אם יש
+            if not obj.appointment and obj.booking and hasattr(obj.booking, "appointment"):
+                obj.appointment = obj.booking.appointment
+
+            # חישוב start_dt אם חסר
+            if (not obj.start_dt) and obj.appointment:
+                try:
+                    if hasattr(obj.appointment, "date") and hasattr(obj.appointment, "time"):
+                        obj.start_dt = datetime.combine(obj.appointment.date, obj.appointment.time)
+                    elif hasattr(obj.appointment, "start_dt") and obj.appointment.start_dt:
+                        obj.start_dt = obj.appointment.start_dt
+                except Exception:
+                    pass
+
+            obj.save()
+
+            # ❌ אין שליחת מיילים כאן.
+            messages.success(request, "קיבלנו את בקשת הביטול שלך ונחזור אליך בהקדם.")
+            return redirect("home")
+    else:
+        form = CancelRequestForm(initial=initial)
+
+    return render(request, "homePage/cancel_request.html", {"form": form})
+
+def _normalize_phone_il(phone: str) -> str:
+    """ ספרות בלבד; 972xxxxxxxxx -> 0xxxxxxxxx; משאיר 0XXXXXXXXX """
+    p = "".join(ch for ch in (phone or "") if ch.isdigit())
+    if p.startswith("972") and len(p) >= 11:
+        p = "0" + p[3:]
+    return p
+
+def _has_consent_by_phone(phone: str) -> bool:
+    sid = _normalize_phone_il(phone)
+    if not sid:
+        return False
+    tv = getattr(settings, "TERMS_VERSION", "1.0")
+    pv = getattr(settings, "PRIVACY_VERSION", "1.0")
+    return (
+        TermsConsent.objects.filter(policy="terms",   version=tv, subject_id=sid).exists() and
+        TermsConsent.objects.filter(policy="privacy", version=pv, subject_id=sid).exists()
+    )
+
+def _save_consent_by_phone(request, phone: str, full_name: str = ""):
+    sid = _normalize_phone_il(phone)
+    if not sid:
+        return
+    ip = request.META.get("REMOTE_ADDR")
+    ua = (request.META.get("HTTP_USER_AGENT") or "")[:255]
+    tv = getattr(settings, "TERMS_VERSION", "1.0")
+    pv = getattr(settings, "PRIVACY_VERSION", "1.0")
+
+    TermsConsent.objects.get_or_create(
+        policy="terms", version=tv, subject_id=sid,
+        defaults={"full_name": full_name, "ip": ip, "user_agent": ua}
+    )
+    TermsConsent.objects.get_or_create(
+        policy="privacy", version=pv, subject_id=sid,
+        defaults={"full_name": full_name, "ip": ip, "user_agent": ua}
+    )
+
+@require_GET
+def consent_status(request):
+    """API: מחזיר אם צריך צ'קבוקס בהתאם לטלפון ולגרסאות הנוכחיות (בלי קוקיז)"""
+    phone = request.GET.get("phone") or ""
+    needs = not _has_consent_by_phone(phone)
+    return JsonResponse({
+        "needs_consent": needs,
+        "versions": {"terms": settings.TERMS_VERSION, "privacy": settings.PRIVACY_VERSION}
+    })
 
 def booking_form(request):
+    if request.GET.get("ajax") == "consent":
+        phone = request.GET.get("phone", "")
+        need = not _has_consent_by_phone(phone)
+        return JsonResponse({
+            "needs_consent": need,
+            "versions": {
+                "terms": getattr(settings, "TERMS_VERSION", "1.0"),
+                "privacy": getattr(settings, "PRIVACY_VERSION", "1.0"),
+            }
+        })
     appointment_id   = request.GET.get('appointment_id')
     activity_id      = request.GET.get('activity_id')
     duration_minutes = request.GET.get('duration_minutes')      # מחרוזת או None
@@ -565,345 +980,3 @@ def booking_form(request):
         'wine': wine,
         'is_couple_day': is_couple_day,
     })
-
-@csrf_exempt
-def confirm_booking(request):
-    if request.method != "POST":
-        return HttpResponseBadRequest("Invalid method")
-
-    # שדות שכבר יש לך בטופס:
-    appointment_id   = request.POST.get("appointment_id")
-    activity_id      = request.POST.get("activity_id")
-    duration_minutes = request.POST.get("duration_minutes")
-    first_name       = request.POST.get("first_name")
-    last_name        = request.POST.get("last_name")
-    phone            = request.POST.get("phone")
-    gmail            = request.POST.get("gmail")
-    participants     = request.POST.get("participants")
-    activity_type    = request.POST.get("activity_type")
-    wine = request.POST.get("wine")
-
-
-    # דוגמאות לשימוש:
-    # 1) שמירה במסד (אם יש שדה מתאים במודל ההזמנה שלך)
-    # booking.payment_method = payment_method
-    # booking.save()
-
-    # 2) או העברת זה לדף סיכום/תשלום:
-    appointment = get_object_or_404(Appointment, id=appointment_id)
-    activity    = get_object_or_404(Activity, id=activity_id)
-    total_price = request.POST.get("total_price")
-
-    context = {
-        "appointment": appointment,
-        "activity": activity,
-        "duration_minutes": duration_minutes,
-        "first_name": first_name,
-        "last_name": last_name,
-        "phone": phone,
-        "gmail": gmail,
-        "participants": participants,
-        "activity_type": activity_type,
-        "total_price": total_price,
-        "wine": wine,
-    }
-    return render(request, "homePage/payment_page.html", context)
-
-# --- עזר: לתפוס 15 דק' אחרי סוף התור ולהפוך אותן ל"הפסקה" ---
-def _capture_trailing_quarter_slot_as_break(base_appt, slot_count, field_names, activity_obj):
-    """
-    מנסה לתפוס סלוט נוסף של 15 דק' מיד אחרי סוף התור ולסמן אותו כהפסקה.
-    מחזיר את הרשומה שתפס (Appointment) או None אם לא נתפס.
-    - מסמן: is_booked=True, is_paid=False, is_break=True (+ us_break=True אם יש)
-    - מקשר פעילות אם יש activity או activities.
-    """
-    extra_start_dt = datetime.combine(base_appt.date, base_appt.time) + timedelta(minutes=15 * slot_count)
-    extra_time = extra_start_dt.time()
-
-    qs = Appointment.objects.select_for_update().filter(date=base_appt.date, time=extra_time)
-
-    # אל תתפוס הפסקות קיימות מכל סוג
-    if "is_break" in field_names:
-        qs = qs.filter(is_break=False)
-    if "us_break" in field_names:
-        qs = qs.filter(us_break=False)
-
-    extra = qs.first()
-    if not extra or getattr(extra, "is_booked", False):
-        return None
-
-    update_fields = []
-
-    # תפיסת הסלוט כהפסקה (לא משולם)
-    if "is_booked" in field_names:
-        extra.is_booked = True
-        update_fields.append("is_booked")
-    if "is_paid" in field_names:
-        extra.is_paid = False
-        update_fields.append("is_paid")
-
-    if "is_break" in field_names:
-        extra.is_break = True
-        update_fields.append("is_break")
-    if "us_break" in field_names:
-        extra.us_break = True
-        update_fields.append("us_break")
-
-    # פעילות (FK)
-    if activity_obj and "activity" in field_names:
-        extra.activity = activity_obj
-        update_fields.append("activity")
-
-    extra.save(update_fields=update_fields)
-
-    # פעילות (M2M)
-    if activity_obj and hasattr(extra, "activities"):
-        extra.activities.add(activity_obj)
-
-    return extra
-
-@transaction.atomic
-def mock_payment_success(request):
-    """
-    יוצר Booking, תופס סלוטים של 15 דק' לפי duration_minutes,
-    מסמן אותם כשולמו/נתפסו, ותופס עוד 15 דק' בסוף כהפסקה (is_break=True) אם > 30 דקות.
-    לא מעדכן name/phone על Appointment.
-    שומר popup ב-session ומפנה ל-home.
-
-    מצפה: appointment_id, duration_minutes, (אופציונלי) participants, total_price, activity_id, payment_method, payment_ref,
-           (אופציונלי) customer_name / customer_phone / customer_email (ל-Booking).
-    """
-    data = request.GET if request.method == "GET" else request.POST
-
-    def _to_int(v, default=None, min_value=None):
-        if v in (None, ""): return default
-        try:
-            n = int(v)
-            if min_value is not None and n < min_value: return default
-            return n
-        except (TypeError, ValueError):
-            return default
-
-    def _str(v): return (v or "").strip()
-
-    appointment_id   = _to_int(data.get("appointment_id"),   min_value=1)
-    duration_minutes = _to_int(data.get("duration_minutes"), min_value=1)
-    participants     = _to_int(data.get("participants"),     default=1, min_value=1)
-    total_price_str  = _str(data.get("total_price"))
-    activity_id      = _to_int(data.get("activity_id"),      min_value=1)
-    payment_method = "manual"
-    payment_ref      = _str(data.get("payment_ref")) or f"MOCK-{timezone.now().strftime('%Y%m%d%H%M%S')}"
-
-    first_name = _str(data.get("first_name"))
-    last_name = _str(data.get("last_name"))
-
-    # פרטי לקוח ל-Booking (לא ל-Appointment)
-    customer_name = _str(data.get("customer_name")) or " ".join(x for x in [first_name, last_name] if x)
-    customer_phone = _str(data.get("customer_phone")) or _str(data.get("phone"))
-    customer_email = _str(data.get("customer_email")) or _str(data.get("gmail")) or _str(data.get("email"))
-
-    if not appointment_id or not duration_minutes:
-        request.session['payment_popup'] = {"type":"error","title":"שגיאה","text":"חסרים פרמטרים"}
-        return redirect("home")
-
-    base_appt = get_object_or_404(Appointment.objects.select_for_update(), id=appointment_id)
-    activity  = Activity.objects.filter(id=activity_id).first() if activity_id else None
-
-    # כמה סלוטים של 15 דק' צריך
-    slot_count = max(1, (duration_minutes + 14) // 15)
-    base_dt = datetime.combine(base_appt.date, base_appt.time)
-    times_needed = [(base_dt + timedelta(minutes=15*i)).time() for i in range(slot_count)]
-
-    # שליפת סלוטים לפגישה (פנויים, לא הפסקות)
-    qs = Appointment.objects.select_for_update().filter(
-        date=base_appt.date,
-        time__in=times_needed,
-        is_booked=False,
-        is_break=False,
-    )
-    appts = list(qs)
-    if len(appts) != slot_count or any(a.is_booked for a in appts):
-        request.session['payment_popup'] = {"type":"error","title":"לא נתפס","text":"חסרים סלוטים פנויים"}
-        return redirect("home")
-
-    # יצירת ההזמנה
-    try:
-        total_price = Decimal(total_price_str) if total_price_str else None
-    except Exception:
-        total_price = None
-
-
-    wine = (data.get("wine") or "").strip().lower()   # חדש
-    if wine not in ("white", "red", "none"):
-        wine = ""
-    details_payload = {}
-    if wine:
-        wine_he = {"white": "יין לבן", "red": "יין אדום", "none": "בלי יין"}[wine]
-        details_payload["wine"] = wine_he
-    details_txt = f"יין: {wine_he}" if wine else None
-
-
-    booking = Booking.objects.create(
-        activity=activity or base_appt.activity,  # fallback אם יש FK על הסלוט
-        customer_name=customer_name,
-        customer_phone=customer_phone,
-        customer_email=customer_email,
-        participants=participants or 1,
-        total_price=total_price,
-        payment_method=payment_method,
-        payment_ref=payment_ref,
-        status="paid",
-        start_dt=base_dt,
-        end_dt=base_dt + timedelta(minutes=duration_minutes),
-        details=details_txt,
-    )
-
-    # סימון סלוטי המפגש: שולם/נתפס, קישור להזמנה, לא הפסקה
-    for a in appts:
-        a.booking = booking
-        a.is_paid = True
-        a.is_booked = True
-        a.is_break = False
-        a.payment_reference = payment_ref
-        if activity and a.activity_id != activity.id:
-            a.activity = activity
-        a.save(update_fields=["booking", "is_paid", "is_booked", "is_break", "payment_reference", "activity"])
-
-        # אם יש M2M activities ואת רוצה לשייך – אפשר:
-        if activity and hasattr(a, "activities"):
-            a.activities.add(activity)
-
-    # תפיסת "הפסקה" של 15 דק' אחרי סוף התור אם > 30 דק'
-    extra_appt = None
-    if duration_minutes > 30:
-        extra_start_dt = base_dt + timedelta(minutes=15 * slot_count)
-        extra = Appointment.objects.select_for_update().filter(
-            date=base_appt.date,
-            time=extra_start_dt.time(),
-            is_booked=False,
-            is_break=False,
-        ).first()
-        if extra:
-            extra.booking = booking
-            extra.is_paid = False
-            extra.is_booked = True
-            extra.is_break = True
-            if activity and extra.activity_id != activity.id:
-                extra.activity = activity
-            extra.save(update_fields=["booking", "is_paid", "is_booked", "is_break", "activity"])
-            extra_appt = extra
-            # אופציונלי: להציג גם את תחילת ההפסקה בפופאפ
-            times_needed.append(extra_start_dt.time())
-
-    # פופאפ הצלחה
-    request.session['payment_popup'] = {
-        "type": "success",
-        "title": "התשלום בוצע בהצלחה ✅",
-        "ref": payment_ref,
-        "date": base_appt.date.isoformat(),
-        "times": [t.strftime("%H:%M") for t in sorted(times_needed)],
-        "duration_minutes": duration_minutes,
-        "participants": participants,
-        "total_price": str(total_price) if total_price is not None else None,
-        "booking_id": booking.id,
-        "extra_quarter_captured": bool(extra_appt),
-    }
-    return redirect("home")
-
-@require_http_methods(["GET", "POST"])
-def site_reviews(request):
-    if request.method == "POST":
-        form = SiteReviewForm(request.POST)
-        if form.is_valid():
-            form.save()
-            messages.success(request, "תודה! הביקורת נשמרה.")
-            return redirect('site_reviews')  # אם יש namespace: redirect('homePage:site_reviews')
-        messages.error(request, "יש בעיה בפרטים. נסי שוב.")
-    else:
-        form = SiteReviewForm()
-
-    qs = SiteReview.objects.order_by('-created_at')
-    paginator = Paginator(qs, 10)  # 10 לעמוד
-    page_obj = paginator.get_page(request.GET.get('page'))
-
-    agg = qs.aggregate(avg=Avg('rating'))
-    return render(request, "homePage/site_reviews.html", {
-        "reviews": page_obj.object_list,
-        "page_obj": page_obj,
-        "rating_avg": agg['avg'] or 0,
-        "rating_count": qs.count(),
-        "form": form,
-    })
-
-
-def _client_ip(request):
-    xff = request.META.get("HTTP_X_FORWARDED_FOR")
-    return xff.split(",")[0].strip() if xff else request.META.get("REMOTE_ADDR")
-
-def _find_booking_by_payment_ref(payment_ref: str):
-    ref = (payment_ref or "").strip()
-    if not ref:
-        return None
-    # חיפוש לא-תלוי-רישיות בשדה payment_ref
-    return Booking.objects.filter(payment_ref__iexact=ref).order_by("-id").first()
-
-
-@require_http_methods(["GET", "POST"])
-def cancel_request_view(request):
-    initial = {}
-
-    # פרה־פייל לפי booking_id (כמו שהיה)
-    booking_id = request.GET.get("booking_id")
-    if booking_id and booking_id.isdigit():
-        b = Booking.objects.filter(pk=int(booking_id)).first()
-        if b:
-            initial["booking"] = b
-            appt = getattr(b, "appointment", None)
-            if appt:
-                initial["appointment"] = appt
-                try:
-                    if hasattr(appt, "date") and hasattr(appt, "time") and appt.date and appt.time:
-                        initial["start_dt"] = datetime.combine(appt.date, appt.time)
-                    elif hasattr(appt, "start_dt") and appt.start_dt:
-                        initial["start_dt"] = appt.start_dt
-                except Exception:
-                    pass
-
-    if request.method == "POST":
-        form = CancelRequestForm(request.POST, initial=initial)
-        if form.is_valid():
-            obj: CancellationRequest = form.save(commit=False)
-            obj.channel = "web"
-            obj.ip_address = _client_ip(request)
-            obj.user_agent = request.META.get("HTTP_USER_AGENT", "")[:255]
-
-            # השמה אוטומטית של Booking אם הוזן payment_ref
-            if not obj.booking and obj.order_id:
-                b = _find_booking_by_payment_ref(obj.order_id)
-                if b:
-                    obj.booking = b
-
-            # שאיבת התור מתוך ה-Booking אם יש
-            if not obj.appointment and obj.booking and hasattr(obj.booking, "appointment"):
-                obj.appointment = obj.booking.appointment
-
-            # חישוב start_dt אם חסר
-            if (not obj.start_dt) and obj.appointment:
-                try:
-                    if hasattr(obj.appointment, "date") and hasattr(obj.appointment, "time"):
-                        obj.start_dt = datetime.combine(obj.appointment.date, obj.appointment.time)
-                    elif hasattr(obj.appointment, "start_dt") and obj.appointment.start_dt:
-                        obj.start_dt = obj.appointment.start_dt
-                except Exception:
-                    pass
-
-            obj.save()
-
-            # ❌ אין שליחת מיילים כאן.
-            messages.success(request, "קיבלנו את בקשת הביטול שלך ונחזור אליך בהקדם.")
-            return redirect("home")
-    else:
-        form = CancelRequestForm(initial=initial)
-
-    return render(request, "homePage/cancel_request.html", {"form": form})
-

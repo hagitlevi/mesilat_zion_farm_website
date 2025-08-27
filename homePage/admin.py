@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import Activity, Appointment, CustomSchedule, Booking, SiteReview,CancellationRequest
+from .models import Activity, Appointment, CustomSchedule, Booking, SiteReview,CancellationRequest, TermsConsent
 
 @admin.register(Activity)
 class ActivityAdmin(admin.ModelAdmin):
@@ -9,7 +9,6 @@ class ActivityAdmin(admin.ModelAdmin):
     ordering = ("name",)
     list_display_links = ("id", "name")
 
-
 @admin.register(Appointment)
 class AppointmentAdmin(admin.ModelAdmin):
     list_display = ("date", "time", "duration_minutes", "is_booked", "is_break")
@@ -18,7 +17,6 @@ class AppointmentAdmin(admin.ModelAdmin):
     ordering = ("-date", "time")
     search_fields = ("customer_name", "customer_phone")
     filter_horizontal = ("activities",)
-
 
 @admin.register(CustomSchedule)
 class CustomScheduleAdmin(admin.ModelAdmin):
@@ -44,7 +42,6 @@ class ActivityRuleAdmin(admin.ModelAdmin):
     list_display = ("activity","season","start_time","end_time","assigned_only","booking_cutoff_minutes")
     filter_horizontal = ("days",)
 
-
 class AppointmentInline(admin.TabularInline):
     model = Appointment
     extra = 0
@@ -60,14 +57,12 @@ class BookingAdmin(admin.ModelAdmin):
     search_fields = ("customer_name", "customer_phone", "customer_email", "payment_ref")
     inlines = [AppointmentInline]
 
-
 @admin.register(SiteReview)
 class SiteReviewAdmin(admin.ModelAdmin):
     list_display  = ('name', 'rating', 'created_at')      # הורדנו is_approved/email
     list_filter   = ('rating',)
     search_fields = ('name', 'comment')
     ordering      = ('-created_at',)
-
 
 @admin.register(CancellationRequest)
 class CancellationRequestAdmin(admin.ModelAdmin):
@@ -89,3 +84,12 @@ class CancellationRequestAdmin(admin.ModelAdmin):
         appt = obj.appointment_resolved
         return appt.id if appt else "-"
     appointment_col.short_description = "Appointment"
+
+@admin.register(TermsConsent)
+class TermsConsentAdmin(admin.ModelAdmin):
+    list_display   = ("subject_id", "full_name", "policy", "version", "accepted_at", "ip")
+    list_filter    = ("policy", "version", "accepted_at")
+    search_fields  = ("subject_id", "full_name", "ip", "user_agent")
+    date_hierarchy = "accepted_at"
+    ordering       = ("-accepted_at",)
+    readonly_fields = ("accepted_at",)

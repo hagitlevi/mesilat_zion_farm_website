@@ -4,7 +4,7 @@ from django.core.validators import MinValueValidator, MaxValueValidator  # ול�
 from django.db.models.signals import pre_delete
 from django.dispatch import receiver
 from django.utils import timezone
-
+from django.conf import settings
 
 ACTIVITY_TYPES = [
     ('basic', 'מתחילים'),
@@ -246,6 +246,26 @@ class CancellationRequest(models.Model):
             base += f" | מועד: {local:%Y-%m-%d %H:%M}"
         return base
 
+class TermsConsent(models.Model):
+    POLICY_CHOICES = [("terms","Terms of Service"), ("privacy","Privacy Policy")]
+
+    policy      = models.CharField(max_length=16, choices=POLICY_CHOICES)
+    version     = models.CharField(max_length=16)                 # למשל "1.3"
+    subject_id  = models.CharField(max_length=32, db_index=True)  # כאן נשמור טלפון מנורמל (ספרות בלבד, 0XXXXXXXXX)
+    full_name = models.CharField(max_length=120, blank=True)
+    accepted_at = models.DateTimeField(auto_now_add=True)
+    ip          = models.GenericIPAddressField(null=True, blank=True)
+    user_agent  = models.CharField(max_length=255, blank=True)
+
+    class Meta:
+        unique_together = (("policy","version","subject_id"),)
+        indexes = [models.Index(fields=["policy","version","subject_id"])]
+        verbose_name = "אישר/ה מדיניות"
+        verbose_name_plural = "אישורי מדיניות"
+
+    def __str__(self):
+        return f"{self.policy} v{self.version} by {self.subject_id} @ {self.accepted_at:%Y-%m-%d}"
+
 
 
 
@@ -258,7 +278,6 @@ def release_slots_for_booking(booking, using='default'):
     - איפוס פרטי לקוח/רפרנס
     - איפוס activity ו-M2M activities (אם קיימים)
     """
-    from .models import Appointment  # הימנעות מ-circular import אם מקומת במקום אחר
 
     with transaction.atomic(using=using):
         qs = Appointment.objects.using(using).select_for_update().filter(booking=booking)
