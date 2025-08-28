@@ -1,136 +1,211 @@
-/* =======================
-   Cancel Request — Styling
-   עובד עם המבנה שהדבקת (label + שדה בפנים)
-   ======================= */
-
-:root{
-  --mz-green: var(--main-color, #2f6e2f);
-  --mz-bg: #f7fbf6;
-  --mz-card: #ffffff;
-  --mz-border: #e3e8e2;
-  --mz-text: #111;
-  --mz-muted: #667085;
-  --mz-error: #b00020;
-  --mz-focus: #0ea5e9;
+/* ===========================
+   בסיס כללי לעמוד
+   =========================== */
+*, *::before, *::after { box-sizing: border-box; }
+html, body { min-height: 100dvh;  }
+/* ===========================
+   מעטפת הטופס
+   =========================== */
+.details {
+  padding: clamp(16px, 3vw, 36px);
+  margin-bottom: 50px;
 }
-
-/* רקע רך לעמוד */
-body {
-  background: var(--mz-bg);
-}
-
-/* מעטפת הדף */
-.cancel-wrapper{
-  max-width: 900px;
-  margin: 28px auto;
-  padding: clamp(14px, 2vw, 26px);
-  background: var(--mz-card);
-  border: 1px solid var(--mz-border);
-  border-radius: 16px;
-  box-shadow: 0 6px 18px rgba(0,0,0,.06);
-}
-
-/* כותרת ותיאור */
-.cancel-wrapper h1{
-  margin: 0 0 10px;
-  font-size: clamp(22px, 3.2vw, 34px);
-  color: var(--mz-green);
-  line-height: 1.2;
-}
-.cancel-wrapper > p{
-  margin: 0 0 16px;
-  color: var(--mz-muted);
-}
-
-/* גריד של השדות */
-.form-grid{
-  display: grid;
-  gap: 14px;
-  grid-template-columns: 1fr;
-}
-@media (min-width: 760px){
-  .form-grid{ grid-template-columns: 1fr 1fr; }
-}
-
-/* כל שורה (label) מכילה את הכותרת והשדה */
-.form-grid label{
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  font-weight: 600;
-  color: var(--mz-text);
-}
-
-/* עיצוב לשדות עצמם (input/textarea/select) */
-.form-grid label input,
-.form-grid label textarea,
-.form-grid label select{
-  width: 100%;
-  font-weight: 400;
-  font-size: 16px;
-  color: var(--mz-text);
-  background: #fff;
-  border: 1px solid var(--mz-border);
-  border-radius: 10px;
-  padding: 11px 12px;
-  transition: border-color .2s, box-shadow .2s;
-}
-
-/* datetime-local */
-.form-grid label input[type="datetime-local"]{
+.details form{
   direction: rtl;
+  text-align: right;
+  width: 100%;
+  max-width: 760px;
+  margin: 0 auto;
+  background: #ffffff;
+  border: 1px solid var(--main-border);
+  border-radius: 20px;
+  box-shadow: 0 12px 28px rgba(0,0,0,.06);
+  padding: clamp(18px, 3.5vw, 32px);
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 12px;
 }
 
-/* מצב פוקוס */
-.form-grid label input:focus,
-.form-grid label textarea:focus,
-.form-grid label select:focus{
+/* למנוע גלישה של פריטים בגריד */
+.details form > * { min-width: 0; }
+
+/* מעטפת + כותרות */
+.details{ padding: clamp(16px,3vw,36px); margin-bottom: 50px; }
+.details h1{
+  text-align:center; margin:0 0 6px; font-size:clamp(22px,3.2vw,34px);
+  color:var(--main-color,#2f6e2f); font-weight:800;
+}
+.details > p{
+  text-align:center; margin:0 0 16px; color:var(--main-muted,#6b786f);
+  font-size:clamp(14px,1.6vw,16px);
+}
+
+
+/* שדות אחד מתחת לשני */
+.form-grid{
+  display:grid;
+  grid-template-columns:1fr !important;   /* מבטל שתי עמודות אם מוגדר במקום אחר */
+  gap:12px;
+}
+
+/* label עוטף input – מסתירים את טקסט הלייבל, משאירים רק את השדה */
+.form-grid label{ display:block; font-size:0; margin:0; }
+
+/* השדות עצמם – קפסולות כמו בעמוד השני */
+.form-grid input[type="text"],
+.form-grid input[type="tel"],
+.form-grid input[type="email"],
+.form-grid input[type="number"],
+.form-grid input[type="datetime-local"],
+.form-grid textarea,
+.form-grid select{
+  width:100%; max-width:100%;
+  border:1.5px solid var(--main-border,#e6efe7);
+  border-radius:14px;
+  padding:12px 14px;
+  background:var(--main-white,#fff);
+  color:#000; outline:none;
+  transition:border-color .2s, box-shadow .2s, transform .04s;
+  font-size:16px; /* חשוב כי הורה על 0 */
+}
+
+
+/* כיווניות טבעית */
+.form-grid textarea{ direction:rtl; text-align:right; }
+.form-grid input[name="full_name"]{ direction:rtl; text-align:right; }
+.form-grid input[name="phone"],
+.form-grid input[name="email"],
+.form-grid input[name="order_id"],
+.form-grid input[name="start_dt"]{
+  direction:ltr; text-align:left;
+}
+
+/* placeholder מיושר נכון */
+.form-grid input::placeholder,
+.form-grid textarea::placeholder{ color:#888; }
+.form-grid input[name="phone"]::placeholder,
+.form-grid input[name="email"]::placeholder,
+.form-grid input[name="order_id"]::placeholder{ text-align:left; direction:ltr; }
+
+/* טקסט־אירה גבוה ונמתח */
+.form-grid textarea{ min-height:110px; resize:vertical;  font-family: "Arial",sans-serif;
+ }
+
+/* הסתרת honeypot */
+input[name="honeypot"]{ display:none !important; }
+
+/* שגיאות כלליות */
+
+.details .errors{
+  margin-top:4px;
+  padding:10px 14px;
+  border-radius:14px;
+  border:1px solid var(--main-color);
+  background:#fae8e8;
+  color:#6b0000;
+  direction:rtl;
+  text-align:center;
+  font-family:"Arial",sans-serif;
+}
+
+
+/* כפתור – אותו מראה */
+.btn.btn-primary{
+  background:var(--main-color,#2f6e2f);
+  color:#fff; border:none; border-radius:16px; padding:14px 16px;
+  font-weight:700; letter-spacing:.2px; cursor:pointer; font-size:20px;
+  box-shadow:0 10px 18px rgb(from var(--main-emerald,#b8e3ac) r g b / .22);
+  transition:transform .06s ease, box-shadow .2s ease, filter .15s;
+  width:100%;
+}
+.btn.btn-primary:hover{
+  transform:translateY(0);
+  box-shadow:0 8px 16px rgba(112,74,34,.15);
+  filter:saturate(1.05);
+}
+
+/* מיישר את כל שדות הטופס לימין, כולל ההקלדה וה-placeholder */
+.details .form-grid :is(input, textarea, select){
+  direction: rtl !important;
+  text-align: right !important;
+  unicode-bidi: plaintext; /* מתנהג יפה גם כשמקלידים ספרות/אותיות לטיניות */
+  width:100%;
+}
+
+/* placeholder מימין */
+.details .form-grid :is(input, textarea)::placeholder{
+  direction: rtl !important;
+  text-align: right !important;
+  color: #888;
+}
+
+/* תאריך/שעה – יש דפדפנים שלא מכבדים יישור, אז נכפה */
+.details .form-grid input[type="datetime-local"]{
+  direction: rtl !important;
+  text-align: right !important;
+}
+.details .form-grid input[type="datetime-local"]{
+  text-align: right !important;
+}
+/* טור אחד ושדות ממורכזים בתוך הכרטיס */
+.details .form-grid{
+  display: grid;
+  grid-template-columns: 1fr;       /* שורה מתחת לשורה */
+  gap: 12px;
+}
+
+/* הלייבל עוטף את השדה → נהפוך אותו לפלקס שממרכז את השדה */
+.details .form-grid > label{
+  display: flex;                    /* היה block */
+  justify-content: center;          /* מרכז אופקית */
+  align-items: center;              /* מיישר אנכית */
+  font-size: 0;                     /* מסתיר טקסט לייבל ויזואלית */
+  margin: 0;
+}
+
+/* רוחב אחיד לשדות ומרכוז */
+.details .form-grid > label > input,
+.details .form-grid > label > textarea,
+.details .form-grid > label > select{
+  width: 100%;
+  max-width: 100%;
+  border: 1.5px solid var(--main-border);
+  border-radius: 14px;
+  padding: 12px 14px;
+  background: var(--main-white);
+  color: black;
   outline: none;
-  border-color: var(--mz-focus);
-  box-shadow: 0 0 0 3px rgba(14,165,233,.18);
+  transition: border-color .2s, box-shadow .2s, transform .04s;
+    direction: ltr;
+  text-align: right;
 }
 
-/* הפיכת שדה 'סיבת ביטול' לשורה רחבה */
-.form-grid label:has(textarea){
-  grid-column: 1 / -1;
+/* טקסט מימין בזמן הקלדה וגם placeholder */
+.details .form-grid :is(input, textarea, select){
+  direction: rtl;
+  text-align: right;
+  unicode-bidi: plaintext;
 }
-.form-grid label textarea{
-  min-height: 100px;
+.details .form-grid :is(input, textarea)::placeholder{
+  direction: rtl;
+  text-align: right;
+  color: #888;
+}
+
+/* טקסט־אירה גבוה ונמתח */
+.details .form-grid textarea{
+  min-height: 110px;
   resize: vertical;
 }
 
-/* הודעות שגיאה כלליות של הטופס */
-.errors{
-  margin-top: 10px;
-  border: 1px solid #ffd4d4;
-  background: #fff3f3;
-  color: var(--mz-error);
-  padding: 10px 12px;
-  border-radius: 10px;
-  font-size: 14px;
+/* הסתרת שדות חבויים (כולל honeypot/booking/appointment) */
+.details .form-grid input[type="hidden"],
+.details input[name="honeypot"]{
+  display: none !important;
 }
 
-/* כפתורים */
-.btn{
-  appearance: none;
-  border: 0;
-  border-radius: 12px;
-  padding: 12px 18px;
-  font-weight: 700;
-  cursor: pointer;
-  transition: transform .06s ease, box-shadow .2s ease, background .2s;
-}
-.btn-primary{
-  background: var(--mz-green);
-  color: #fff;
-  box-shadow: 0 6px 14px rgba(47,110,47,.18);
-}
-.btn-primary:hover{
-  background: #ab9074;
-  transform: translateY(-1px);
-}
-
-/* מרווח לפני הכפתור */
-form .btn-primary{
-  margin-top: 10px;
+.details form textarea:focus,
+.details form input:focus{
+  border-color: var(--main-color);
+  box-shadow:0 0 0 4px color-mix(in oklab, var(--main-color,#2f6e2f) 18%, transparent);
 }

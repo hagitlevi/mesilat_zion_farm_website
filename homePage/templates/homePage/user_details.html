@@ -24,7 +24,7 @@
       {# אם יש יותר מסוג פעילות אחד (ולא רכיבה זוגית) – נציג בחירה; אחרת נעביר חבוי #}
       {% if type_options|length > 1 and activity.name != "רכיבה זוגית" %}
         <select id="activity_type" name="activity_type" required onchange="this.form.requestSubmit()">
-          <option value="" disabled {% if not selected_type %}selected{% endif %} hidden>צבע הסוס</option>
+          <option value="" disabled {% if not selected_type %}selected{% endif %} hidden>בחרו את צבע הסוס*</option>
           {% for opt in type_options %}
             <option value="{{ opt.code }}" {% if selected_type == opt.code %}selected{% endif %}>
               {{ opt.label }}
@@ -38,7 +38,7 @@
       {# אם הכמות לא קבועה – נציג בחירה; אחרת נעביר חבוי #}
       {% if activity.min_participants != activity.max_participants %}
         <select id="participants" name="participants" required onchange="this.form.requestSubmit()" required>
-          <option value="" disabled {% if not selected_participants %}selected{% endif %} hidden>בחרו מספר רוכבים</option>
+          <option value="" disabled {% if not selected_participants %}selected{% endif %} hidden>בחרו מספר רוכבים*</option>
           {% for n in participants_range %}
             <option value="{{ n }}" {% if selected_participants == n %}selected{% endif %}>{{ n }}</option>
           {% endfor %}
@@ -50,12 +50,15 @@
       {# חדש: בחירת צבע היין — מוצג רק ברכיבה זוגית ביום #}
         {% if is_couple_day %}
           <select id="wine" name="wine" required onchange="this.form.requestSubmit()">
-            <option value="" disabled {% if not wine %}selected{% endif %} hidden>בחירת צבע היין</option>
+            <option value="" disabled {% if not wine %}selected{% endif %} hidden>בחרו יין*</option>
             <option value="white" {% if wine == 'white' %}selected{% endif %}>יין לבן</option>
             <option value="red"   {% if wine == 'red' %}selected{% endif %}>יין אדום</option>
             <option value="none"  {% if wine == 'none' %}selected{% endif %}>בלי יין</option>
           </select>
         {% endif %}
+
+      <div id="selector-errors" class="field-error"></div>
+
 
     </form>
 {% endif %}
@@ -90,7 +93,7 @@
 
 
   {# ==== טופס POST לפרטים ותשלום ==== #}
-  <form method="POST" action="{% url 'confirm_booking' %}" id="booking-form" novalidate>
+  <form method="POST" action="{% url 'confirm_booking' %}" id="booking-form">
     {% csrf_token %}
     <input type="hidden" name="appointment_id"   value="{{ appointment.id }}">
     <input type="hidden" name="activity_id"      value="{{ activity.id }}">
@@ -113,10 +116,23 @@
     {% if unit_price %}<input type="hidden" name="unit_price"  value="{{ unit_price }}">{% endif %}
     {% if total_price %}<input type="hidden" name="total_price" value="{{ total_price }}">{% endif %}
 
-    <input type="text"  name="first_name" placeholder="שם פרטי"  required>
-    <input type="text"  name="last_name"  placeholder="שם משפחה" required>
-    <input type="tel"   name="phone"      placeholder="טלפון"    required>
-    <input type="email" name="email"      placeholder="מייל"     required>
+    <input type="text"  name="first_name" placeholder="שם פרטי*"  required
+           oninvalid="this.setCustomValidity('חובה למלא שם פרטי')"
+           oninput="this.setCustomValidity('')">
+
+    <input type="text"  name="last_name"  placeholder="שם משפחה*" required
+           oninvalid="this.setCustomValidity('חובה למלא שם משפחה')"
+           oninput="this.setCustomValidity('')">
+
+    <input type="tel"   name="phone"      placeholder="טלפון*"     required
+           pattern="^0(5\d{8}|[2-9]\d{7})$"
+           oninvalid="this.setCustomValidity(this.validity.patternMismatch ? 'מספר טלפון ישראלי לא תקין' : 'חובה למלא טלפון')"
+           oninput="this.setCustomValidity('')">
+
+    <input type="email" name="email"      placeholder="מייל*"      required
+           oninvalid="this.setCustomValidity(this.validity.typeMismatch ? 'כתובת מייל לא תקינה' : 'חובה למלא מייל')"
+           oninput="this.setCustomValidity('')">
+
 
 
     <div id="consent-area" class="legal-consent"></div>
@@ -139,83 +155,106 @@
 <script>
 (function(){
   const form = document.getElementById('booking-form');
-  const phoneInput = form ? form.elements.phone : null;   // name="phone"
+  if (!form) return;
+
   const consentArea = document.getElementById('consent-area');
+  const phoneInput  = form.elements.phone;
   const CONSENT_URL = "{% url 'booking_form' %}?ajax=consent&phone=";
+  const rePhoneIL   = /^0(5\d{8}|[2-9]\d{7})$/;
 
-  if (!form || !phoneInput || !consentArea) return;
-
-  // ולידציה בסיסית לישראל (אותה אחת שיש לך)
-  const rePhoneIL = /^0(5\d{8}|[2-9]\d{7})$/;
-
-  // דה-באונס לבקשת הסטטוס
-  let t = null;
-  phoneInput.addEventListener('input', function(){
-    if (t) clearTimeout(t);
-    t = setTimeout(checkConsent, 250);
+  // —— ניקוי הודעות custom של ה-selects כאשר המשתמש בוחר ערך ——
+  ['activity_type','participants','wine'].forEach(id=>{
+    const el = document.getElementById(id);
+    if (el) el.addEventListener('change', () => el.setCustomValidity(''));
   });
 
-  // בפעם הראשונה אם כבר מולא טלפון (למשל back)
-  if ((phoneInput.value || '').trim().length > 0) {
-    checkConsent();
+  // —— ולידציה “בועה” ל-select בזמן submit (כשצריך) ——
+  const needParticipants = {% if activity.min_participants != activity.max_participants %}true{% else %}false{% endif %};
+  const needType        = {% if type_options|length > 1 and activity.name != "רכיבה זוגית" %}true{% else %}false{% endif %};
+  const needWine        = {% if is_couple_day %}true{% else %}false{% endif %};
+
+  function requireSelect(e, id, msg){
+    const el = document.getElementById(id);
+    if (el && !el.value){
+      e.preventDefault();
+      el.setCustomValidity(msg);
+      el.reportValidity();                  // מציג את הבועה על ה-select
+      el.focus({preventScroll:true});
+      document.getElementById('calc-form')?.scrollIntoView({behavior:'smooth', block:'center'});
+      return true;
+    }
+    return false;
   }
 
+  // —— AJAX: בדיקת צורך בהסכמה לפי טלפון ——
   function normalizeIL(p){
     let d = (p||"").replace(/\D/g,'');
     if (d.startsWith('972')) d = '0' + d.slice(3);
     return d;
   }
 
+  function renderConsent(needs){
+    if (!consentArea) return;
+    if (!needs){ consentArea.innerHTML = ""; return; }
+    consentArea.innerHTML = `
+      <label class="checkbox">
+        <input type="checkbox" id="accept_terms" name="accept_terms" required>
+        קראתי ואני מאשר/ת את
+        <a href="{% url 'terms' %}">תנאי השימוש</a>
+        ו־<a href="{% url 'privacy' %}">מדיניות הפרטיות</a>
+      </label>
+      <div class="field-error" id="accept-terms-error" aria-live="polite"></div>
+    `;
+  }
+
   function checkConsent(){
-    const raw = (phoneInput.value || '').trim();
+    if (!phoneInput || !consentArea) return;
+    const raw  = (phoneInput.value || '').trim();
     const norm = normalizeIL(raw);
-    // מנקים תצוגה אם אין טלפון תקין
-    if (!rePhoneIL.test(norm)) {
-      consentArea.innerHTML = "";     // לא מציגים כלום עד שיש טלפון תקין
-      return;
-    }
+    if (!rePhoneIL.test(norm)){ consentArea.innerHTML = ""; return; }
     fetch(CONSENT_URL + encodeURIComponent(norm), {credentials:'same-origin'})
       .then(r => r.json())
-      .then(data => {
-        renderConsent(data && data.needs_consent === true);
-      })
-      .catch(() => {
-        // במקרה של שגיאה – נדרוש הסכמה בצד הבקאנד בכל מקרה, כאן נשאיר ריק.
-        consentArea.innerHTML = "";
-      });
+      .then(data => { renderConsent(data && data.needs_consent === true); })
+      .catch(() => { consentArea.innerHTML = ""; });
   }
 
-  function renderConsent(needs){
-      if (!needs) {
-        // כבר קיימת הסכמה לגרסאות הנוכחיות → לא מציגים כלום
-        consentArea.innerHTML = "";
-        return;
-      }
-      // צריך הסכמה → מציגים צ'קבוקס חובה
-      consentArea.innerHTML = `
-        <label class="checkbox">
-          <input type="checkbox" id="accept_terms" name="accept_terms" required>
-          קראתי ואני מאשר/ת את
-          <a href="{% url 'terms' %}" target="_blank" rel="noopener">תנאי השימוש</a>
-          ו־<a href="{% url 'privacy' %}" target="_blank" rel="noopener">מדיניות הפרטיות</a>
-        </label>
-        <div class="field-error" id="accept-terms-error" aria-live="polite"></div>
-      `;
+  // דה־באונס לקריאת ה־consent
+  if (phoneInput){
+    let t = null;
+    phoneInput.addEventListener('input', function(){
+      if (t) clearTimeout(t);
+      t = setTimeout(checkConsent, 250);
+    });
+    if ((phoneInput.value || '').trim().length > 0) checkConsent();
   }
 
-  // ולידציית הגשה: אם הצ'קבוקס מוצג נבדוק שהוא מסומן; אם יש hidden – נמשיך.
+  // —— Submit: מפעילים ולידציה של HTML5 + בועות ל-selects + הסכמה ——
   form.addEventListener('submit', function(e){
+    // 1) ולידציה מובנית (required, type, pattern) לשדות הטקסט
+    if (!form.checkValidity()){
+      e.preventDefault();
+      form.reportValidity();
+      return;
+    }
+
+    // 2) ה-selects למעלה (בועות שגיאה עליהם עצמם)
+    if (needType        && requireSelect(e, 'activity_type', 'בחרו את צבע הסוס')) return;
+    if (needParticipants && requireSelect(e, 'participants',  'בחרו מספר רוכבים')) return;
+    if (needWine        && requireSelect(e, 'wine',           'בחרו יין')) return;
+
+    // 3) הסכמה לתנאים אם הצ’קבוקס מוצג
     const cb = form.querySelector('input[type="checkbox"][name="accept_terms"]');
-    const hidden = form.querySelector('input[type="hidden"][name="accept_terms"]');
-    if (cb && !cb.checked) {
+    if (cb && !cb.checked){
       e.preventDefault();
       const err = document.getElementById('accept-terms-error');
       if (err) err.textContent = 'יש לאשר את התנאים לפני המשך לתשלום';
       cb.focus();
+      return;
     }
   });
 })();
 </script>
 {% endblock %}
+
 
 

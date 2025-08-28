@@ -42,29 +42,114 @@ class CancelRequestForm(forms.ModelForm):
         model = CancellationRequest
         fields = [
             "full_name", "phone", "email",
-            "order_id",
-            "start_dt", "reason",
+            "order_id", "start_dt", "reason",
             "booking", "appointment",
         ]
         widgets = {
+            "full_name": forms.TextInput(attrs={"placeholder": "*שם מלא"}),
+            "phone": forms.TextInput(attrs={"placeholder": "*טלפון", "inputmode": "tel"}),
+            "email": forms.EmailInput(attrs={"placeholder": "אימייל"}),
+            "order_id": forms.TextInput(attrs={"placeholder": "*מס׳ הזמנה"}),
             "start_dt": forms.DateTimeInput(attrs={"type": "datetime-local", "dir": "rtl"}),
-            "reason": forms.Textarea(attrs={"rows": 3}),
+            "reason": forms.Textarea(attrs={"rows": 3, "placeholder": "סיבת הביטול"}),
             "booking": forms.HiddenInput(),
             "appointment": forms.HiddenInput(),
         }
-        labels = {
-            "full_name": "שם מלא",
-            "phone": "טלפון",
-            "email": "אימייל (לא חובה)",
-            "order_id": "מס׳ הזמנה (כפי שמופיע באישור)",
-            "start_dt": "מועד הרכיבה (אם ידוע)",
-            "reason": "סיבת ביטול (אופציונלי)",
-        }
+
+    # 1) להצמיד אטריביוטים ל-<input> שנוצר ל-phone
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+        # מס' הזמנה – טקסט בועה מותאם
+        self.fields['order_id'].widget.attrs.update({
+            "required": True,
+            "oninvalid": "this.setCustomValidity('חובה להזין מס׳ הזמנה')",
+            "oninput": "this.setCustomValidity('')",
+        })
+
+        self.fields['full_name'].widget.attrs.update({
+            "required": True,
+            "pattern": r".*\S.*",
+            "oninvalid": "this.setCustomValidity('חובה למלא שם מלא')",
+            "oninput": "this.setCustomValidity('')",
+        })
+
+        # אימייל – הודעה שונה אם הפורמט לא תקין
+        self.fields['email'].widget.attrs.update({
+            "oninvalid": "this.setCustomValidity(this.validity.typeMismatch ? 'כתובת אימייל לא תקינה' : 'חובה למלא אימייל')",
+            "oninput": "this.setCustomValidity('')",
+        })
+
+        # טלפון (אם את רוצה בועה מותאמת)
+        self.fields['phone'].widget.attrs.update({
+            # אל תוסיפי required אם אצלך הכלל הוא 'טלפון או אימייל'
+            "pattern": r"^0(5\d{8}|[2-9]\d{7})$",
+            "title": "מספר טלפון ישראלי לא תקין",
+            "oninvalid": "this.setCustomValidity(this.validity.patternMismatch ? 'מספר טלפון ישראלי לא תקין' : 'חובה למלא טלפון')",
+            "oninput": "this.setCustomValidity('')",
+        })
+
+    # 2) ולידציה שרתית ישראלית (כולל תמיכה ב-+972)
+    def clean_phone(self):
+        import re
+        p = (self.cleaned_data.get("phone") or "").strip()
+        if not p:
+            return p  # לא מכשיל כאן כי מותר להשאיר ריק אם יש אימייל
+        d = re.sub(r"\D", "", p)
+        if d.startswith("972"):
+            d = "0" + d[3:]
+        if not re.match(r"^0(5\d{8}|[2-9]\d{7})$", d):
+            raise forms.ValidationError("מספר טלפון ישראלי לא תקין")
+        return d
 
     def clean(self):
-        cleaned = super().clean()
-        if cleaned.get("honeypot"):
-            raise forms.ValidationError("שגיאה בהגשה. נסו שוב.")
-        if not (cleaned.get("order_id") or cleaned.get("start_dt")):
-            raise forms.ValidationError("חובה להזין מס׳ הזמנה")
-        return cleaned
+            cleaned = super().clean()
+
+            # ===== מיפוי מה חסר =====
+            def _blank(v):
+                return not (v or "").strip()
+
+            missing = {
+                "full_name": _blank(cleaned.get("full_name")),
+                "phone": _blank(cleaned.get("phone")),
+                "email": _blank(cleaned.get("email")),
+                "order_id": _blank(cleaned.get("order_id")),
+                "start_dt": not cleaned.get("start_dt"),
+            }
+            missing_count = sum(missing.values())
+
+            # אנטי-ספאם (נשאר כמו שהיה)
+            if cleaned.get("honeypot"):
+                raise forms.ValidationError("שגיאה בהגשה. נסו שוב.")
+
+            # ===== דרישתך: שגיאה לשם מלא רק אם הוא היחיד שחסר =====
+            if missing["full_name"] and missing_count == 1:
+                self.add_error("full_name", "חובה למלא שם מלא")
+                return cleaned  # שאר השדות תקינים, אין צורך בהמשך בדיקות
+
+            # טלפון/אימייל: שגיאה צמודה לשני השדות רק כששניהם חסרים
+            if missing["phone"] and missing["email"] and missing_count == 2:
+                self.add_error("phone", "יש להזין טלפון או אימייל")
+                self.add_error("email", "יש להזין טלפון או אימייל")
+                return cleaned  # לא raise → לא תופיע הודעה כללית
+
+            # הודעה כללית אם חסרים יותר משני שדות
+            if missing_count >= 3:
+                self.add_error(None, "חלק מהשדות לא מולאו. אנא השלימו את הפרטים המסומנים.")
+
+            # ===== ההיגיון המקורי שלך, מותאם כדי לא לייצר כפילויות =====
+
+            # טלפון/אימייל: הודעה רק אם אלה שני השדות היחידים שחסרים
+            if missing["phone"] and missing["email"] and missing_count == 2:
+                raise forms.ValidationError("יש להזין טלפון או אימייל")
+
+            # מס' הזמנה: הודעה רק אם זה השדה היחיד שחסר
+            if missing["order_id"] and missing_count == 1:
+                raise forms.ValidationError("חובה להזין מס׳ הזמנה")
+
+            # אם גם מס' הזמנה וגם מועד חסרים, ורק הם חסרים → הודעה לזוג
+            if missing["order_id"] and missing["start_dt"] and missing_count == 2:
+                raise forms.ValidationError("יש להזין מס׳ הזמנה או מועד הרכיבה")
+
+            return cleaned
+

@@ -7,30 +7,116 @@
 {% endblock %}
 
 {% block content %}
-<section class="cancel-wrapper" dir="rtl">
-  <h1>בקשת ביטול עסקה</h1>
+<section class="details" dir="rtl">
+  <h1>טופס בקשת ביטול הזמנה וקבלת החזר כספי</h1>
   <p>שם מלא וטלפון שנרשמו בעת הרכישה</p>
 
-  <form method="post" novalidate>
+  <form method="post" id="cancel-form">
     {% csrf_token %}
     {{ form.honeypot }}
     <div class="form-grid">
-      <label>שם מלא {{ form.full_name }}</label>
-      <label>טלפון {{ form.phone }}</label>
-      <label>מס׳ הזמנה (כפי שמופיע באישור ההזמנה) {{ form.order_id }}</label>
-      <label>אימייל (לא חובה) {{ form.email }}</label>
-      <label>סיבת ביטול (לא חובה) {{ form.reason }}</label>
+      <label>*שם מלא {{ form.full_name }}</label>
+      {% for err in form.full_name.errors %}
+      {% endfor %}
+
+      <label>טלפון* {{ form.phone }}</label>
+      {% for err in form.phone.errors %}
+      {% endfor %}
+
+      <label>מס׳ הזמנה (כפי שמופיע באישור ההזמנה)* {{ form.order_id }}</label>
+      {% for err in form.order_id.errors %}
+      {% endfor %}
+
+      <label>אימייל {{ form.email }}</label>
+      {% for err in form.email.errors %}
+      {% endfor %}
+
+      <label>סיבת הביטול {{ form.reason }}</label>
+      {% for err in form.reason.errors %}
+      {% endfor %}
+
       {{ form.booking }} {{ form.appointment }}
     </div>
 
-    {% if form.non_field_errors %}
-      <div class="errors">{{ form.non_field_errors }}</div>
-    {% endif %}
+    {# שגיאות כלליות (non-field) מלמעלה — כמו שאהבת #}
+    {% for err in form.non_field_errors %}
+      <div class="errors">{{ err }}</div>
+    {% endfor %}
+
+    {% for err in form.non_field_errors %}
+      <div class="errors">{{ err }}</div>
+    {% endfor %}
 
     <button type="submit" class="btn btn-primary">שליחת בקשה</button>
   </form>
 </section>
 {% endblock %}
+
+
+{% block scripts %}
+<script>
+(function(){
+  const form = document.querySelector('.details form');
+  if (!form) return;
+
+  // נקה הודעות custom כשמשתמש מקליד
+  ['full_name','phone','email','order_id'].forEach(n=>{
+    const el = form.elements[n];
+    if (el) el.addEventListener('input', ()=> el.setCustomValidity(''));
+  });
+
+  form.addEventListener('submit', function(e){
+    const val = n => (form.elements[n]?.value || '').trim();
+    const el  = n => form.elements[n];
+
+    const fullEmpty  = !val('full_name');
+    const phoneEmpty = !val('phone');
+    const emailEmpty = !val('email');
+    const orderEmpty = !val('order_id');
+    const missingCount = [fullEmpty, phoneEmpty, emailEmpty, orderEmpty].filter(Boolean).length;
+
+    // אימייל לא תקין (אם מולא) – בועת דפדפן רגילה
+    if (val('email') && el('email') && !el('email').checkValidity()){
+      e.preventDefault(); el('email').reportValidity(); return;
+    }
+
+    // שם מלא – בועה רק אם זה השדה היחיד שחסר
+    if (fullEmpty && missingCount === 1){
+      e.preventDefault();
+      el('full_name').setCustomValidity('חובה למלא שם מלא');
+      el('full_name').reportValidity();
+      return;
+    }
+
+    // מס׳ הזמנה – בועה רק אם הוא היחיד שחסר
+    if (orderEmpty && missingCount === 1){
+      e.preventDefault();
+      el('order_id').setCustomValidity('חובה להזין מס׳ הזמנה');
+      el('order_id').reportValidity();
+      return;
+    }
+
+    // טלפון או אימייל – בועה רק כשהשניים (ורק הם) חסרים
+    if (phoneEmpty && emailEmpty && missingCount === 2){
+      e.preventDefault();
+      const target = el('phone') || el('email');
+      target.setCustomValidity('יש להזין טלפון או אימייל');
+      target.reportValidity();
+      return;
+    }
+
+    // אין הודעה כללית; שאר המקרים ייבדקו בשרת (Django form)
+  });
+})();
+</script>
+{% endblock %}
+
+
+
+
+
+
+
 
 
 
