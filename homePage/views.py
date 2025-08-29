@@ -665,20 +665,29 @@ def mock_payment_success(request):
     }
     return redirect("home")
 
+
 @require_http_methods(["GET", "POST"])
 def site_reviews(request):
+    focus_rating_error = False  # <- דגל לגלילה
+
     if request.method == "POST":
         form = SiteReviewForm(request.POST)
         if form.is_valid():
             form.save()
             messages.success(request, "תודה! הביקורת נשמרה.")
-            return redirect('site_reviews')  # אם יש namespace: redirect('homePage:site_reviews')
-        messages.error(request, "יש בעיה בפרטים. נסי שוב.")
+            return redirect('site_reviews')
+        else:
+            # אם השגיאה היא על rating — לא מציגים פופאפ כלל, רק נגלול לטופס
+            if 'rating' in form.errors:
+                focus_rating_error = True
+            else:
+                # לשגיאות אחרות מותר להציג פופאפ (אם תרצי אפשר גם לוותר)
+                messages.error(request, "יש בעיה בפרטים. נסי שוב.")
     else:
         form = SiteReviewForm()
 
     qs = SiteReview.objects.order_by('-created_at')
-    paginator = Paginator(qs, 10)  # 10 לעמוד
+    paginator = Paginator(qs, 10)
     page_obj = paginator.get_page(request.GET.get('page'))
 
     agg = qs.aggregate(avg=Avg('rating'))
@@ -688,6 +697,7 @@ def site_reviews(request):
         "rating_avg": agg['avg'] or 0,
         "rating_count": qs.count(),
         "form": form,
+        "focus_rating_error": focus_rating_error,  # <- לדף
     })
 
 

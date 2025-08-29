@@ -96,6 +96,7 @@ footer{
     background-color: var(--main-bright);
     font-size: 0.9em;
     line-height: 1.6;
+    font-family: Arial, sans-serif !important;
 }
 
 .rights{

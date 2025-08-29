@@ -9,6 +9,7 @@
 
 {% block content %}
 <main class="reviews-wrap">
+
   <div class="reviews-header">
     {% if rating_count %}
       <h2 class="rating-title">
@@ -61,7 +62,7 @@
   <section class="review-form">
     <h3>השאירו ביקורת</h3>
 
-    <form method="post" action="{% url 'site_reviews' %}" novalidate>
+    <form method="post" action="{% url 'site_reviews' %}#review-form-bottom" novalidate>
       {% csrf_token %}
       {{ form.website }} {# שדה honeypot נסתר #}
 
@@ -110,6 +111,36 @@
         </div>
       {% endif %}
     </form>
+    <span id="review-form-bottom" aria-hidden="true"></span>
   </section>
 </main>
+
+{% if focus_rating_error %}
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+  const formSection = document.getElementById('review-form');
+  if (!formSection) return;
+
+  // אם יש כותרת דביקה למעלה – נקח את הגובה שלה
+  const header = document.querySelector('.site-header, header.sticky, .sticky-header');
+  const headerH = header ? header.offsetHeight : 0;
+
+  // נגלול כך שהתחתית של אזור הטופס תהיה כמעט בקצה המסך
+  const padding = 24; // מרווח קטן
+  const rect = formSection.getBoundingClientRect();
+  const y = window.pageYOffset + rect.top + formSection.offsetHeight - window.innerHeight + padding - headerH;
+
+  window.scrollTo({ top: Math.max(0, y), behavior: 'smooth' });
+
+  // פוקוס/הבלטה על הכוכבים (ללא גלילה נוספת)
+  const stars = document.getElementById('rating-stars');
+  if (stars) {
+    stars.focus({ preventScroll: true });
+    stars.classList.add('shake');
+    setTimeout(() => stars.classList.remove('shake'), 800);
+  }
+});
+</script>
+{% endif %}
+
 {% endblock %}
