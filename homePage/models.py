@@ -4,7 +4,6 @@ from django.core.validators import MinValueValidator, MaxValueValidator  # ול�
 from django.db.models.signals import pre_delete
 from django.dispatch import receiver
 from django.utils import timezone
-from django.conf import settings
 
 ACTIVITY_TYPES = [
     ('basic', 'מתחילים'),
@@ -107,7 +106,8 @@ class Booking(models.Model):
     participants  = models.PositiveIntegerField(default=1)
     total_price   = models.DecimalField(max_digits=9, decimal_places=2, null=True, blank=True)
     payment_method= models.CharField(max_length=20, blank=True)  # 'credit_card'/'bit'/...
-    payment_ref   = models.CharField(max_length=64, blank=True)
+    payment_ref   = models.CharField(max_length=64, blank=True, null=True,
+                                     unique=True, db_index=True)
     status        = models.CharField(max_length=10, choices=STATUS_CHOICES, default="pending")
     details       = models.CharField("פרטים/הערות", blank=True, null=True)
     start_dt      = models.DateTimeField()   # נוח להצגה וסינון
@@ -265,6 +265,52 @@ class TermsConsent(models.Model):
 
     def __str__(self):
         return f"{self.policy} v{self.version} by {self.subject_id} @ {self.accepted_at:%Y-%m-%d}"
+
+class Payment(models.Model):
+    STATUS = [
+        ('created', 'נוצר'),
+        ('pending', 'ממתין'),
+        ('succeeded', 'הצליח'),
+        ('failed', 'נכשל'),
+        ('canceled', 'בוטל'),
+        ('refunded', 'הוחזר'),
+    ]
+    provider = models.CharField(max_length=50, default='mock')
+    amount_agorot = models.PositiveIntegerField()
+    currency = models.CharField(max_length=10, default='ILS')
+    status = models.CharField(max_length=20, choices=STATUS, default='created')
+
+    # קישור לזרימה שלך
+    appointment_id = models.IntegerField(null=True, blank=True)
+    activity_id = models.IntegerField(null=True, blank=True)
+    duration_minutes = models.IntegerField(null=True, blank=True)
+    participants = models.IntegerField(default=1)
+    customer_name = models.CharField(max_length=120, blank=True)
+    phone = models.CharField(max_length=40, blank=True)
+    email = models.EmailField(blank=True)  # <— חדש כדי שתוכלי לשלוח מייל ללקוח
+
+    # מזהי ספק/מידע
+    provider_session_id = models.CharField(max_length=120, blank=True)
+    error_code = models.CharField(max_length=50, blank=True)
+    error_message = models.TextField(blank=True)
+    raw_metadata = models.JSONField(default=dict, blank=True)
+
+    # חזרה/ביטול (Hosted)
+    return_url = models.URLField(blank=True)
+    cancel_url = models.URLField(blank=True)
+
+    created_at = models.DateTimeField(default=timezone.now)
+    updated_at = models.DateTimeField(auto_now=True)
+    webhook_received_at = models.DateTimeField(null=True, blank=True)
+
+    booking = models.OneToOneField(
+        'Booking', null=True, blank=True,
+        on_delete=models.SET_NULL, related_name='payment'
+    )
+    charge_id = models.CharField(max_length=64, null=True, blank=True, unique=True)
+    def __str__(self):
+        return f"Payment#{self.id} {(self.amount_agorot/100):.2f} {self.currency} [{self.status}]"
+
 
 
 

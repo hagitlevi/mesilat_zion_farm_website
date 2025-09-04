@@ -11,8 +11,16 @@ https://docs.djangoproject.com/en/5.2/ref/settings/
 """
 
 from pathlib import Path
-
 import os
+from dotenv import load_dotenv
+load_dotenv()
+
+
+SEND_SMS = os.getenv("SEND_SMS", "False") == "True"
+PHONE_SMS_GATEWAY_URL = os.getenv("PHONE_SMS_GATEWAY_URL")
+PHONE_SMS_SECRET = os.getenv("PHONE_SMS_SECRET")
+
+
 GOOGLE_PLACE_ID = os.getenv("GOOGLE_PLACE_ID", "PASTE_YOUR_PLACE_ID_HERE")
 GOOGLE_PLACES_API_KEY = os.getenv("GOOGLE_PLACES_API_KEY", "")
 
@@ -119,6 +127,9 @@ USE_I18N = True
 
 USE_TZ = True
 
+PAYMENT_PROVIDER = 'mock'
+
+
 # ==== Policy Versions (for consent & UI logic) ====
 TERMS_VERSION   = "1.3"      # עדכני כשמשנים את תנאי השימוש
 PRIVACY_VERSION = "1.2"      # עדכני כשמשנים את מדיניות הפרטיות
@@ -131,6 +142,18 @@ STATIC_URL = 'static/'
 STATICFILES_DIRS = [
     BASE_DIR / "homePage/static",
 ]
+
+if os.getenv("EMAIL_BACKEND", "smtp") == "console":
+    EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
+else:
+    EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
+    EMAIL_HOST = os.getenv("EMAIL_HOST", "smtp.gmail.com")
+    EMAIL_PORT = int(os.getenv("EMAIL_PORT", "587"))
+    EMAIL_USE_TLS = os.getenv("EMAIL_USE_TLS", "True") == "True"
+    EMAIL_HOST_USER = os.getenv("EMAIL_HOST_USER")
+    EMAIL_HOST_PASSWORD = os.getenv("EMAIL_HOST_PASSWORD")
+    DEFAULT_FROM_EMAIL = os.getenv("DEFAULT_FROM_EMAIL", EMAIL_HOST_USER)
+
 
 
 # Default primary key field type

@@ -86,6 +86,50 @@
     {% block scripts %}{% endblock %}
 
 
+{% if messages %}
+  <div id="success-modal" class="success-modal" dir="rtl" aria-hidden="true">
+    <div class="success-modal__backdrop" aria-hidden="true"></div>
+    <div class="success-modal__card" role="dialog" aria-modal="true" aria-labelledby="success-title" tabindex="-1">
+
+      {# לוקחים את ההודעה הראשונה #}
+      {% for m in messages %}
+        {% if forloop.first %}
+          {% with tags=m.tags|stringformat:"s" %}
+            <div class="success-modal__icon" aria-hidden="true">
+              {% if "payment_failed" in tags or "error" in tags %}
+                {# איקס אדום #}
+                <svg width="64" height="64" viewBox="0 0 88 88" xmlns="http://www.w3.org/2000/svg">
+                  <rect x="6" y="6" width="76" height="76" rx="18" fill="#F57C7C"/>
+                  <path d="M32 32 L56 56 M56 32 L32 56" stroke="#fff" stroke-width="8" stroke-linecap="round"/>
+                </svg>
+              {% else %}
+                {# וי ירוק #}
+                <svg width="64" height="64" viewBox="0 0 88 88" xmlns="http://www.w3.org/2000/svg">
+                  <rect x="6" y="6" width="76" height="76" rx="18" fill="#7ED28A"/>
+                  <path d="M30 44.5l9.5 9.5L58 35.5" fill="none" stroke="#fff" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+              {% endif %}
+            </div>
+
+            <h2 id="success-title" class="success-modal__title">
+              {% if "payment_succeeded" in tags %}
+                התשלום בוצע בהצלחה!
+              {% elif "payment_failed" in tags %}
+                התשלום נכשל או בוטל
+              {% else %}
+                הבקשה נקלטה בהצלחה!
+              {% endif %}
+            </h2>
+
+            <p class="success-modal__subtitle">{{ m }}</p>
+          {% endwith %}
+        {% endif %}
+      {% endfor %}
+
+      <button type="button" class="success-modal__ok">אישור</button>
+    </div>
+  </div>
+{% endif %}
 
 
 {% if payment_popup_json %}
@@ -169,98 +213,7 @@
   </style>
 {% endif %}
 
-<!-- Toast area for Django messages -->
-{% if messages %}
-<div id="success-modal" class="success-modal" dir="rtl" aria-hidden="true">
-  <div class="success-modal__backdrop" aria-hidden="true"></div>
-  <div class="success-modal__card" role="dialog" aria-modal="true" aria-labelledby="success-title" tabindex="-1">
-    <div class="success-modal__icon" aria-hidden="true">
-      <!-- אייקון וי ירוק -->
-      <svg width="64" height="64" viewBox="0 0 88 88" xmlns="http://www.w3.org/2000/svg">
-        <rect x="6" y="6" width="76" height="76" rx="18" fill="#7ED28A"/>
-        <path d="M30 44.5l9.5 9.5L58 35.5" fill="none" stroke="#fff" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
-      </svg>
-    </div>
-    <h2 id="success-title" class="success-modal__title">הבקשה נקלטה בהצלחה!</h2>
-    <p class="success-modal__subtitle">
-      {% for message in messages %}
-        {% if forloop.first %}{{ message }}{% endif %}
-      {% endfor %}
-    </p>
-    <button type="button" class="success-modal__ok">אישור</button>
-  </div>
-</div>
-<style>
-.success-modal {
-  position: fixed;
-  inset: 0;
-  z-index: 10000;
-  display: grid;
-  place-items: center;
-}
-.success-modal__backdrop {
-  position: absolute;
-  inset: 0;
-  background: rgba(0,0,0,.45);
-}
 
-/* הכרטיס — קומפקטי יותר */
-.success-modal__card {
-  position: relative;
-  z-index: 1;
-  background: #fff;
-  border-radius: 14px;                /* היה 18px */
-  width: min(360px, 92vw);            /* היה 560px */
-  padding: 18px 16px;                 /* היה 28px 26px */
-  text-align: center;
-  transform: translateY(10px);
-  opacity: 0;
-  border: none;
-  transition: transform .25s ease, opacity .25s ease;
-}
-.success-modal.open .success-modal__card { transform: translateY(0); opacity: 1; }
-
-/* תוכן */
-.success-modal__icon { display: flex; justify-content: center; margin-bottom: 6px; }
-.success-modal__title {
-  margin: 6px 0 4px;
-  font-size: clamp(18px, 3.4vw, 26px); /* היה עד 34px */
-  font-weight: 800;
-}
-.success-modal__subtitle {
-  margin: 0 0 14px;
-  color: #666;
-  font-size: clamp(13px, 2.2vw, 16px); /* היה עד 18px */
-}
-
-/* כפתור קומפקטי */
-.success-modal__ok {
-  padding: 10px 16px;                 /* היה 12px 22px */
-  border-radius: 10px;                /* היה 12px */
-  background: var(--main-color);
-  color: #fff;
-  font-size: 15px;                    /* היה 16px */
-  cursor: pointer;
-}
-
-/* מניעת גלילה ברקע כשמודאל פתוח */
-body.modal-open { overflow: hidden; }
-
-/* מבטל כל מסגרת/קו פוקוס על הכרטיס */
-.success-modal__card {
-  border: none !important;
-}
-.success-modal__card:focus,
-.success-modal__card:focus-visible {
-  outline: none !important;
-  box-shadow: 0 20px 60px rgba(0,0,0,.30); /* שומר צל אם תרצי; מחקי את השורה כדי לבדוק אם הצל הוא ה"מסגרת" שראית */
-}
-
-/* לבדיקה: לבטל הכול ולראות אם המסגרת נעלמת */
- /* .success-modal__card { box-shadow: none !important; } */
-
-</style>
-{% endif %}
 
 
 <script>

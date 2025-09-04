@@ -2,7 +2,9 @@ from datetime import datetime, timedelta, date, time
 from homePage.models import Appointment, CustomSchedule, Activity
 from django.db.models import Q
 from django.utils import timezone
-
+import secrets
+from django.db import transaction, IntegrityError
+from .models import Booking, Payment
 
 def cleanup_expired_appointments(delete_booked=False):
     """
@@ -15,7 +17,6 @@ def cleanup_expired_appointments(delete_booked=False):
     deleted, _ = Appointment.objects.filter(q).delete()
     return deleted
 
-#cleanup_expired_appointments(delete_booked=False)
 
 def generate_appointments(days_ahead=7):
 
@@ -139,7 +140,6 @@ def generate_appointments(days_ahead=7):
 
     print("✅ תורים נוצרו בהצלחה")
 
-# homePage/utils.py
 
 def group_consecutive_hours(rows):
     """
@@ -177,3 +177,31 @@ def group_consecutive_hours(rows):
         i = j + 1
 
     return grouped
+
+
+
+def generate_mz_ref(prefix="MZ", digits=8) -> str:
+    """יוצר למשל MZ-34892017 (ספרות בלבד)"""
+    return f"{prefix}-" + "".join(secrets.choice("0123456789") for _ in range(digits))
+
+def assign_unique_ref(booking: Booking, payment: Payment, digits=8) -> str:
+    """
+    מקצה ref ייחודי לשני הגורמים יחד (booking.payment_ref + payment.charge_id),
+    בתוך טרנזקציה, עם ניסיונות חוזרים במקרה התנגשות.
+    """
+    for _ in range(25):
+        ref = generate_mz_ref(digits=digits)
+        try:
+            with transaction.atomic():
+                # אם כבר יש — לא נוגעים
+                if not booking.payment_ref:
+                    booking.payment_ref = ref
+                    booking.save(update_fields=["payment_ref"])
+                if not payment.charge_id:
+                    payment.charge_id = ref
+                    payment.save(update_fields=["charge_id"])
+                return ref
+        except IntegrityError:
+            # התנגשות ייחודיות — ננסה ref אחר
+            continue
+    raise RuntimeError("לא הצלחתי להקצות payment_ref ייחודי לאחר ניסיונות רבים")

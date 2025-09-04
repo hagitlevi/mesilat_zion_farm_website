@@ -23,5 +23,11 @@ urlpatterns = [
     path("terms/", TemplateView.as_view(template_name="homePage/terms.html"), name="terms"),
     path("privacy/", TemplateView.as_view(template_name="homePage/privacy.html"), name="privacy"),
     path("cancel-policy/", TemplateView.as_view(template_name="homePage/cancel_policy.html"), name="cancel_policy"),
+    path("pay/return/", views.pay_return, name="pay_return"),
+    path("pay/start/", views.pay_start, name="pay_start"),
+    path("pay/mock-checkout/<int:payment_id>/", views.mock_checkout, name="mock_checkout"),
+    path("pay/webhook/", views.pay_webhook, name="pay_webhook"),  # לבדיקת הצלחה/כשל
+
+
 
 ]

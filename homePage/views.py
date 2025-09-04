@@ -1,26 +1,40 @@
-from homePage.models import ActivityRule, BusinessHours, Season, Appointment, Activity, Booking
+from homePage.models import ActivityRule, BusinessHours, Season, Booking, Payment
 from .forms import SiteReviewForm, CancelRequestForm
 from .models import SiteReview, CancellationRequest
-from django.http import Http404, HttpResponseBadRequest
+from django.http import Http404
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
 from django.db.models import Q, Avg
 from django.db import transaction
-from django.shortcuts import get_object_or_404, redirect, render
-from django.contrib import messages
-from django.utils import timezone
 from django.core.paginator import Paginator
 from datetime import datetime, timedelta, date, time
 from zoneinfo import ZoneInfo
 from .utils import group_consecutive_hours
 import json
-from django.conf import settings
-from django.http import JsonResponse
 from django.views.decorators.http import require_GET
 from .models import TermsConsent
 from urllib.parse import urlencode
+from django.core.mail import send_mail
+import secrets
+from homePage.utils import assign_unique_ref  # ← למעלה בקובץ, ליד שאר הייבוא
+from homePage.utils import assign_unique_ref
+import time
+from django.shortcuts import render, redirect, get_object_or_404
 from django.urls import reverse
-
+from django.http import HttpResponseBadRequest, JsonResponse
+from django.views.decorators.csrf import csrf_exempt
+from django.db import transaction
+from django.conf import settings
+from django.utils import timezone
+from django.contrib import messages
+from urllib.parse import urlencode, urlsplit, urlunsplit, parse_qsl
+from .models import Payment, Activity, Appointment
+from datetime import datetime, timedelta
+from decimal import Decimal
+from django.db import transaction
+from homePage.models import Activity, Appointment, Booking, Payment
+from django.shortcuts import redirect
+from django.contrib import messages
 
 VARIANT_TO_TYPE = {
     "day":     "רכיבה זוגית ביום",
@@ -349,8 +363,6 @@ def available_appointment_view(request, activity_id):
             if start_dt < now_naive + timedelta(minutes=cutoff_min):
                 continue
 
-        # --- NEW: בדיקת רצף סלוטים פנויים לכל משך d ---
-        free_set = free_times_by_date.get(appt.date, set())
 
         # --- NEW: בדיקת רצף סלוטים פנויים לכל משך d + הפסקת 15 דק' אם d>30 ---
         free_set = free_times_by_date.get(appt.date, set())
@@ -650,11 +662,14 @@ def mock_payment_success(request):
             # אופציונלי: להציג גם את תחילת ההפסקה בפופאפ
             times_needed.append(extra_start_dt.time())
 
+    booking.payment_ref = "MZ-" + "".join(secrets.choice("0123456789") for _ in range(8))
+    booking.save(update_fields=["payment_ref"])
+
     # פופאפ הצלחה
     request.session['payment_popup'] = {
         "type": "success",
         "title": "התשלום בוצע בהצלחה ✅",
-        "ref": payment_ref,
+        "ref":  booking.payment_ref,
         "date": base_appt.date.isoformat(),
         "times": [t.strftime("%H:%M") for t in sorted(times_needed)],
         "duration_minutes": duration_minutes,
@@ -990,3 +1005,417 @@ def booking_form(request):
         'wine': wine,
         'is_couple_day': is_couple_day,
     })
+
+# ——— עזר ———
+def _abs(request, name, **kwargs):
+    return request.build_absolute_uri(reverse(name, kwargs=kwargs if kwargs else None))
+
+# ——— 1) התחלת תשלום ———
+def pay_start(request):
+    if request.method != "POST":
+        return HttpResponseBadRequest("Invalid method")
+
+    appointment_id   = request.POST.get("appointment_id")
+    activity_id      = request.POST.get("activity_id")
+    duration_minutes = int(request.POST.get("duration_minutes", "60"))
+    participants     = int(request.POST.get("participants", "1"))
+    first_name       = request.POST.get("first_name","")
+    last_name        = request.POST.get("last_name","")
+    phone            = request.POST.get("phone","")
+    email            = request.POST.get("email","")
+
+    # חישוב סכום בשרת (אל תסמכי על hidden מהלקוח)
+    activity = get_object_or_404(Activity, id=activity_id)
+    unit_agorot = int(round(float(activity.price) * 100))  # התאימי ללוגיקה שלך
+    amount_agorot = unit_agorot * participants
+
+
+    payment = Payment.objects.create(
+        provider="mock",
+        amount_agorot=amount_agorot,
+        currency="ILS",
+        status="pending",
+        appointment_id=appointment_id,
+        activity_id=activity_id,
+        duration_minutes=duration_minutes,
+        participants=participants,
+        customer_name=f"{first_name} {last_name}".strip(),
+        phone=phone.strip(),
+        email=email.strip(),
+        # לא חייבים return_url כאן אם לא משתמשים בו כרגע
+    )
+    request.session['last_payment_id'] = payment.id
+    # הפניה מיידית לעמוד הסליקה המדומה
+    return redirect(reverse("mock_checkout", kwargs={"payment_id": payment.id}))
+
+# ——— 2) חזרה מהסליקה — מחליטים על הודעה, ומפנים לדף הבית ———
+
+
+def pay_return(request):
+    import time  # ליתר ביטחון אם לא יובא למעלה
+
+    # נשלוף וננקה את ה-id מהסשן כדי לא להציג שוב הודעות בשגגה
+    pid = request.GET.get("payment_id") or request.session.pop("last_payment_id", None)
+    if not pid:
+        messages.error(request, "לא נמצא תשלום תואם.", extra_tags="payment_failed")
+        return redirect('home')
+
+    # נחכה בשקט עד 5 שניות שה-webhook יסיים (בלי להראות "מעבדים...")
+    deadline = time.time() + 5.0
+    payment = None
+    finals = ('succeeded', 'failed', 'canceled', 'refunded')
+
+    while time.time() < deadline:
+        payment = Payment.objects.filter(id=pid).only('status', 'charge_id').first()
+        if payment and payment.status in finals:
+            break
+        time.sleep(0.3)
+
+    # בדיקה אחרונה והודעה אחת בלבד: הצלחה או שגיאה
+    payment = Payment.objects.filter(id=pid).only('status', 'charge_id').first()
+    if payment and payment.status == 'succeeded':
+        messages.success(
+            request,
+            "הקבלה והפרטים על התור יישלחו במייל ובהודעת SMS.",
+            extra_tags="payment_succeeded",
+        )
+    else:
+        ref = (payment.charge_id if payment else None) or "—"
+        messages.error(
+            request,
+            f"התשלום לא הושלם. ניתן לנסות שוב או ליצור קשר.",
+            extra_tags="payment_failed",
+        )
+
+    return redirect('home')
+
+def _pick_booking_status(booking_model, *candidates):
+    """
+    מחזיר סטטוס ראשון מתוך candidates שקיים בבחירות של המודל (אם יש choices),
+    אחרת מחזיר את הראשון.
+    """
+    try:
+        choices = {c[0] for c in booking_model._meta.get_field("status").choices or []}
+    except Exception:
+        choices = set()
+    for c in candidates:
+        if not choices or c in choices:
+            return c
+    return candidates[0]
+
+def _append_qs(url, **params):
+    s, n, p, q, f = urlsplit(url)
+    data = dict(parse_qsl(q))
+    data.update({k: v for k, v in params.items() if v is not None})
+    return urlunsplit((s, n, p, urlencode(data), f))
+# ——— 3) Webhook — כאן קובעים סטטוס סופי, יוצרים Booking, ושולחים מייל+SMS ———
+
+@csrf_exempt
+def pay_webhook(request):
+    """
+    Webhook למוק:
+    מקבל POST עם: payment_id, outcome=success|fail|cancel, [next=<url לחזרה>]
+    מעדכן את ה-Payment לסטטוס סופי, מפעיל לוגיקה לאחר הצלחה,
+    ובמוק מחזיר redirect ל-`next` (אם קיים) במקום JSON.
+    """
+    if request.method != "POST":
+        return HttpResponseBadRequest("Invalid method")
+
+    try:
+        pid = int(request.POST.get("payment_id"))
+    except (TypeError, ValueError):
+        return HttpResponseBadRequest("missing payment_id")
+
+    outcome = (request.POST.get("outcome") or "").lower()
+    status_map = {"success": "succeeded", "fail": "failed", "cancel": "canceled"}
+    new_status = status_map.get(outcome, "failed")
+
+    payment = get_object_or_404(Payment, id=pid)
+    FINALS = ("succeeded", "failed", "canceled", "refunded")
+
+    # אידמפוטנטיות: אם כבר הצליח – לא משנים סטטוס. רק משלימים מזהה אם צריך.
+    if payment.status == "succeeded":
+        if not payment.charge_id and getattr(payment, "booking_id", None):
+            # נעדיף את ה-ref מההזמנה אם קיים; אחרת מספר ההזמנה
+            payment.charge_id = (getattr(payment.booking, "payment_ref", None) or str(payment.booking_id))
+            payment.save(update_fields=["charge_id"])
+        # המשך ל-redirect/JSON בסוף הפונקציה
+    elif payment.status not in FINALS:
+        if new_status == "succeeded":
+            # 1) יצירת/איתור Booking
+            booking = _finalize_booking_after_payment(payment)
+
+            # 2) הקצאת מזהה עסקה ייחודי בפורמט MZ-XXXXXXXX לשני הצדדים (Booking & Payment)
+            ref = assign_unique_ref(booking, payment, digits=8)
+
+            # 3) סימון סטטוס וסימון זמן קליטת ה-webhook
+            payment.status = "succeeded"
+            payment.webhook_received_at = timezone.now()
+            # charge_id עודכן ע"י assign_unique_ref אם היה חסר; נשמור את שלושתם
+            payment.save(update_fields=["status", "webhook_received_at", "charge_id"])
+
+            # 4) עדכון סטטוס ההזמנה
+            new_bstatus = _pick_booking_status(Booking, "confirmed", "paid", "succeeded")
+            if getattr(booking, "status", None) != new_bstatus:
+                try:
+                    booking.status = new_bstatus
+                    booking.save(update_fields=["status"])
+                except Exception:
+                    booking.save()
+
+            # 5) התראות ללקוח
+            try:
+                _send_booking_email(payment, booking)
+            except Exception:
+                pass
+            try:
+                from homePage.services.phone_gateway import send_sms_via_phone
+                send_sms_via_phone(
+                    payment.phone,
+                    f"היי {payment.customer_name}, התור נקבע בהצלחה! "
+                    f"סכום: {(payment.amount_agorot / 100):.2f} ₪, מספר הזמנה: {payment.charge_id}"
+                )
+            except Exception:
+                pass
+        else:
+            # fail / cancel / refunded — סוגרים את התשלום בלי ליצור הזמנה
+            payment.status = new_status
+            payment.webhook_received_at = timezone.now()
+            payment.save(update_fields=["status", "webhook_received_at"])
+    else:
+        # כאן payment.status כבר באחד הסופיים (failed/canceled/refunded).
+        # לא משנים אותו כדי לשמור על אידמפוטנטיות.
+        pass
+
+    # Redirect אם הגיע next; אחרת JSON
+    next_url = request.POST.get("next") or request.GET.get("next")
+    if next_url:
+        if "payment_id=" not in next_url:
+            next_url = _append_qs(next_url, payment_id=payment.id)
+        return redirect(next_url)
+    return JsonResponse({"ok": True, "status": payment.status, "charge_id": payment.charge_id})
+
+
+def _resolve_activity_for_booking(payment: Payment, appt: Appointment | None):
+    # 1) הכי טוב: מהתור (אם קיים ועליו FK לפעילות)
+    if appt is not None:
+        a = getattr(appt, "activity", None)
+        if a:
+            return a
+        # לפעמים יש activity_id על ה-Appointment
+        aid = getattr(appt, "activity_id", None)
+        if aid:
+            a = Activity.objects.filter(id=aid).first()
+            if a:
+                return a
+
+    # 2) פולבאק: מתוך ה-Payment (יש לך IntegerField בשם activity_id)
+    if getattr(payment, "activity_id", None):
+        a = Activity.objects.filter(id=payment.activity_id).first()
+        if a:
+            return a
+
+    raise ValueError("אין דרך לקבוע Activity להזמנה (Appointment בלי פעילות ו-Payment.activity_id ריק).")
+
+def _finalize_booking_after_payment(payment: Payment):
+    """
+    סוגרת תור, מוצאת/יוצרת Booking, מקשרת אותו ל-Payment, ומחזירה אותו.
+    אידמפוטנטית: לא יוצרת כפילויות.
+    """
+    with transaction.atomic():
+        appt = None
+        if getattr(payment, "appointment_id", None):
+            appt = Appointment.objects.select_for_update().filter(id=payment.appointment_id).first()
+
+        # אם כבר קיים קישור Payment→Booking
+        if getattr(payment, "booking_id", None):
+            booking = payment.booking
+        else:
+            # ננסה למצוא לפי הקשר ההפוך (OneToOne related_name='payment')
+            booking = None
+            try:
+                booking = Booking.objects.select_for_update().filter(payment=payment).first()
+            except Exception:
+                pass
+            # או לפי ה-slot אם יש M2M בשם slots
+            if not booking and appt is not None:
+                try:
+                    booking = Booking.objects.select_for_update().filter(slots=appt).first()
+                except Exception:
+                    pass
+
+        if not booking:
+            activity = _resolve_activity_for_booking(payment, appt)
+
+            # זמנים
+            if appt is not None:
+                start_dt = getattr(appt, "start_dt", None) or datetime.combine(appt.date, appt.time)
+                end_dt = getattr(appt, "end_dt", None)
+                if not end_dt:
+                    minutes = getattr(appt, "duration_minutes", None) or getattr(activity, "duration_minutes", None) or 60
+                    end_dt = start_dt + timedelta(minutes=minutes)
+            else:
+                # אם אין Appointment, חייבים לבנות start/end מאוחר יותר — כאן נעדיף לזרוק שגיאה ברורה
+                raise ValueError("Payment בלי appointment_id: אי אפשר לייצר Booking בלי זמנים.")
+
+            total_price = (Decimal(payment.amount_agorot) / Decimal("100")) if getattr(payment, "amount_agorot", None) is not None else None
+
+            booking = Booking.objects.create(
+                activity=activity,                      # ← חובה כדי לא ליפול על NOT NULL
+                start_dt=start_dt,
+                end_dt=end_dt,
+                participants=getattr(payment, "participants", 1),
+                customer_name=getattr(payment, "customer_name", ""),
+                customer_phone=getattr(payment, "phone", ""),
+                customer_email=getattr(payment, "email", ""),   # אם יש לך שדה כזה ב-Booking
+                status="confirmed",
+                total_price=total_price,
+            )
+
+            # קישור נכון מהצד של Payment (זה הצד שמחזיק את העמודה)
+            if hasattr(payment, "booking_id"):
+                payment.booking = booking
+                payment.save(update_fields=["booking"])
+
+            # לחבר את ה-slot אם יש M2M בשם slots
+            if appt is not None:
+                try:
+                    booking.slots.add(appt)
+                except Exception:
+                    pass
+
+        # סימון התור כתפוס
+        if appt is not None and hasattr(appt, "is_booked") and not appt.is_booked:
+            appt.is_booked = True
+            appt.save(update_fields=["is_booked"])
+
+        return booking
+
+# ——— 4) דפי Mock — בדיקות ———
+def mock_checkout(request, payment_id: int):
+    payment = get_object_or_404(Payment, id=payment_id)
+    amount_nis = payment.amount_agorot / 100.0
+    return render(request, "homePage/mock_checkout.html",
+                  {"payment": payment, "amount_nis": amount_nis})
+
+# ——— 5) התראות — מייל ו־SMS (פשוטים; החליפי בספקים שלך) ———
+from django.core.mail import send_mail
+
+def _send_booking_email(payment, booking):
+    if not getattr(payment, "email", None):
+        return
+
+    # נתונים
+    amount_nis   = ((getattr(payment, "amount_agorot", 0) or 0) / 100)
+    charge_id    = getattr(payment, "charge_id", None) or "—"
+    customer     = (getattr(payment, "customer_name", "") or "").strip()
+    participants = getattr(booking, "participants", 1)
+    start_dt     = getattr(booking, "start_dt", None)
+    end_dt       = getattr(booking, "end_dt", None)
+
+    # כותרת ייחודית (מפחית קיפול "טקסט מצוטט")
+    subject = f"אישור הזמנה – חוות מסילת ציון · {charge_id}"
+
+    # --- טקסט גיבוי RTL (RLM) ---
+    rlm = "\u200F"
+    text_body_core = (
+        f"שלום {customer},\n\n"
+        f"התשלום עבר בהצלחה!\n\n"
+        f"מספר עסקה: {charge_id}\n"
+        f"סכום ששולם: ₪{amount_nis:.2f}\n"
+        f"מספר משתתפים: {participants}\n"
+        + (f"תאריך ושעה: {start_dt:%d.%m.%Y} בשעה {start_dt:%H:%M}"
+           + (f"–{end_dt:%H:%M}" if end_dt else "") + "\n" if start_dt else "")
+        + "\nנתראה בחווה 🐴\n\n"
+        f"שמרו מייל זה. לביטול/החזר תזדקקו למספר העסקה \n"
+        "זהו מייל אוטומטי – אין להשיב אליו."
+    )
+    text_body = rlm + text_body_core
+
+    # --- שורת זמן ל-HTML (רק אם יש start_dt) ---
+    time_row = ""
+    if start_dt:
+        time_row = (
+            f"<tr>"
+            f"<td align='right' style='padding:12px 16px;background:#fafafa;font-size:14px;color:#666;text-align:right'>תאריך ושעה</td>"
+            f"<td align='right' style='padding:12px 16px;font-size:14px;color:#111;text-align:right'>"
+            f"{start_dt:%d.%m.%Y} בשעה {start_dt:%H:%M}"
+            f"{'–' + end_dt.strftime('%H:%M') if end_dt else ''}"
+            f"</td></tr>"
+        )
+
+    # --- HTML RTL ממורכז, רספונסיבי, עם מניעת גלישה ---
+    html_body = f"""\
+<!doctype html>
+<html lang="he" dir="rtl">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">  <!-- חשוב לנייד -->
+    <title>אישור הזמנה – חוות מסילת ציון</title>
+  </head>
+  <body style="margin:0;background:#f6f7f9;font-family:Arial,Helvetica,'Segoe UI',sans-serif;direction:rtl;-ms-text-size-adjust:100%;-webkit-text-size-adjust:100%;mso-line-height-rule:exactly;">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0"
+           style="width:100%;background:#f6f7f9;padding:24px 0;border-collapse:collapse;mso-table-lspace:0pt;mso-table-rspace:0pt;">
+      <tr>
+        <td align="center" style="padding:0;">  <!-- מרכז את התיבה בכל לקוח מייל -->
+          <center>  <!-- תג center עדיין נתמך מצוין ברוב הלקוחות -->
+            <table role="presentation" width="600" cellpadding="0" cellspacing="0"
+                   style="width:100%;max-width:600px;background:#ffffff;border-radius:12px;overflow:hidden;border-collapse:collapse;table-layout:fixed;margin:0 auto;direction:rtl;text-align:right;">
+              <tr>
+                <td style="padding:18px 24px;background:#2f2a27;color:#fff;font-weight:700;font-size:18px;text-align:right;word-break:break-word;overflow-wrap:anywhere;">
+                  אישור הזמנה – חוות מסילת ציון
+                </td>
+              </tr>
+              <tr>
+                <td style="padding:22px;word-break:break-word;overflow-wrap:anywhere;">
+                  <h1 style="margin:0 0 12px 0;font-size:20px;color:#222;line-height:1.35;">שלום {customer},</h1>
+                  <p style="margin:0 0 16px 0;font-size:15px;color:#333;line-height:1.6;">התשלום עבר בהצלחה! הנה הפרטים:</p>
+
+                  <table role="presentation" cellpadding="0" cellspacing="0"
+                         style="width:100%;border:1px solid #eee;border-radius:10px;overflow:hidden;border-collapse:separate;">
+                    <tr>
+                      <td align="right" style="padding:12px 16px;background:#fafafa;font-size:14px;color:#666;text-align:right">מספר עסקה</td>
+                      <td align="right" style="padding:12px 16px;font-size:14px;color:#111;text-align:right;word-break:break-word;overflow-wrap:anywhere;">{charge_id}</td>
+                    </tr>
+                    <tr>
+                      <td align="right" style="padding:12px 16px;background:#fafafa;font-size:14px;color:#666;text-align:right">סכום ששולם</td>
+                      <td align="right" style="padding:12px 16px;font-size:14px;color:#111;text-align:right">₪{amount_nis:.2f}</td>
+                    </tr>
+                    <tr>
+                      <td align="right" style="padding:12px 16px;background:#fafafa;font-size:14px;color:#666;text-align:right">מספר משתתפים</td>
+                      <td align="right" style="padding:12px 16px;font-size:14px;color:#111;text-align:right">{participants}</td>
+                    </tr>
+                    {time_row}
+                  </table>
+
+                  <p style="margin:10px 0 12px 0;font-size:13.5px;color:#555;line-height:1.6;">
+                    שמרו מייל זה. לביטול/החזר תזדקקו למספר העסקה <br>
+                    זהו מייל אוטומטי – אין להשיב אליו.
+                  </p>
+
+                  <hr style="border:none;border-top:1px solid #eee;margin:18px 0">
+
+                  <p style="margin:0;font-size:12px;color:#999;line-height:1.5;">
+                    © חוות מסילת ציון · כל הזכויות שמורות
+                  </p>
+                </td>
+              </tr>
+            </table>
+          </center>
+        </td>
+      </tr>
+    </table>
+  </body>
+</html>
+"""
+
+    send_mail(
+        subject=subject,
+        message=text_body,        # גיבוי טקסטואלי עם RLM
+        from_email=None,          # ישתמש ב-DEFAULT_FROM_EMAIL אם קיים
+        recipient_list=[payment.email],
+        html_message=html_body,   # HTML RTL ממורכז לחלוטין
+        fail_silently=True,
+    )
+
+

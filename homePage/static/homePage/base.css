@@ -137,3 +137,52 @@ footer{
   .social-bar .icon { width: 40px; height: 40px; }
   .social-bar .icon i { font-size: 20px; }
 }
+
+
+
+
+/* ====== Payment success/fail modal (overlay) ====== */
+.success-modal {
+  position: fixed;          /* שוכן מעל כל הדף */
+  inset: 0;
+  z-index: 20000;           /* גבוה יותר מה-header שלך (10000) */
+  display: none;            /* נפתח עם .open */
+  place-items: center;
+}
+.success-modal.open {        /* ה-JS מוסיף את המחלקה הזו */
+  display: grid;
+}
+
+.success-modal__backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(0,0,0,.45);
+}
+
+.success-modal__card {
+  position: relative;
+  z-index: 1;
+  background: #fff;
+  border-radius: 14px;
+  width: min(360px, 92vw);
+  padding: 18px 16px;
+  text-align: center;
+  transform: translateY(10px);
+  opacity: 0;
+  transition: transform .25s ease, opacity .25s ease;
+}
+.success-modal.open .success-modal__card {
+  transform: translateY(0);
+  opacity: 1;
+}
+
+.success-modal__ok {
+  padding: 10px 16px;
+  border-radius: 10px;
+  background: var(--main-color); /* משתמש בצבעים שלך */
+  color: #fff;
+  border: 0;
+  cursor: pointer;
+}
+
+body.modal-open { overflow: hidden; }

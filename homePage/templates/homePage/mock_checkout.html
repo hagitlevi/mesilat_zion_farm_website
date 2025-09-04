@@ -1,0 +1,32 @@
+{% extends "homePage/base.html" %}
+{% block title %}תשלום מדומה{% endblock %}
+{% block content %}
+<section class="details" dir="rtl" style="max-width:520px; margin:2rem auto; text-align:center">
+  <h2>תשלום מדומה</h2>
+  <p>סכום לתשלום: <strong>{{ amount_nis|floatformat:2 }}</strong> ₪</p>
+
+    {% url 'pay_return' as payreturn %}
+
+    <form method="post" action="{% url 'pay_webhook' %}?next={{ payreturn|urlencode }}">
+      {% csrf_token %}
+      <input type="hidden" name="payment_id" value="{{ payment.id }}">
+      <input type="hidden" name="outcome" value="success">
+      <button type="submit">✅ סימולציית הצלחה</button>
+    </form>
+
+    <form method="post" action="{% url 'pay_webhook' %}?next={{ payreturn|urlencode }}" style="margin-top:.5rem">
+      {% csrf_token %}
+      <input type="hidden" name="payment_id" value="{{ payment.id }}">
+      <input type="hidden" name="outcome" value="fail">
+      <button type="submit">❌ סימולציית כישלון</button>
+    </form>
+
+    <form method="post" action="{% url 'pay_webhook' %}?next={{ payreturn|urlencode }}" style="margin-top:.5rem">
+      {% csrf_token %}
+      <input type="hidden" name="payment_id" value="{{ payment.id }}">
+      <input type="hidden" name="outcome" value="cancel">
+      <button type="submit">↩️ סימולציית ביטול</button>
+    </form>
+
+</section>
+{% endblock %}
