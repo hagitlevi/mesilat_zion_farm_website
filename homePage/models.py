@@ -1,6 +1,6 @@
 from django.utils.translation import gettext_lazy as _
-from django.db import models, transaction                                 # בסיס מודלים של Django
-from django.core.validators import MinValueValidator, MaxValueValidator  # ולידטורים לטווח
+from django.db import models, transaction
+from django.core.validators import MinValueValidator, MaxValueValidator
 from django.db.models.signals import pre_delete
 from django.dispatch import receiver
 from django.utils import timezone
@@ -311,8 +311,12 @@ class Payment(models.Model):
     def __str__(self):
         return f"Payment#{self.id} {(self.amount_agorot/100):.2f} {self.currency} [{self.status}]"
 
-
-
+# --- מערכת שעות כאובייקט וירטואלי (בלי טבלה) ---
+class ScheduleBoard(Appointment):
+    class Meta:
+        proxy = True
+        verbose_name = "לוח שנה"
+        verbose_name_plural = "לוח שנה"
 
 
 # --- שחרור סלוטים כשמוחקים Booking ---

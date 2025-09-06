@@ -1,0 +1,361 @@
+{% extends "admin/base_site.html" %}
+{% load static %}
+
+{% block extrastyle %}
+<style>
+  /* בסיס */
+  .mz-wizard { direction: rtl; }
+  .mz-wizard * { box-sizing: border-box; }
+
+  /* כרטיס ממורכז ומוגבל רוחב */
+  .mz-card{
+    max-width: 1080px;          /* מרכז יפה במסך רחב */
+    margin: 0 auto;             /* מרכז אופקית */
+    background:#fff;
+    border:1px solid #dfe3e6;
+    border-radius:12px;
+    padding:22px 22px 16px;
+    box-shadow:0 1px 0 rgba(0,0,0,.02);
+  }
+
+  .mz-title{
+    background:#4f6f84; color:#fff;
+    padding:12px 18px; border-radius:10px;
+    margin:-6px -6px 18px; font-size:20px; font-weight:600;
+  }
+
+  /* שתי עמודות: תווית קבועה + תא שדה שגדל */
+  .mz-grid{
+    display:grid;
+    grid-template-columns: 160px minmax(600px, 1fr); /* כל השדות אותו רוחב */
+    gap:14px 18px;
+    align-items:center;
+  }
+  .mz-grid label{
+    justify-self:end; color:#2c3e50; font-weight:600;
+    min-height:44px; display:flex; align-items:center;
+  }
+  .mz-grid .field{ width:100%; }
+  .mz-grid .field > *{
+    width:100%; height:44px; font-size:16px;
+    padding:0 12px;
+    border:1px solid #cfd6dc; border-radius:10px;
+    background:#f5f9ff;
+  }
+
+  /* התאמת סוגי קלט */
+  input[type="date"]{ padding-inline:10px; }
+  input[type="number"]{ -moz-appearance:textfield; }
+  input[type="number"]::-webkit-outer-spin-button,
+  input[type="number"]::-webkit-inner-spin-button{ -webkit-appearance:none; margin:0; }
+
+  /* הודעות ועזרים */
+  .mz-help{ color:#5f6c77; font-size:13px; margin-top:6px; }
+  .mz-row{ display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin-top:12px; }
+  .mz-chip{ background:#eef3f7; border:1px solid #d8e2ea; color:#2c3e50; padding:6px 10px; border-radius:999px; font-size:13px; }
+
+  /* כפתור */
+  .mz-actions{ display:flex; justify-content:flex-end; margin-top:18px; }
+  .mz-actions button{
+    background:#6a879b; color:#fff; border:none; padding:11px 20px;
+    border-radius:10px; cursor:pointer; font-weight:700;
+  }
+  .mz-actions button[disabled]{ opacity:.55; cursor:not-allowed; }
+
+  /* מובייל: עמודה אחת */
+  @media (max-width: 860px){
+    .mz-grid{ grid-template-columns: 1fr; }
+    .mz-grid label{ justify-self:start; }
+  }
+  /* להסתיר שורת עזרה/סיכום זמינות */
+    .mz-help,
+    .mz-row.summary,
+    .mz-availability-hint {
+      display: none !important;
+    }
+
+    /* הצ'קבוקס בשורה אחת, בעמודה הימנית של ה-grid */
+    .mz-grid .col-2 { grid-column: 2 / 3; }
+
+    #consent-wrap{
+      display:flex;
+      gap:.5rem;
+      align-items:center;
+      white-space:nowrap; /* שורה אחת */
+    }
+
+    @media (max-width: 860px){
+      #consent-wrap{ white-space:normal; } /* במובייל כן נאפשר ירידת שורה */
+    }
+
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="mz-wizard">
+  <div class="mz-card">
+    <div class="mz-title">קביעת הזמנה ידנית</div>
+
+    <form id="mz-form" method="post" action="{{ ajax_times_url }}">
+      {% csrf_token %}
+
+      <div class="mz-grid">
+        <!-- פעילויות -->
+        <label for="activity_name">פעילות</label>
+        <div class="field">
+          <select id="activity_name" name="activity_name" required>
+            <option value="" selected hidden>בחרי…</option>
+            {% for n in activity_names %}
+              <option value="{{ n }}">{{ n }}</option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <!-- אורך -->
+        <label for="duration_minutes">אורך (דקות)</label>
+        <div class="field">
+          <select id="duration_minutes" name="duration_minutes" required>
+            <option value="" selected hidden>בחרי…</option>
+            <!-- יתמלא דינמית לפי הפעילות -->
+          </select>
+        </div>
+
+        <!-- תאריך -->
+        <label for="date">תאריך</label>
+        <div class="field">
+          <input type="date" id="date" name="date" value="{{ today }}" required>
+        </div>
+
+        <!-- שעת התחלה -->
+        <label for="start_time">שעת התחלה</label>
+        <div class="field">
+          <select id="start_time" name="start_time" required>
+            <option value="" selected hidden>בחרי…</option>
+            <!-- יתמלא דינמית ב-AJAX -->
+          </select>
+          <div id="times-help" class="mz-help"></div>
+        </div>
+
+        <!-- משתתפים -->
+        <label for="participants">משתתפים</label>
+        <div class="field">
+          <input type="number" id="participants" name="participants" value="1" min="1" step="1" required>
+        </div>
+
+        <!-- לסמן כשולם -->
+        <label for="mark_paid">סמן כשולם</label>
+        <div class="field">
+          <select id="mark_paid" name="mark_paid">
+            <option value="1">כן</option>
+            <option value="0" selected>לא</option>
+          </select>
+        </div>
+
+        <!-- שם פרטי -->
+        <label for="first_name">שם פרטי</label>
+        <div class="field"><input type="text" id="first_name" name="first_name" required></div>
+
+        <!-- שם משפחה -->
+        <label for="last_name">שם משפחה</label>
+        <div class="field"><input type="text" id="last_name" name="last_name" required></div>
+
+        <!-- טלפון -->
+        <label for="phone">טלפון</label>
+        <div class="field">
+            <input type="tel" id="id_phone" name="phone" required>
+        </div>
+
+        <!-- מייל -->
+        <label for="email">מייל</label>
+        <div class="field"><input type="email" id="email" name="email" required></div>
+
+        <!-- הצ'קבוקס – תא בעמודה הימנית בלבד -->
+        <div class="field col-2" id="consent-cell" style="display:none">
+          <label class="checkbox" id="consent-wrap">
+            <input type="checkbox" name="accept_terms" value="1">
+            קראתי ואני מאשר/ת את
+            <a href="{% url 'terms' %}" target="_blank">תנאי השימוש</a>
+            ו־<a href="{% url 'privacy' %}" target="_blank">מדיניות הפרטיות</a>
+          </label>
+        </div>
+
+
+
+        <!-- יין (נחשף רק לרכיבה זוגית) -->
+        <label for="wine" id="wine_label" style="display:none">יין</label>
+        <div class="field" id="wine_wrap" style="display:none">
+          <select id="wine" name="wine">
+            <option value="white">לבן</option>
+            <option value="red">אדום</option>
+            <option value="none" selected>בלי</option>
+          </select>
+        </div>
+
+        <!-- צבע הסוס (רק לצילומים) -->
+        <label for="horse_color" id="photo_color_label" style="display:none">צבע הסוס</label>
+        <div class="field" id="photo_color_wrap" style="display:none">
+          <select id="horse_color" name="horse_color">
+            <option value="" selected hidden>בחרי צבע…</option>
+            <option value="white">סוס לבן</option>
+            <option value="brown">סוס חום</option>
+          </select>
+        </div>
+      </div>
+
+
+      <div class="mz-row" style="margin-top:14px" id="summary-row"></div>
+
+      <div class="mz-actions">
+        <button id="submit-btn" type="submit">צרי הזמנה</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script>
+(function(){
+  const DURATIONS = JSON.parse('{{ durations_map_json|escapejs }}');
+  const AJAX_URL  = "{{ ajax_times_url }}"; // /admin/homePage/appointment/book/
+
+  const $ = id => document.getElementById(id);
+  const elPhotoColorLbl  = document.getElementById('photo_color_label');
+  const elPhotoColorWrap = document.getElementById('photo_color_wrap');
+
+  const elName   = $('activity_name');
+  const elDur    = $('duration_minutes');
+  const elDate   = $('date');
+  const elStart  = $('start_time');
+  const elHelp   = $('times-help');
+  const elWine   = $('wine');
+  const elWineLbl= $('wine_label');
+  const elWineWrap=$('wine_wrap');
+  const elForm   = $('mz-form');
+  const elSummary= $('summary-row');
+
+  // 1) כשבוחרים פעילות – למלא אפשרויות אורך תקינות
+  function fillDurations(){
+    const showPhotoColor = (elName.value.trim() === 'צילומים');
+    elPhotoColorLbl.style.display  = showPhotoColor ? '' : 'none';
+    elPhotoColorWrap.style.display = showPhotoColor ? '' : 'none';
+
+    const name = elName.value || '';
+    elDur.innerHTML = '<option value="" selected hidden>בחרי…</option>';
+    if (!name || !DURATIONS[name] || !DURATIONS[name].length) return;
+    DURATIONS[name].forEach(m=>{
+      const opt = document.createElement('option');
+      opt.value = m; opt.textContent = `דק ${m}`;
+      elDur.appendChild(opt);
+    });
+
+    // יין לרכיבה זוגית
+    const showWine = (name.trim() === 'רכיבה זוגית');
+    elWineLbl.style.display = showWine ? '' : 'none';
+    elWineWrap.style.display = showWine ? '' : 'none';
+  }
+
+  // 2) טעינת שעות התחלה פנויות
+  async function loadTimes(){
+    elStart.innerHTML = '<option value="" selected hidden>בחרי…</option>';
+    elHelp.textContent = '';
+
+    const name = elName.value || '';
+    const minutes = elDur.value || '';
+    const date = elDate.value || '';
+
+    if (!name || !minutes || !date) {
+      elHelp.textContent = 'בחרי פעילות → בחרי אורך → בחרי תאריך ואז יוצגו שעות פנויות.';
+      return;
+    }
+
+    try {
+      const url = `${AJAX_URL}?ajax=times&name=${encodeURIComponent(name)}&minutes=${encodeURIComponent(minutes)}&date=${encodeURIComponent(date)}`;
+      const res = await fetch(url, {credentials:'same-origin'});
+      const data = await res.json();
+      const times = Array.isArray(data.times) ? data.times : [];
+
+      if (!times.length){
+        elHelp.textContent = 'אין שעות פנויות לתנאים שנבחרו בתאריך זה.';
+        return;
+      }
+
+      times.forEach(t=>{
+        const opt = document.createElement('option');
+        opt.value = t; opt.textContent = t;
+        elStart.appendChild(opt);
+      });
+      elHelp.textContent = `נמצאו ${times.length} שעות פנויות.`;
+    } catch(err){
+      elHelp.textContent = 'שגיאת תקשורת בעת טעינת שעות.';
+    }
+  }
+
+  // 3) תקציר בחירות
+  function updateSummary(){
+    const chips = [];
+    if (elName.value) chips.push(`פעילות: ${elName.value}`);
+    if (elDur.value) chips.push(`אורך ${elDur.value} דק`);
+    if (elDate.value) chips.push(`תאריך: ${elDate.value}`);
+    if (elStart.value) chips.push(`שעה: ${elStart.value}`);
+    const p = document.getElementById('participants');
+    if (p && p.value) chips.push(`משתתפים: ${p.value}`);
+    elSummary.innerHTML = chips.map(c=>`<span class="mz-chip">${c}</span>`).join(' ');
+  }
+
+  // חיבור אירועים
+  [elName].forEach(el => el.addEventListener('change', ()=>{ fillDurations(); loadTimes(); updateSummary(); }));
+  [elDur, elDate].forEach(el => el.addEventListener('change', ()=>{ loadTimes(); updateSummary(); }));
+  [elStart].forEach(el => el.addEventListener('change', updateSummary));
+
+  // ולידציה בסיסית לפני שליחה
+  elForm.addEventListener('submit', (e)=>{
+    // שדות חובה
+    if (!elName.value || !elDur.value || !elDate.value || !elStart.value){
+      e.preventDefault();
+      alert('חסרים נתונים: פעילות/אורך/תאריך/שעה');
+      return;
+    }
+  });
+
+  // אתחול ראשוני
+  fillDurations();
+  updateSummary();
+
+const phone    = document.querySelector('input[name="phone"]');
+const wrapCell = document.getElementById('consent-cell');
+const wrap     = document.getElementById('consent-wrap');
+
+  if (!phone || !wrap) return;
+
+  const ADMIN_CONSENT_URL = "{% url 'booking_form' %}?ajax=consent&phone=";
+
+  function normIL(p){
+    let d = (p||'').replace(/\D/g,'');
+    if (d.startsWith('972')) d = '0' + d.slice(3);
+    return d;
+  }
+
+  function check(){
+    const p = normIL(phone.value||'');
+    if (!/^0(5\d{8}|[2-9]\d{7})$/.test(p)){
+      wrap.style.display = 'none';
+      wrap.querySelector('input[type="checkbox"]').checked = false;
+      return;
+    }
+    fetch(ADMIN_CONSENT_URL  + encodeURIComponent(p), {credentials:'same-origin'})
+      .then(r => r.json())
+      .then(data => {
+        const needs = data && data.needs_consent === true;
+        wrapCell.style.display = needs ? '' : 'none';
+        if (!needs) wrap.querySelector('input[type="checkbox"]').checked = false;
+
+      })
+      .catch(() => { wrap.style.display = 'none'; });
+  }
+
+  phone.addEventListener('input', () => {
+    clearTimeout(phone._t); phone._t = setTimeout(check, 250);
+  });
+  if ((phone.value||'').trim()) check();
+})();
+</script>
+{% endblock %}

@@ -1,0 +1,56 @@
+{% extends "admin/base_site.html" %}
+{% load static i18n admin_cards %}
+
+{% block extrastyle %}
+  {{ block.super }}
+  <link rel="stylesheet" href="{% static 'homePage/admin/cards.css' %}">
+{% endblock %}
+
+{% block content_title %}{% endblock %}
+
+{% block content %}
+<div class="mz-admin-index">
+
+  <!-- בלוק ניהול משתמשים בלבד -->
+  <h2 class="mz-sec-title">ניהול משתמשים</h2>
+  <div class="mz-card-grid">
+    {% for app in app_list %}
+      {% if app.app_label == 'auth' %}
+        {% for model in app.models %}
+          <div class="mz-card">
+            <div class="mz-card-hd">{{ model.name }}</div>
+            <div class="mz-card-actions">
+              <a class="mz-btn" href="{{ model.admin_url }}">ניהול</a>
+              {% if model.add_url %}<a class="mz-btn ghost" href="{{ model.add_url }}">+ הוספה</a>{% endif %}
+            </div>
+            <div class="mz-card-sub">{{ app.name }}</div>
+          </div>
+        {% endfor %}
+      {% endif %}
+    {% endfor %}
+  </div>
+
+  <!-- בלוק כל שאר האפליקציות -->
+  <h2 class="mz-sec-title" style="margin-top:2rem">ניהול התוכן</h2>
+  <div class="mz-card-grid">
+    {% for app in app_list %}
+      {% if app.app_label != 'auth' %}
+        {% with app.models|order_models:app.app_label as models %}
+          {% for model in models %}
+            <div class="mz-card">
+              <div class="mz-card-hd">{{ model.name }}</div>
+              <div class="mz-card-actions">
+                <a class="mz-btn" href="{{ model.admin_url }}">ניהול</a>
+                {% if model.add_url %}<a class="mz-btn ghost" href="{{ model.add_url }}">+ הוספה</a>{% endif %}
+              </div>
+              <div class="mz-card-sub">{{ app.name }}</div>
+            </div>
+          {% endfor %}
+        {% endwith %}
+      {% endif %}
+    {% endfor %}
+  </div>
+
+
+</div>
+{% endblock %}

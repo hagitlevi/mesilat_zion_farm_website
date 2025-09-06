@@ -2,34 +2,26 @@ from homePage.models import ActivityRule, BusinessHours, Season, Booking, Paymen
 from .forms import SiteReviewForm, CancelRequestForm
 from .models import SiteReview, CancellationRequest
 from django.http import Http404
-from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
 from django.db.models import Q, Avg
-from django.db import transaction
 from django.core.paginator import Paginator
-from datetime import datetime, timedelta, date, time
+from datetime import date, time as dt_time, timedelta
 from zoneinfo import ZoneInfo
 from .utils import group_consecutive_hours
 import json
 from django.views.decorators.http import require_GET
 from .models import TermsConsent
-from urllib.parse import urlencode
-from django.core.mail import send_mail
 import secrets
-from homePage.utils import assign_unique_ref  # ← למעלה בקובץ, ליד שאר הייבוא
 from homePage.utils import assign_unique_ref
 import time
-from django.shortcuts import render, redirect, get_object_or_404
+from django.shortcuts import render, get_object_or_404
 from django.urls import reverse
 from django.http import HttpResponseBadRequest, JsonResponse
 from django.views.decorators.csrf import csrf_exempt
-from django.db import transaction
 from django.conf import settings
 from django.utils import timezone
-from django.contrib import messages
 from urllib.parse import urlencode, urlsplit, urlunsplit, parse_qsl
-from .models import Payment, Activity, Appointment
-from datetime import datetime, timedelta
+from datetime import datetime
 from decimal import Decimal
 from django.db import transaction
 from homePage.models import Activity, Appointment, Booking, Payment
@@ -165,7 +157,7 @@ def get_rules_for(activity, d):
         if arule.end_time:
             # תמיכה ב"סוף היום" (24:00) באמצעות סימון end_is_midnight_next_day
             if arule.end_is_midnight_next_day:
-                win_end_dt = datetime.combine(d, time(0, 0)) + timedelta(days=1)  # 00:00 שלמחרת
+                win_end_dt = datetime.combine(d, dt_time(0, 0)) + timedelta(days=1)  # 00:00 שלמחרת
             else:
                 win_end_dt = datetime.combine(d, arule.end_time)
         else:
@@ -417,8 +409,6 @@ def available_appointment_view(request, activity_id):
     }
     return render(request, "homePage/available_appointment.html", context)
 
-from decimal import Decimal  # אם איננו בשימוש בטמפלט/חישובים נוספים, אפשר גם לוותר על הייבוא הזה
-@csrf_exempt
 @csrf_exempt
 def confirm_booking(request):
     if request.method != "POST":
@@ -528,6 +518,88 @@ def _capture_trailing_quarter_slot_as_break(base_appt, slot_count, field_names, 
         extra.activities.add(activity_obj)
 
     return extra
+
+
+def _capture_slots_and_break(appt, duration_minutes, booking, activity=None, payment_ref=None):
+    """
+    תופסת רצף סלוטים של 15 דק' לפי משך, ומוסיפה הפסקה של 15 דק' אם צריך.
+    מסמנת את הסלוטים כ-is_booked=True, is_paid=True (לא להפסקה), is_break=False.
+    מחזירה (times_captured, extra_break) כאשר extra_break הוא ה-Appointment של ההפסקה אם נתפס.
+    """
+    if duration_minutes is None:
+        duration_minutes = 60
+
+    slot_count = max(1, (int(duration_minutes) + 14) // 15)
+    base_dt = datetime.combine(appt.date, appt.time)
+    times_needed = [(base_dt + timedelta(minutes=15*i)).time() for i in range(slot_count)]
+
+    # שליפת כל הסלוטים הרצופים ונעילה
+    chain_qs = (Appointment.objects
+                .select_for_update()
+                .filter(date=appt.date,
+                        time__in=times_needed,
+                        is_break=False))
+    # אם כבר נתפסו עבור אותו Booking — נאפשר לעבור, אחרת נדרוש פנוי
+    chain = list(chain_qs)
+    if len(chain) != slot_count or any(a.is_booked and a.booking_id != getattr(booking, 'id', None) for a in chain):
+        raise ValueError("חסרים סלוטים פנויים לרצף שביקשת.")
+
+    # סימון סלוטי המפגש
+    for a in chain:
+        a.booking = booking
+        a.is_paid = True
+        a.is_booked = True
+        a.is_break = False
+        if payment_ref and hasattr(a, "payment_reference"):
+            a.payment_reference = payment_ref
+        if activity and getattr(a, "activity_id", None) != activity.id and hasattr(a, "activity_id"):
+            a.activity = activity
+        a.save(update_fields=[f for f in ["booking","is_paid","is_booked","is_break","payment_reference","activity"]
+                              if hasattr(a, f)])
+
+        # אם יש לך M2M של slots על Booking — נחבר
+        if hasattr(booking, "slots"):
+            try:
+                booking.slots.add(a)
+            except Exception:
+                pass
+
+        # ואם יש M2M activities על Appointment — לשיוך
+        if activity and hasattr(a, "activities"):
+            try:
+                a.activities.add(activity)
+            except Exception:
+                pass
+
+    # תפיסת ההפסקה של 15 דק' אם משך>30
+    extra_appt = None
+    if int(duration_minutes) > 30:
+        extra_start_dt = base_dt + timedelta(minutes=15 * slot_count)
+        extra = (Appointment.objects
+                 .select_for_update()
+                 .filter(date=appt.date,
+                         time=extra_start_dt.time(),
+                         is_booked=False,
+                         is_break=False)
+                 .first())
+        if extra:
+            extra.booking = booking
+            extra.is_paid = False
+            extra.is_booked = True
+            extra.is_break = True
+            if activity and getattr(extra, "activity_id", None) != activity.id and hasattr(extra, "activity_id"):
+                extra.activity = activity
+            extra.save(update_fields=[f for f in ["booking","is_paid","is_booked","is_break","activity"]
+                                      if hasattr(extra, f)])
+            extra_appt = extra
+            # לחיבור ל-M2M אם קיים
+            if hasattr(booking, "slots"):
+                try:
+                    booking.slots.add(extra)
+                except Exception:
+                    pass
+
+    return times_needed, extra_appt
 
 @transaction.atomic
 def mock_payment_success(request):
@@ -1047,12 +1119,9 @@ def pay_start(request):
     request.session['last_payment_id'] = payment.id
     # הפניה מיידית לעמוד הסליקה המדומה
     return redirect(reverse("mock_checkout", kwargs={"payment_id": payment.id}))
-
 # ——— 2) חזרה מהסליקה — מחליטים על הודעה, ומפנים לדף הבית ———
 
-
 def pay_return(request):
-    import time  # ליתר ביטחון אם לא יובא למעלה
 
     # נשלוף וננקה את ה-id מהסשן כדי לא להציג שוב הודעות בשגגה
     pid = request.GET.get("payment_id") or request.session.pop("last_payment_id", None)
@@ -1219,25 +1288,23 @@ def _resolve_activity_for_booking(payment: Payment, appt: Appointment | None):
 
 def _finalize_booking_after_payment(payment: Payment):
     """
-    סוגרת תור, מוצאת/יוצרת Booking, מקשרת אותו ל-Payment, ומחזירה אותו.
-    אידמפוטנטית: לא יוצרת כפילויות.
+    סוגרת תור, מוצאת/יוצרת Booking, מקשרת אותו ל-Payment, ותופסת את כל הסלוטים לפי המשך.
+    אידמפוטנטית ככל האפשר.
     """
     with transaction.atomic():
         appt = None
         if getattr(payment, "appointment_id", None):
             appt = Appointment.objects.select_for_update().filter(id=payment.appointment_id).first()
 
-        # אם כבר קיים קישור Payment→Booking
+        # איתור/יצירת Booking כפי שהיה
         if getattr(payment, "booking_id", None):
             booking = payment.booking
         else:
-            # ננסה למצוא לפי הקשר ההפוך (OneToOne related_name='payment')
             booking = None
             try:
                 booking = Booking.objects.select_for_update().filter(payment=payment).first()
             except Exception:
                 pass
-            # או לפי ה-slot אם יש M2M בשם slots
             if not booking and appt is not None:
                 try:
                     booking = Booking.objects.select_for_update().filter(slots=appt).first()
@@ -1246,48 +1313,66 @@ def _finalize_booking_after_payment(payment: Payment):
 
         if not booking:
             activity = _resolve_activity_for_booking(payment, appt)
-
-            # זמנים
             if appt is not None:
                 start_dt = getattr(appt, "start_dt", None) or datetime.combine(appt.date, appt.time)
-                end_dt = getattr(appt, "end_dt", None)
-                if not end_dt:
-                    minutes = getattr(appt, "duration_minutes", None) or getattr(activity, "duration_minutes", None) or 60
-                    end_dt = start_dt + timedelta(minutes=minutes)
             else:
-                # אם אין Appointment, חייבים לבנות start/end מאוחר יותר — כאן נעדיף לזרוק שגיאה ברורה
                 raise ValueError("Payment בלי appointment_id: אי אפשר לייצר Booking בלי זמנים.")
+
+            # ❗ חשוב: השתמשי במה שהלקוח בחר — payment.duration_minutes
+            minutes = (getattr(payment, "duration_minutes", None)
+                       or getattr(appt, "duration_minutes", None)
+                       or getattr(activity, "duration_minutes", None)
+                       or 60)
+            end_dt = start_dt + timedelta(minutes=minutes)
 
             total_price = (Decimal(payment.amount_agorot) / Decimal("100")) if getattr(payment, "amount_agorot", None) is not None else None
 
             booking = Booking.objects.create(
-                activity=activity,                      # ← חובה כדי לא ליפול על NOT NULL
+                activity=activity,
                 start_dt=start_dt,
                 end_dt=end_dt,
                 participants=getattr(payment, "participants", 1),
                 customer_name=getattr(payment, "customer_name", ""),
                 customer_phone=getattr(payment, "phone", ""),
-                customer_email=getattr(payment, "email", ""),   # אם יש לך שדה כזה ב-Booking
+                customer_email=getattr(payment, "email", ""),
                 status="confirmed",
                 total_price=total_price,
             )
 
-            # קישור נכון מהצד של Payment (זה הצד שמחזיק את העמודה)
             if hasattr(payment, "booking_id"):
                 payment.booking = booking
                 payment.save(update_fields=["booking"])
 
-            # לחבר את ה-slot אם יש M2M בשם slots
-            if appt is not None:
-                try:
-                    booking.slots.add(appt)
-                except Exception:
-                    pass
+        # --- כאן תופסים את כל הסלוטים לפי המשך הנכון ---
+        if appt is not None:
+            minutes = (getattr(payment, "duration_minutes", None)
+                       or getattr(appt, "duration_minutes", None)
+                       or getattr(booking.activity, "duration_minutes", None)
+                       or 60)
+            try:
+                _capture_slots_and_break(
+                    appt=appt,
+                    duration_minutes=minutes,
+                    booking=booking,
+                    activity=getattr(booking, "activity", None),
+                    payment_ref=getattr(payment, "charge_id", None) or None
+                )
+            except ValueError:
+                # אם אין רצף פנוי — לפחות נסמן את בסיס התור כתפוס (שמירה על ההתנהגות הישנה)
+                if hasattr(appt, "is_booked") and not appt.is_booked:
+                    appt.is_booked = True
+                    appt.save(update_fields=["is_booked"])
 
-        # סימון התור כתפוס
-        if appt is not None and hasattr(appt, "is_booked") and not appt.is_booked:
-            appt.is_booked = True
-            appt.save(update_fields=["is_booked"])
+            # עדכון end_dt ב-Booking אם לא תאם למשך בפועל
+            start_dt = getattr(booking, "start_dt", None)
+            if start_dt:
+                desired_end = start_dt + timedelta(minutes=minutes)
+                if getattr(booking, "end_dt", None) != desired_end:
+                    try:
+                        booking.end_dt = desired_end
+                        booking.save(update_fields=["end_dt"])
+                    except Exception:
+                        pass
 
         return booking
 
@@ -1369,7 +1454,7 @@ def _send_booking_email(payment, booking):
               <tr>
                 <td style="padding:22px;word-break:break-word;overflow-wrap:anywhere;">
                   <h1 style="margin:0 0 12px 0;font-size:20px;color:#222;line-height:1.35;">שלום {customer},</h1>
-                  <p style="margin:0 0 16px 0;font-size:15px;color:#333;line-height:1.6;">התשלום עבר בהצלחה! הנה הפרטים:</p>
+                  <p style="margin:0 0 16px 0;font-size:15px;color:#333;line-height:1.6;">התשלום עבר בהצלחה!</p>
 
                   <table role="presentation" cellpadding="0" cellspacing="0"
                          style="width:100%;border:1px solid #eee;border-radius:10px;overflow:hidden;border-collapse:separate;">

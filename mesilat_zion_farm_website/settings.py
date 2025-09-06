@@ -39,7 +39,7 @@ SECRET_KEY = 'django-insecure-*k0#_3ynwivpd15dq%9d4i)(i3ah+c@!pa9@$$651-0npmo0-k
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = ['127.0.0.1', 'localhost', '.ngrok-free.app', '10.0.0.9', '192.168.0.98'] #
+ALLOWED_HOSTS = ['127.0.0.1', 'localhost', '10.0.0.13', '192.168.0.98'] #
 
 
 # Application definition
@@ -115,6 +115,22 @@ AUTH_PASSWORD_VALIDATORS = [
     },
 ]
 
+ADMIN_MODEL_ORDER = {
+    "homePage": {
+        "name": [
+            "לוח שנה",
+            "הזמנות",
+            "ביקורות",
+            "אישורי מדיניות",
+            "פעילויות",
+            "ימים בשבוע",
+            "שעות עבודה כלליות",
+            "כללי פעילות",
+            "לוחות זמנים מיוחדים",
+            "תורים",
+        ]
+    }
+}
 
 # Internationalization
 # https://docs.djangoproject.com/en/5.2/topics/i18n/

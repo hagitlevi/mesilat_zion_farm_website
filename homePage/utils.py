@@ -44,7 +44,7 @@ def generate_appointments(days_ahead=7):
                 regular_end_time = time(20, 0)
 
         current_time = datetime.combine(current_date, regular_start_time)
-        end_datetime = datetime.combine(current_date, regular_end_time) - timedelta(minutes=30)
+        end_datetime = datetime.combine(current_date, regular_end_time)
 
         while current_time <= end_datetime:
             if not Appointment.objects.filter(

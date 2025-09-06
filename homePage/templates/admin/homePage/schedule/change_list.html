@@ -1,0 +1,77 @@
+{% extends "admin/base_site.html" %}
+{% load static %}
+
+{% block extrastyle %}
+<style>
+  .board-wrap { direction: rtl; padding: 10px; }
+  .toolbar { display:flex; gap:10px; align-items:center; margin-bottom:12px; }
+  .toolbar a.bt {
+    background:#6a879b; color:#fff; padding:6px 10px; border-radius:8px; text-decoration:none;
+  }
+
+  table.board { width:100%; border-collapse: separate; border-spacing: 0; }
+  table.board th, table.board td { border:1px solid #dfe3e6; padding:6px 8px; vertical-align: top; }
+  table.board thead th { background:#f5f8fb; text-align:center; position: sticky; top: 0; z-index: 1; }
+  .col-time { width:72px; text-align:center; background:#fafbfc; position: sticky; left: 0; z-index: 2; }
+  td.free { background:#fff; }
+  td.ev { padding:0; }
+  td.ev .cell { padding:6px 8px; height:100%; }
+  td.ev.paid   { background:#dff5e1; }   /* ירקרק */
+  td.ev.pending{ background:#fff4d6; }   /* צהבהב */
+  td.ev.break  { background:#f2f4f7; color:#7a8899; } /* אפור */
+  .cell .title { font-weight:700; margin-bottom:2px; }
+  .cell .meta  { font-size:12px; color:#556; }
+  /* גלילה אופקית במובייל */
+  .scroll-x { overflow-x:auto; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="board-wrap">
+  <h1>{{ title }}</h1>
+
+  <div class="toolbar">
+    <a class="bt" href="?start={{ prev_start }}">‹ שבוע קודם</a>
+    <a class="bt" href="?start={{ next_start }}">שבוע הבא ›</a>
+    <div style="margin-inline-start:auto"></div>
+    <form method="get">
+      <input type="date" name="start" value="{{ start_day|date:'Y-m-d' }}">
+      <button class="bt" type="submit">לך לתאריך</button>
+    </form>
+  </div>
+
+  <div class="scroll-x">
+    <table class="board">
+      <thead>
+        <tr>
+          <th class="col-time">שעה</th>
+          {% for d, label in week_days %}
+            <th>{{ d|date:"D" }} {{ label }}</th>
+          {% endfor %}
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in rows %}
+          <tr>
+            <td class="col-time">{{ row.time }}</td>
+            {% for cell in row.cells %}
+              {% if cell.type == "skip" %}
+                {# נבלע ע"י rowspan — לא מציירים תא #}
+              {% elif cell.type == "event" %}
+                <td class="ev {{ cell.status }}" rowspan="{{ cell.rowspan }}">
+                  <div class="cell">
+                    <div class="title">{{ cell.title }}</div>
+                    {% if cell.meta %}<div class="meta">{{ cell.meta }}</div>{% endif %}
+                  </div>
+                </td>
+              {% else %}
+                <td class="free"></td>
+              {% endif %}
+            {% endfor %}
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}
