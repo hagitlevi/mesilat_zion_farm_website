@@ -16,10 +16,10 @@ from django.utils import timezone
 from urllib.parse import urlencode
 import json
 from django.http import JsonResponse
-from homePage.views import _has_consent_by_phone as needs_consent_for_phone
 from django.conf import settings
-from homePage.models import TermsConsent
 from homePage.views import _has_consent_by_phone as has_consent_by_phone
+from homePage.views import _normalize_phone_il as normalize_phone_il
+from homePage.models import TermsConsent
 from homePage.views import _normalize_phone_il as normalize_phone_il
 from django.contrib.admin.actions import delete_selected as _delete_selected
 from datetime import datetime, date as ddate, time as dtime, timedelta
@@ -31,11 +31,11 @@ from django.urls import reverse
 from django import forms
 from django.contrib import admin
 from .models import Booking
+from django.contrib import admin
+from django.contrib.admin.actions import delete_selected as _delete_selected
+from django.contrib.admin.actions import delete_selected
+delete_selected.short_description = "מחיקת הזמנות"
 
-def delete_selected_hebrew(modeladmin, request, queryset):
-    # משתמשת בפעולת המחיקה המובנית של Django
-    return _delete_selected(modeladmin, request, queryset)
-delete_selected_hebrew.short_description = "מחיקת הזמנות"
 
 def _normalize_il_phone(p: str) -> str:
     d = ''.join(ch for ch in (p or '') if ch.isdigit())
@@ -159,9 +159,27 @@ def _build_grid(days, timeslots, appt_map):
                 r += 1
                 continue
 
-            # קובעים אם זה הפסקה או הזמנה
-            is_break = bool(appt.is_break)
-            status = "break" if is_break else ("paid" if getattr(appt, "is_paid", False) else "pending")
+            # קובעים אם זה הפסקה / שולם / ממתין בצורה חסינה
+            is_break = bool(getattr(appt, "is_break", False))
+
+            paid = False
+            # 1) אם לשורה עצמה יש is_paid=True
+            if getattr(appt, "is_paid", None) is True:
+                paid = True
+            else:
+                # 2) בדיקה דרך ה-Booking המקושר
+                b = getattr(appt, "booking", None)
+                if b:
+                    # אם יש שדה is_paid על ההזמנה
+                    if getattr(b, "is_paid", None) is True:
+                        paid = True
+                    else:
+                        # או לפי סטטוס טקסטואלי (גם בעברית)
+                        status_val = str(getattr(b, "status", "")).strip().lower()
+                        if status_val in {"paid", "שולם"}:
+                            paid = True
+
+            status = "break" if is_break else ("paid" if paid else "pending")
 
             # אם זה לא סלוט ראשון ברצף—נשאיר כ'free' כי התא מעליו יקבל rowspan ויכסה
             # בודקים האם יש סלוט קודם שנראה אותו booking/הפסקה
@@ -309,7 +327,6 @@ class ScheduleBoardAdmin(admin.ModelAdmin):
         }
         return TemplateResponse(request, self.change_list_template, ctx)
 
-
 @admin.register(Activity)
 class ActivityAdmin(admin.ModelAdmin):
     list_display = ("id", "name", "activity_type", "duration_minutes")
@@ -376,6 +393,8 @@ class BookingAdminForm(forms.ModelForm):
 
 @admin.register(Booking)
 class BookingAdmin(admin.ModelAdmin):
+    actions = [delete_selected]
+
     form = BookingAdminForm
     list_display  = ("id", "activity", "start_dt", "end_dt",
                      "customer_name", "customer_phone", "status", "payment_ref", "total_price", "participants")
@@ -386,13 +405,8 @@ class BookingAdmin(admin.ModelAdmin):
     # כפתור "קביעת הזמנה חדשה" בעמוד הרשימה
     change_list_template = "admin/homePage/appointment_change_list.html"
 
-    actions = [delete_selected_hebrew]
 
-    def get_actions(self, request):
-        actions = super().get_actions(request)
-        # להסיר את פעולת המחיקה המובנית באנגלית
-        actions.pop('delete_selected', None)
-        return actions
+
 
     def has_add_permission(self, request):
         return False
@@ -456,7 +470,7 @@ class BookingAdmin(admin.ModelAdmin):
         date_str = (request.POST.get("date") or "").strip()
         start_str = (request.POST.get("start_time") or "").strip()
         participants = max(1, int(request.POST.get("participants") or 1))
-        mark_paid = (request.POST.get("mark_paid") == "1")
+        mark_paid = str(request.POST.get("mark_paid", "")).lower() in {"1", "true", "on", "yes"}
 
         # פרטי הלקוח
         first_name = (request.POST.get("first_name") or "").strip()
@@ -465,33 +479,29 @@ class BookingAdmin(admin.ModelAdmin):
         email = (request.POST.get("email") or "").strip()
 
         # ---- הסכמה לתנאים/פרטיות לפי טלפון ----
-        sid = normalize_phone_il(phone)  # מספר ישראלי מנורמל (05..., בלי רווחים)
-        needs_consent = not has_consent_by_phone(sid)
+        # ---- הסכמה לתנאים/פרטיות לפי טלפון ----
+        sid = normalize_phone_il(phone)  # 05xxxxxxxx מנורמל
+        has_consent = has_consent_by_phone(sid)
 
-        # אם חסרה הסכמה ואין צ'קבוקס מסומן – עוצרים
-        if needs_consent and not request.POST.get("accept_terms"):
+        # אם אין הסכמה ואין צ'קבוקס מסומן – עוצרים (התנאי היחיד!)
+        if (not has_consent) and (not request.POST.get("accept_terms")):
             messages.error(request, "יש לאשר את תנאי השימוש ומדיניות הפרטיות לפני יצירת הזמנה.")
-            return redirect(reverse("admin:homePage_booking_book"))  # השאירי את השם כפי שהגדרת ב-get_urls
+            return redirect(reverse("admin:homePage_appointment_book"))
 
-        # אם המשתמש סימן צ'קבוקס – נשמור את ההסכמה בטבלה כדי שלא יבקש שוב בעתיד
+        # אם סומן הצ'קבוקס – נשמור את ההסכמה (כדי שלא יבקש שוב)
         if request.POST.get("accept_terms") and sid:
             tv = getattr(settings, "TERMS_VERSION", "1.0")
             pv = getattr(settings, "PRIVACY_VERSION", "1.0")
-            # אין כפילויות: get_or_create
             TermsConsent.objects.get_or_create(
                 policy="terms", version=tv, subject_id=sid,
-                defaults={"accepted_at": timezone.now()}  # אם אין שדה כזה אצלך – מחקי את defaults
+                defaults={"accepted_at": timezone.now()}
             )
             TermsConsent.objects.get_or_create(
                 policy="privacy", version=pv, subject_id=sid,
                 defaults={"accepted_at": timezone.now()}
             )
 
-        # בדיקת הסכמה לתנאים לפי הטלפון (ממחזר את הפונקציה מהאתר)
-        norm_phone = _normalize_il_phone(phone)
-        if needs_consent_for_phone(norm_phone) and not request.POST.get("accept_terms"):
-            messages.error(request, "יש לאשר את תנאי השימוש ומדיניות הפרטיות לפני יצירת ההזמנה.")
-            return redirect(reverse("admin:homePage_appointment_book"))
+
 
         # שדה מיוחד: יין (רק לרכיבה זוגית)
         wine = (request.POST.get("wine") or "").strip().lower()
