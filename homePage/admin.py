@@ -13,6 +13,7 @@ from django.db.models import Q
 from decimal import Decimal
 from django.contrib.admin.helpers import ActionForm
 from django.utils import timezone
+from urllib.parse import urlencode
 import json
 from django.http import JsonResponse
 from homePage.views import _has_consent_by_phone as needs_consent_for_phone
@@ -26,6 +27,10 @@ from django.template.response import TemplateResponse
 from django.urls import path
 from datetime import datetime, time, timedelta
 from django.utils import timezone
+from django.urls import reverse
+from django import forms
+from django.contrib import admin
+from .models import Booking
 
 def delete_selected_hebrew(modeladmin, request, queryset):
     # משתמשת בפעולת המחיקה המובנית של Django
@@ -113,14 +118,21 @@ def _build_grid(days, timeslots, appt_map):
     """
     יוצר גריד לתצוגה:
     - rows: [{'time': '07:00', 'cells': [cell0.cell6]}, ...]
-    - cell = {type:'free'|'event'|'skip', rowspan:int, title:str, meta:str, status:'paid'|'pending'|'break'}
+    - cell = {
+        type:'free'|'event'|'skip',
+        rowspan:int,
+        title:str,
+        meta:str,
+        status:'paid'|'pending'|'break',
+        url:str      # ← קישור להזמנה/סלוט
+      }
     """
     # הכנה ריקה
     rows = []
     for ts in timeslots:
-        rows.append({'time': ts, 'cells': [{'type': 'free'} for _ in range(7)]})
+        rows.append({'time': ts, 'cells': [{'type': 'free'} for _ in range(len(days))]})
 
-    # עזר למציאת אינדקס שורה לפי שעה
+    # עזר למציאת אינדקס שורה לפי שעה (כרגע לא בשימוש, נשאיר למקרה הצורך)
     row_index = {ts: idx for idx, ts in enumerate(timeslots)}
 
     # נרוץ על כל יום וכל שעה, ובכל פעם שנמצא סלוט תפוס/הפסקה נבלע את הרצף למטה
@@ -171,12 +183,21 @@ def _build_grid(days, timeslots, appt_map):
                 else:
                     meta = appt.payment_reference or ""
 
+            # === חישוב כתובת היעד ללחיצה ===
+            if is_break:
+                url = None
+            elif appt.booking_id:
+                url = reverse("admin:homePage_booking_change", args=[appt.booking_id])
+            else:
+                url = reverse("admin:homePage_appointment_change", args=[appt.id])
+
             rows[r]['cells'][c] = {
                 'type': 'event',
                 'rowspan': span,
                 'title': title,
                 'meta': meta,
                 'status': status,
+                'url': url,   # ← חדש
             }
 
             # את הסלוטים שמתחת לאותו אירוע נסמן כ-skip
@@ -207,34 +228,67 @@ class ScheduleBoardAdmin(admin.ModelAdmin):
     def has_add_permission(self, request):
         return False
 
+
     def changelist_view(self, request, extra_context=None):
-        # תאריך פתיחה לשבוע (ברירת מחדל: היום)
+        # מצב תצוגה: week / day
+        view_mode = request.GET.get("view", "week")
+
+        # תאריך פתיחה (אם לא נשלח – היום)
         try:
             start_str = request.GET.get("start")
             start_day = datetime.fromisoformat(start_str).date() if start_str else timezone.localdate()
         except Exception:
             start_day = timezone.localdate()
 
-        # 7 ימים קדימה
-        days = _day_range(start_day)
+        # ימים לתצוגה
+        if view_mode == "day":
+            days = [start_day]
+        else:  # week
+            days = _day_range(start_day)
+
+        # סלוטים, פגישות וגריד
         timeslots = _timeslots(5, 24, 15)
         appt_map = _fetch_appointments(days[0], days[-1])
         rows = _build_grid(days, timeslots, appt_map)
 
-        prev_start = (days[0] - timedelta(days=7)).isoformat()
-        next_start = (days[0] + timedelta(days=7)).isoformat()
-        week_days = [(d, d.strftime("%d/%m")) for d in days]  # לתצוגה בכותרת
+        # ניווט קדימה/אחורה לפי מצב
+        if view_mode == "day":
+            prev_start = (start_day - timedelta(days=1)).isoformat()
+            next_start = (start_day + timedelta(days=1)).isoformat()
+        else:
+            prev_start = (days[0] - timedelta(days=7)).isoformat()
+            next_start = (days[0] + timedelta(days=7)).isoformat()
+
+        # פונקציה לשמירה/עדכון פרמטרים ב־URL
+        def keep(**kw):
+            params = request.GET.copy()
+            for k, v in kw.items():
+                params[k] = v
+            return urlencode(params, doseq=True)
+
+        # תוויות לימים
+        week_days = [(d, d.strftime("%d/%m")) for d in days]
+
+        # today (לטאב יום)
+        today_iso = timezone.localdate().isoformat()
 
         ctx = {
             "title": "לוח שנה",
             "rows": rows,
             "week_days": week_days,
-            "prev_start": prev_start,
-            "next_start": next_start,
+
+            "view_mode": view_mode,
+            "qs_day_prev": keep(view="day", start=prev_start),
+            "qs_day_next": keep(view="day", start=next_start),
+            "qs_day_today": keep(view="day", start=today_iso),
+            "qs_week_prev": keep(view="week", start=prev_start),
+            "qs_week_next": keep(view="week", start=next_start),
+
             "start_day": days[0],
-            "opts": self.model._meta,   # נותן כותרת/לחצנים סטנדרטיים של אדמין
+            "opts": self.model._meta,
         }
         return TemplateResponse(request, self.change_list_template, ctx)
+
 
 @admin.register(Activity)
 class ActivityAdmin(admin.ModelAdmin):
@@ -281,8 +335,28 @@ class AppointmentInline(admin.TabularInline):
     fields = ("date", "time", "duration_minutes", "is_break", "is_booked", "is_paid", "payment_reference", "activity")
     readonly_fields = fields
 
+class BookingAdminForm(forms.ModelForm):
+    class Meta:
+        model = Booking
+        fields = "__all__"
+        labels = {
+            "activity": "פעילות",
+            "customer_name": "שם לקוח",
+            "customer_phone": "טלפון",
+            "customer_email": "אימייל",
+            "participants": "מספר משתתפים",
+            "total_price": "סה\"כ לתשלום",
+            "payment_method": "אמצעי תשלום",
+            "payment_ref": "אסמכתא/מזהה תשלום",
+            "status": "סטטוס",
+            "notes": "פרטים/הערות",
+            "start_dt": "תאריך ושעת התחלה",
+            "end_dt": "תאריך ושעת סיום",
+        }
+
 @admin.register(Booking)
 class BookingAdmin(admin.ModelAdmin):
+    form = BookingAdminForm
     list_display  = ("id", "activity", "start_dt", "end_dt",
                      "customer_name", "customer_phone", "status", "payment_ref", "total_price", "participants")
     list_filter   = ("activity", "status", "start_dt")

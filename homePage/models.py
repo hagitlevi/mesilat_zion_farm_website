@@ -35,10 +35,19 @@ class Activity(models.Model):
 
 class CustomSchedule(models.Model):
     date = models.DateField(unique=True)
-    start_time = models.TimeField()
-    end_time = models.TimeField()
+    start_time = models.TimeField(null=True, blank=True)
+    end_time = models.TimeField(null=True, blank=True)
     is_active = models.BooleanField(default=True)  # האם יש תורים בכלל ביום הזה
 
+    # זריחה
+    allow_sunrise       = models.BooleanField(default=False)
+    sunrise_start_time  = models.TimeField(null=True, blank=True)
+    sunrise_end_time    = models.TimeField(null=True, blank=True)
+
+    # לילה
+    allow_night         = models.BooleanField(default=False)
+    night_start_time    = models.TimeField(null=True, blank=True)
+    night_end_time      = models.TimeField(null=True, blank=True)
     class Meta:
         verbose_name = "לוח זמנים מיוחד"
         verbose_name_plural = "לוחות זמנים מיוחדים"

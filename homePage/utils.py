@@ -1,10 +1,9 @@
 from datetime import datetime, timedelta, date, time
-from homePage.models import Appointment, CustomSchedule, Activity
+from homePage.models import Appointment, CustomSchedule, Activity, Booking, Payment
 from django.db.models import Q
 from django.utils import timezone
 import secrets
 from django.db import transaction, IntegrityError
-from .models import Booking, Payment
 
 def cleanup_expired_appointments(delete_booked=False):
     """
@@ -16,129 +15,6 @@ def cleanup_expired_appointments(delete_booked=False):
     q = base_q if delete_booked else base_q & Q(is_booked=False)
     deleted, _ = Appointment.objects.filter(q).delete()
     return deleted
-
-
-def generate_appointments(days_ahead=7):
-
-    start_date = date.today()
-
-    for day_offset in range(days_ahead):
-        current_date = start_date + timedelta(days=day_offset)
-        weekday = current_date.weekday()  # Mon=0 ... Sun=6
-
-        # --- יצירת תורים רגילים (הלוגיקה המקורית שלך) ---
-        try:
-            custom = CustomSchedule.objects.get(date=current_date)
-            if not custom.is_active:
-                continue
-            regular_start_time = custom.start_time
-            regular_end_time = custom.end_time
-        except CustomSchedule.DoesNotExist:
-            if weekday == 4:  # יום שישי
-                regular_start_time = time(9, 0)
-                regular_end_time = time(16, 0)
-            elif weekday == 5:  # יום שבת
-                continue
-            else:
-                regular_start_time = time(9, 0)
-                regular_end_time = time(20, 0)
-
-        current_time = datetime.combine(current_date, regular_start_time)
-        end_datetime = datetime.combine(current_date, regular_end_time)
-
-        while current_time <= end_datetime:
-            if not Appointment.objects.filter(
-                date=current_date,
-                time=current_time.time()
-            ).exists():
-                Appointment.objects.create(
-                    date=current_date,
-                    time=current_time.time(),
-                    is_booked=False,
-                    is_break=False
-                )
-            current_time += timedelta(minutes=15)
-
-        # ======================= תוספת 1: "רכיבת זריחה" =======================
-        # א'–ה' בלבד (בפייתון: ראשון=6, שני=0, שלישי=1, רביעי=2, חמישי=3)
-        if weekday in {0, 1, 2, 3, 6}:
-            try:
-                sunrise_activity = Activity.objects.get(name='רכיבה בזריחה')
-            except Activity.DoesNotExist:
-                print("⚠ לא נמצאה פעילות זריחה – בדקו את השם/ה-type")
-                sunrise_activity = None  # אם אין פעילות, ניצור בלי שיוך
-
-            sunrise_start_time = time(5, 0)
-            sunrise_end_time   = time(8, 0)
-
-            sunrise_current = datetime.combine(current_date, sunrise_start_time)
-            sunrise_end_dt  = datetime.combine(current_date, sunrise_end_time)
-
-            while sunrise_current < sunrise_end_dt:
-                # ננסה למנוע כפילות לפי date+time; אם יש לכם שדה duration_minutes בטבלת Appointment
-                # ואתם רוצים לבדל לפי משך—ניתן להוסיף אותו גם פה כבדיקה נוספת.
-                exists_qs = Appointment.objects.filter(
-                    date=current_date,
-                    time=sunrise_current.time()
-                )
-                if not exists_qs.exists():
-                    new_appointment = Appointment(
-                        date=current_date,
-                        time=sunrise_current.time(),
-                        # אם יש לכם שדה כזה ורוצים להגדיר 15 דק':
-                        # duration_minutes=15,
-                        is_booked=False,
-                        is_break=False,
-                    )
-                    new_appointment.save()
-                    # שיוך לפעילות אם קיימת מערכתית ושדה M2M activities קיים
-                    try:
-                        if sunrise_activity:
-                            new_appointment.activities.add(sunrise_activity)
-                    except Exception:
-                        pass
-
-                sunrise_current += timedelta(minutes=15)
-
-        # ======================= תוספת/תיקון מינימלי 2: "רכיבת לילה" =======================
-        # א'–ה' בלבד (תיקון: לא range(5), אלא כולל ראשון=6)
-        if weekday in {0, 1, 2, 3, 6}:
-            try:
-                night_ride_activity = Activity.objects.get(name='רכיבת לילה')
-            except Activity.DoesNotExist:
-                night_ride_activity = None
-
-            night_start_time = time(20, 0)   # 20:00
-            night_end_time   = time(23, 59)  # סוף היום (לא כולל)
-
-            night_current_time = datetime.combine(current_date, night_start_time)
-            night_end_datetime = datetime.combine(current_date, night_end_time)
-
-            while night_current_time < night_end_datetime:
-                # מניעת כפילות לפי date+time (שומר על הרוח של הקוד שלך, בלי לגעת בשאר הלוגיקה)
-                exists_qs = Appointment.objects.filter(
-                    date=current_date,
-                    time=night_current_time.time(),
-                )
-                if not exists_qs.exists():
-                    new_appointment = Appointment(
-                        date=current_date,
-                        time=night_current_time.time(),
-                        # אם אתם שומרים משך תור, והדרישה היא 15 דק':
-                        # duration_minutes=15,
-                        is_booked=False,
-                        is_break=False,
-                    )
-                    new_appointment.save()
-                    try:
-                        if night_ride_activity:
-                            new_appointment.activities.add(night_ride_activity)
-                    except Exception:
-                        pass
-
-                night_current_time += timedelta(minutes=15)
-
-    print("✅ תורים נוצרו בהצלחה")
 
 
 def group_consecutive_hours(rows):
@@ -178,8 +54,6 @@ def group_consecutive_hours(rows):
 
     return grouped
 
-
-
 def generate_mz_ref(prefix="MZ", digits=8) -> str:
     """יוצר למשל MZ-34892017 (ספרות בלבד)"""
     return f"{prefix}-" + "".join(secrets.choice("0123456789") for _ in range(digits))
@@ -205,3 +79,108 @@ def assign_unique_ref(booking: Booking, payment: Payment, digits=8) -> str:
             # התנגשות ייחודיות — ננסה ref אחר
             continue
     raise RuntimeError("לא הצלחתי להקצות payment_ref ייחודי לאחר ניסיונות רבים")
+
+# --- עוזר כללי: יצירת משבצות רבע שעה, עם שיוך פעילות (אם יש) ---
+def _create_quarter_slots(current_date, start_t: time, end_t: time, activity_name: str | None):
+    if start_t is None or end_t is None:
+        return
+    if start_t >= end_t:
+        return
+
+    # נטען פעילות אם התבקש
+    act = Activity.objects.filter(name=activity_name).first() if activity_name else None
+
+    cur = datetime.combine(current_date, start_t)
+    end_dt = datetime.combine(current_date, end_t)
+
+    while cur < end_dt:  # שימי לב: '<' ולא '<='
+        # לא ליצור על הפסקה שסומנה כ-is_break
+        if Appointment.objects.filter(
+            date=current_date, time=cur.time(), is_break=True
+        ).exists():
+            cur += timedelta(minutes=15)
+            continue
+
+        appt, _created = Appointment.objects.get_or_create(
+            date=current_date,
+            time=cur.time(),
+            defaults={"is_booked": False, "is_break": False},
+        )
+        # תמיד ננסה לשייך פעילות (Idempotent ב-M2M)
+        if act:
+            try:
+                appt.activities.add(act)
+            except Exception:
+                pass
+
+        cur += timedelta(minutes=15)
+
+
+# --- עוזר: קבלת "חלונות" לזמן לפי today + CustomSchedule ---
+def _windows_for_date(current_date):
+    """
+    מחזיר רשימת חלונות [(label, start_time, end_time, activity_name), ...]
+    label: "regular" / "sunrise" / "night"
+    """
+    weekday = current_date.weekday()  # Mon=0 ... Sun=6
+    custom = CustomSchedule.objects.filter(date=current_date).first()
+
+    # אם יש CustomSchedule שסגור – ברירת מחדל: כל היום סגור,
+    # אלא אם מפעילים במפורש allow_sunrise/allow_night (כדי לפתוח רק חלון מיוחד).
+    if custom and not custom.is_active:
+        windows = []
+        # חריגים אם ביקשת במפורש:
+        if getattr(custom, "allow_sunrise", False):
+            s_start = getattr(custom, "sunrise_start_time", None) or time(5, 0)
+            s_end   = getattr(custom, "sunrise_end_time", None)   or time(8, 0)
+            windows.append(("sunrise", s_start, s_end, "רכיבה בזריחה"))
+        if getattr(custom, "allow_night", False):
+            n_start = getattr(custom, "night_start_time", None) or time(20, 0)
+            n_end   = getattr(custom, "night_end_time", None)   or time(23, 59)
+            windows.append(("night", n_start, n_end, "רכיבת לילה"))
+        return windows
+
+    windows = []
+
+    # --- רגיל ---
+    if custom and (custom.start_time and custom.end_time):
+        r_start, r_end = custom.start_time, custom.end_time
+    else:
+        # ברירות מחדל: ו׳ קצר, ש׳ סגור, שאר הימים 09:00–20:00
+        if weekday == 4:      # Friday
+            r_start, r_end = time(9, 0), time(16, 0)
+        elif weekday == 5:    # Saturday
+            r_start, r_end = None, None  # סגור
+        else:
+            r_start, r_end = time(9, 0), time(20, 0)
+    if r_start and r_end:
+        windows.append(("regular", r_start, r_end, None))
+
+    # --- זריחה: א׳–ה׳ בלבד ---
+    if weekday in {6, 0, 1, 2, 3}:
+        if getattr(custom, "allow_sunrise", True):  # אם אין שדה – נניח מותר (כמו היום)
+            s_start = getattr(custom, "sunrise_start_time", None) or time(5, 0)
+            s_end   = getattr(custom, "sunrise_end_time", None)   or time(8, 0)
+            windows.append(("sunrise", s_start, s_end, "רכיבה בזריחה"))
+
+    # --- לילה: א׳–ה׳ בלבד ---
+    if weekday in {6, 0, 1, 2, 3}:
+        if getattr(custom, "allow_night", True):
+            n_start = getattr(custom, "night_start_time", None) or time(20, 0)
+            n_end   = getattr(custom, "night_end_time", None)   or time(23, 59)
+            windows.append(("night", n_start, n_end, "רכיבת לילה"))
+
+    return windows
+
+
+def generate_appointments(days_ahead=7):
+    start_date = timezone.localdate()
+
+    for day_offset in range(days_ahead):
+        current_date = start_date + timedelta(days=day_offset)
+
+        # קבלי את כל החלונות ליום
+        for label, start_t, end_t, act_name in _windows_for_date(current_date):
+            _create_quarter_slots(current_date, start_t, end_t, act_name)
+
+    print("✅ תורים נוצרו בהצלחה")

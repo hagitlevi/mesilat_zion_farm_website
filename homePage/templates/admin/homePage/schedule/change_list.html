@@ -4,41 +4,68 @@
 {% block extrastyle %}
 <style>
   .board-wrap { direction: rtl; padding: 10px; }
-  .toolbar { display:flex; gap:10px; align-items:center; margin-bottom:12px; }
-  .toolbar a.bt {
-    background:#6a879b; color:#fff; padding:6px 10px; border-radius:8px; text-decoration:none;
-  }
 
-  table.board { width:100%; border-collapse: separate; border-spacing: 0; }
-  table.board th, table.board td { border:1px solid #dfe3e6; padding:6px 8px; vertical-align: top; }
-  table.board thead th { background:#f5f8fb; text-align:center; position: sticky; top: 0; z-index: 1; }
-  .col-time { width:72px; text-align:center; background:#fafbfc; position: sticky; left: 0; z-index: 2; }
+  /* --- Toolbar --- */
+  .toolbar { display:flex; gap:12px; align-items:center; flex-wrap:wrap; margin:10px 0 14px; }
+  .seg { display:inline-flex; border:1px solid #9aa8b6; border-radius:999px; overflow:hidden; }
+  .seg .seg-btn { padding:8px 12px; background:#f1f5f9; color:#1f2d3d; text-decoration:none; }
+  .seg .seg-btn + .seg-btn { border-inline-start:1px solid #9aa8b6; }
+  .seg .seg-btn.active { background:#6a879b; color:#fff; }
+
+  .nav { display:flex; gap:8px; margin-inline-start:auto; }
+  .bt { background:#6a879b; color:#fff; padding:8px 12px; border-radius:10px; text-decoration:none; font-weight:700; }
+  .bt.ghost { background:#eef2f6; color:#2b3b4b; }
+  .bt.outline { background:#fff; border:1px solid #6a879b; color:#2b3b4b; }
+
+  form.go { display:flex; gap:8px; align-items:center; }
+
+  /* --- Grid --- */
+  table.board { width:100%; border-collapse:separate; border-spacing:0; }
+  table.board th, table.board td { border:1px solid #dfe3e6; padding:6px 8px; vertical-align:top; }
+  table.board thead th { background:#f5f8fb; text-align:center; position:sticky; top:0; z-index:1; }
+  .col-time { width:72px; text-align:center; background:#fafbfc; position:sticky; left:0; z-index:2; }
+
   td.free { background:#fff; }
   td.ev { padding:0; }
   td.ev .cell { padding:6px 8px; height:100%; }
-  td.ev.paid   { background:#dff5e1; }   /* ירקרק */
-  td.ev.pending{ background:#fff4d6; }   /* צהבהב */
-  td.ev.break  { background:#f2f4f7; color:#7a8899; } /* אפור */
+  td.ev.paid    { background:#dff5e1; }  /* ירוק עדין */
+  td.ev.pending { background:#fff4d6; }  /* צהוב עדין */
+  td.ev.break   { background:#f2f4f7; color:#7a8899; } /* אפור */
   .cell .title { font-weight:700; margin-bottom:2px; }
   .cell .meta  { font-size:12px; color:#556; }
-  /* גלילה אופקית במובייל */
+
   .scroll-x { overflow-x:auto; }
 </style>
 {% endblock %}
 
+
 {% block content %}
 <div class="board-wrap">
-  <h1>{{ title }}</h1>
+    <h1>{{ title }}</h1>
 
-  <div class="toolbar">
-    <a class="bt" href="?start={{ prev_start }}">‹ שבוע קודם</a>
-    <a class="bt" href="?start={{ next_start }}">שבוע הבא ›</a>
-    <div style="margin-inline-start:auto"></div>
-    <form method="get">
-      <input type="date" name="start" value="{{ start_day|date:'Y-m-d' }}">
-      <button class="bt" type="submit">לך לתאריך</button>
-    </form>
-  </div>
+    <div class="toolbar">
+      {# בחירת תצוגה: שבוע/יום #}
+      <div class="seg">
+        <a class="seg-btn {% if view_mode == 'week' %}active{% endif %}"
+           href="?{{ qs_week_prev|default:qs_week_next|slice:':0' }}{{ '' }}{{ '' }}{% comment %}רק כדי ליצור ?{% endcomment %}{{ 'view=week&start=' }}{{ start_day|date:'Y-m-d' }}">שבוע</a>
+        <a class="seg-btn {% if view_mode == 'day' %}active{% endif %}"
+           href="?{{ qs_day_prev|default:qs_day_next|slice:':0' }}{{ '' }}{{ '' }}{{ 'view=day&start=' }}{{ start_day|date:'Y-m-d' }}">יום</a>
+      </div>
+
+      <div style="margin-inline-start:auto"></div>
+
+      {# ניווט: מציג רק את הסט המתאים למצב #}
+        {% if view_mode == 'week' %}
+          <a class="bt" href="?{{ qs_week_prev }}">‹ שבוע קודם</a>
+          <a class="bt" href="?{{ qs_week_next }}">שבוע הבא ›</a>
+        {% elif view_mode == 'day' %}
+          <a class="bt" href="?{{ qs_day_today }}">היום</a>
+          <a class="bt" href="?{{ qs_day_prev }}">‹ קודם</a>
+          <a class="bt" href="?{{ qs_day_next }}">הבא ›</a>
+        {% endif %}
+
+    </div>
+
 
   <div class="scroll-x">
     <table class="board">
@@ -46,7 +73,7 @@
         <tr>
           <th class="col-time">שעה</th>
           {% for d, label in week_days %}
-            <th>{{ d|date:"D" }} {{ label }}</th>
+            <th>{{ d|date:"l" }} {{ d|date:"d/m" }}</th>
           {% endfor %}
         </tr>
       </thead>
@@ -58,13 +85,21 @@
               {% if cell.type == "skip" %}
                 {# נבלע ע"י rowspan — לא מציירים תא #}
               {% elif cell.type == "event" %}
-                <td class="ev {{ cell.status }}" rowspan="{{ cell.rowspan }}">
-                  <div class="cell">
-                    <div class="title">{{ cell.title }}</div>
-                    {% if cell.meta %}<div class="meta">{{ cell.meta }}</div>{% endif %}
-                  </div>
-                </td>
+                  <td class="ev {{ cell.status }}" rowspan="{{ cell.rowspan }}">
+                    {% if cell.url %}
+                      <a href="{{ cell.url }}" class="cell linklike" target="_blank" rel="noopener">
+                        <div class="title">{{ cell.title }}</div>
+                        {% if cell.meta %}<div class="meta">{{ cell.meta }}</div>{% endif %}
+                      </a>
+                    {% else %}
+                      <div class="cell">
+                        <div class="title">{{ cell.title }}</div>
+                        {% if cell.meta %}<div class="meta">{{ cell.meta }}</div>{% endif %}
+                      </div>
+                    {% endif %}
+                  </td>
               {% else %}
+
                 <td class="free"></td>
               {% endif %}
             {% endfor %}

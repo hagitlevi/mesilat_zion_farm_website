@@ -169,17 +169,6 @@
         <label for="email">מייל</label>
         <div class="field"><input type="email" id="email" name="email" required></div>
 
-        <!-- הצ'קבוקס – תא בעמודה הימנית בלבד -->
-        <div class="field col-2" id="consent-cell" style="display:none">
-          <label class="checkbox" id="consent-wrap">
-            <input type="checkbox" name="accept_terms" value="1">
-            קראתי ואני מאשר/ת את
-            <a href="{% url 'terms' %}" target="_blank">תנאי השימוש</a>
-            ו־<a href="{% url 'privacy' %}" target="_blank">מדיניות הפרטיות</a>
-          </label>
-        </div>
-
-
 
         <!-- יין (נחשף רק לרכיבה זוגית) -->
         <label for="wine" id="wine_label" style="display:none">יין</label>
@@ -200,8 +189,18 @@
             <option value="brown">סוס חום</option>
           </select>
         </div>
-      </div>
 
+          <!-- הצ'קבוקס – תא בעמודה הימנית בלבד -->
+        <div class="field col-2" id="consent-cell" style="display:none">
+          <label class="checkbox" id="consent-wrap">
+            <input type="checkbox" name="accept_terms" value="1">
+            קראתי ואני מאשר/ת את
+            <a href="{% url 'terms' %}" target="_blank">תנאי השימוש</a>
+            ו־<a href="{% url 'privacy' %}" target="_blank">מדיניות הפרטיות</a>
+          </label>
+        </div>
+
+      </div>
 
       <div class="mz-row" style="margin-top:14px" id="summary-row"></div>
 
