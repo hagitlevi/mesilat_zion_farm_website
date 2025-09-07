@@ -114,6 +114,18 @@ def _fetch_appointments(d0: ddate, d1: ddate):
         by_key[(a.date, a.time.strftime("%H:%M"))] = a
     return by_key
 
+def calc_hours(duration):
+    if duration == 60:
+        return "שעה"
+    if duration == 90:
+        return "שעה חצי"
+    if duration == 120:
+        return "שעתיים"
+    if duration == 150:
+        return "שעתיים וחצי"
+    if duration == 180:
+        return "שלוש שעות"
+
 def _build_grid(days, timeslots, appt_map):
     """
     יוצר גריד לתצוגה:
@@ -173,13 +185,21 @@ def _build_grid(days, timeslots, appt_map):
                     break
                 span += 1
 
+            SLOT_MIN = 15
+            duration_min = span * SLOT_MIN
+
             # כותרת/מידע להצגה
             title = "הפסקה" if is_break else (appt.activity.name if appt.activity else "")
             meta = ""
             if not is_break and appt.booking_id:
                 b = appt.booking
                 if b:
-                    meta = f"{b.customer_name or ''} • {b.participants or 1} משתתפים"
+                    if duration_min <= 45:
+                        meta = f"{b.customer_name or ''} • {b.participants or 1} משתתפים • {duration_min} דק׳ "
+                    else:
+                        hours = calc_hours(duration_min)
+                        meta = f"{b.customer_name or ''} • {b.participants or 1} משתתפים • {hours}"
+
                 else:
                     meta = appt.payment_reference or ""
 
