@@ -15,10 +15,8 @@ import os
 from dotenv import load_dotenv
 load_dotenv()
 
-
+FEEDBACK_URL = os.getenv("FEEDBACK_URL", "http://127.0.0.1:8000/site-reviews")
 SEND_SMS = os.getenv("SEND_SMS", "False") == "True"
-PHONE_SMS_GATEWAY_URL = os.getenv("PHONE_SMS_GATEWAY_URL", "http://127.0.0.1:8080/sms")
-PHONE_SMS_GATEWAY_SECRET = os.getenv("PHONE_SMS_GATEWAY_SECRET", "MesilatZion_2025_SMS_GW_!4x9")
 NTFY_URL = os.getenv("NTFY_URL", "https://ntfy.sh").rstrip("/")
 NTFY_TOPIC = os.getenv("NTFY_TOPIC", "")
 NTFY_PRIORITY = int(os.getenv("NTFY_PRIORITY", "5"))

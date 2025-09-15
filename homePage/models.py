@@ -114,7 +114,7 @@ class Booking(models.Model):
     customer_email= models.EmailField(blank=True)
     participants  = models.PositiveIntegerField(default=1)
     total_price   = models.DecimalField(max_digits=9, decimal_places=2, null=True, blank=True)
-    payment_method= models.CharField(max_length=20, blank=True)  # 'credit_card'/'bit'/...
+    payment_method= models.CharField(max_length=20, blank=True)
     payment_ref   = models.CharField(max_length=64, blank=True, null=True,
                                      unique=True, db_index=True)
     status        = models.CharField(max_length=10, choices=STATUS_CHOICES, default="pending")
@@ -123,7 +123,8 @@ class Booking(models.Model):
     end_dt        = models.DateTimeField()
     created_at    = models.DateTimeField(auto_now_add=True)
     updated_at    = models.DateTimeField(auto_now=True)
-
+    feedback_sms_sent_at = models.DateTimeField(null=True, blank=True)  # מתי נשלח SMS משוב
+    feedback_token = models.CharField(max_length=40, blank=True, default="")
     class Meta:
         verbose_name = "הזמנה"
         verbose_name_plural = "הזמנות"

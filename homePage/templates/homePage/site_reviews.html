@@ -58,61 +58,62 @@
       {% endif %}
     </div>
   {% endif %}
+  <div id="sms_review">
+      <section class="review-form">
+        <h3>השאירו ביקורת</h3>
 
-  <section class="review-form">
-    <h3>השאירו ביקורת</h3>
+        <form method="post" action="{% url 'site_reviews' %}#review-form-bottom" novalidate>
+          {% csrf_token %}
+          {{ form.website }} {# שדה honeypot נסתר #}
 
-    <form method="post" action="{% url 'site_reviews' %}#review-form-bottom" novalidate>
-      {% csrf_token %}
-      {{ form.website }} {# שדה honeypot נסתר #}
+          <input type="text" name="name" placeholder="שם (לא חובה)"
+                 value="{{ form.name.value|default_if_none:'' }}">
 
-      <input type="text" name="name" placeholder="שם (לא חובה)"
-             value="{{ form.name.value|default_if_none:'' }}">
-
-      <div class="stars-input">
-        {# סדר מ־5 עד 1 לציור נכון של כוכבים #}
-        {% for val in '5,4,3,2,1'|cut:',' %}
-          <input
-            type="radio"
-            id="star{{ val }}"
-            name="rating"
-            value="{{ val }}"
-            {% if form.rating.value|stringformat:"s" == val %}checked{% endif %}
-            required>
-          <label for="star{{ val }}" title="{{ val }} כוכבים">★</label>
-        {% endfor %}
-      </div>
-
-      {# שגיאות ספציפיות לשדה הדירוג #}
-      {% if form.rating.errors %}
-        <div class="field-error">{{ form.rating.errors.0 }}</div>
-      {% endif %}
-
-      <textarea name="comment" rows="3" placeholder="איך היה?">{{ form.comment.value|default_if_none:'' }}</textarea>
-
-      <button type="submit">שליחה</button>
-
-      {# שאר השגיאות (ללא rating שכבר הוצג) + שגיאות כלליות #}
-      {% if form.errors %}
-        <div class="errors">
-          {% for field, errs in form.errors.items %}
-            {% if field != "rating" %}
-              {% for e in errs %}
-                <div>{{ e }}</div>
-              {% endfor %}
-            {% endif %}
-          {% endfor %}
-
-          {% if form.non_field_errors %}
-            {% for e in form.non_field_errors %}
-              <div>{{ e }}</div>
+          <div class="stars-input">
+            {# סדר מ־5 עד 1 לציור נכון של כוכבים #}
+            {% for val in '5,4,3,2,1'|cut:',' %}
+              <input
+                type="radio"
+                id="star{{ val }}"
+                name="rating"
+                value="{{ val }}"
+                {% if form.rating.value|stringformat:"s" == val %}checked{% endif %}
+                required>
+              <label for="star{{ val }}" title="{{ val }} כוכבים">★</label>
             {% endfor %}
+          </div>
+
+          {# שגיאות ספציפיות לשדה הדירוג #}
+          {% if form.rating.errors %}
+            <div class="field-error">{{ form.rating.errors.0 }}</div>
           {% endif %}
-        </div>
-      {% endif %}
-    </form>
-    <span id="review-form-bottom" aria-hidden="true"></span>
-  </section>
+
+          <textarea name="comment" rows="3" placeholder="איך היה?">{{ form.comment.value|default_if_none:'' }}</textarea>
+
+          <button type="submit">שליחה</button>
+
+          {# שאר השגיאות (ללא rating שכבר הוצג) + שגיאות כלליות #}
+          {% if form.errors %}
+            <div class="errors">
+              {% for field, errs in form.errors.items %}
+                {% if field != "rating" %}
+                  {% for e in errs %}
+                    <div>{{ e }}</div>
+                  {% endfor %}
+                {% endif %}
+              {% endfor %}
+
+              {% if form.non_field_errors %}
+                {% for e in form.non_field_errors %}
+                  <div>{{ e }}</div>
+                {% endfor %}
+              {% endif %}
+            </div>
+          {% endif %}
+        </form>
+        <span id="review-form-bottom" aria-hidden="true"></span>
+      </section>
+  </div>
 </main>
 
 {% if focus_rating_error %}
