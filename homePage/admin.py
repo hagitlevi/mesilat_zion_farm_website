@@ -12,7 +12,7 @@ from homePage.views import _send_booking_email
 from django.db.models import Q
 from decimal import Decimal
 from django.contrib.admin.helpers import ActionForm
-from django.utils import timezone
+from homePage.views import _format_booking_sms, _send_booking_email
 from urllib.parse import urlencode
 import json
 from django.http import JsonResponse
@@ -635,6 +635,17 @@ class BookingAdmin(admin.ModelAdmin):
                 charge_id=booking.payment_ref,  # אותו מספר הזמנה
             )
             _send_booking_email(payment_like, booking)
+            if getattr(settings, "SEND_SMS", False) and (booking.customer_phone or "").strip():
+                sms_text = _format_booking_sms(payment_like, booking)
+
+                sent = False
+                try:
+                    from homePage.services.ntfy_gateway import send_sms_via_ntfy
+                    sent = send_sms_via_ntfy(booking.customer_phone, sms_text)
+                except Exception:
+                    sent = False
+
+
         except Exception:
             pass
 
@@ -795,6 +806,17 @@ class BookingAdmin(admin.ModelAdmin):
                 )
                 try:
                     _send_booking_email(payment_like, booking)
+                    if getattr(settings, "SEND_SMS", False) and (booking.customer_phone or "").strip():
+                        sms_text = _format_booking_sms(payment_like, booking)
+
+                        sent = False
+                        try:
+                            from homePage.services.ntfy_gateway import send_sms_via_ntfy
+                            sent = send_sms_via_ntfy(booking.customer_phone, sms_text)
+                        except Exception:
+                            sent = False
+
+
                 except Exception:
                     pass
 

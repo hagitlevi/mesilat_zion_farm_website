@@ -17,12 +17,15 @@ load_dotenv()
 
 
 SEND_SMS = os.getenv("SEND_SMS", "False") == "True"
-PHONE_SMS_GATEWAY_URL = os.getenv("PHONE_SMS_GATEWAY_URL")
-PHONE_SMS_SECRET = os.getenv("PHONE_SMS_SECRET")
-
+PHONE_SMS_GATEWAY_URL = os.getenv("PHONE_SMS_GATEWAY_URL", "http://127.0.0.1:8080/sms")
+PHONE_SMS_GATEWAY_SECRET = os.getenv("PHONE_SMS_GATEWAY_SECRET", "MesilatZion_2025_SMS_GW_!4x9")
+NTFY_URL = os.getenv("NTFY_URL", "https://ntfy.sh").rstrip("/")
+NTFY_TOPIC = os.getenv("NTFY_TOPIC", "")
+NTFY_PRIORITY = int(os.getenv("NTFY_PRIORITY", "5"))
 
 GOOGLE_PLACE_ID = os.getenv("GOOGLE_PLACE_ID", "PASTE_YOUR_PLACE_ID_HERE")
 GOOGLE_PLACES_API_KEY = os.getenv("GOOGLE_PLACES_API_KEY", "")
+
 
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
@@ -170,7 +173,6 @@ else:
     EMAIL_HOST_USER = os.getenv("EMAIL_HOST_USER")
     EMAIL_HOST_PASSWORD = os.getenv("EMAIL_HOST_PASSWORD")
     DEFAULT_FROM_EMAIL = os.getenv("DEFAULT_FROM_EMAIL", EMAIL_HOST_USER)
-
 
 
 # Default primary key field type

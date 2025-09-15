@@ -14,6 +14,7 @@ from .models import TermsConsent
 import secrets
 from homePage.utils import assign_unique_ref
 import time
+from django.conf import settings
 from django.shortcuts import render, get_object_or_404
 from django.urls import reverse
 from django.http import HttpResponseBadRequest, JsonResponse
@@ -1178,6 +1179,41 @@ def _append_qs(url, **params):
     data.update({k: v for k, v in params.items() if v is not None})
     return urlunsplit((s, n, p, urlencode(data), f))
 # ——— 3) Webhook — כאן קובעים סטטוס סופי, יוצרים Booking, ושולחים מייל+SMS ———
+def _format_booking_sms(payment, booking) -> str:
+    name = (getattr(payment, "customer_name", "") or getattr(booking, "customer_name", "")).strip() or "לקוח/ה"
+    charge_id = getattr(payment, "charge_id", "") or "—"
+    participants = getattr(booking, "participants", None)
+    activity_name = getattr(getattr(booking, "activity", None), "name", "")
+    start_dt = getattr(booking, "start_dt", None)
+    end_dt = getattr(booking, "end_dt", None)
+
+    amount_nis = None
+    try:
+        ag = getattr(payment, "amount_agorot", None)
+        if ag is not None:
+            amount_nis = ag / 100.0
+    except Exception:
+        pass
+
+    lines = [f"היי {name},\n\nההזמנה ל{activity_name} בחוות מסילת ציון בוצעה בהצלחה"]
+    lines.append(f"מס' הזמנה: {charge_id}")
+
+    if start_dt:
+        time_str = f"{start_dt:%d.%m.%Y}\nבשעה {end_dt:%H:%M}" + (f"–{start_dt:%H:%M}" if end_dt else "")
+        lines.append(f"תאריך: {time_str}")
+
+    if participants and participants > 1:
+        lines.append(f"מס' משתתפים: {participants}")
+    if amount_nis is not None:
+        lines.append(f"סכום: ₪{int(amount_nis)}")
+
+    lines.append("מיקום בוויז: חוות מסילת ציון")
+    lines.append("יש להגיע עם מכנס ארוך ונעליים סגורות")
+
+    lines.append(" ")
+    lines.append(f"מחכים לראותכם!\n")
+    lines.append("(יש לשמור את מספר ההזמנה לביטולים והחזרים כספיים)")
+    return "\n".join(lines)
 
 @csrf_exempt
 def pay_webhook(request):
@@ -1232,20 +1268,27 @@ def pay_webhook(request):
                 except Exception:
                     booking.save()
 
-            # 5) התראות ללקוח
+            # 5) התראות ללקוח — קודם מייל, ואם הצליח אז SMS
+
+            email_ok = False
             try:
-                _send_booking_email(payment, booking)
+                email_ok = _send_booking_email(payment, booking)
             except Exception:
-                pass
-            try:
-                from homePage.services.phone_gateway import send_sms_via_phone
-                send_sms_via_phone(
-                    payment.phone,
-                    f"היי {payment.customer_name}, התור נקבע בהצלחה! "
-                    f"סכום: {(payment.amount_agorot / 100):.2f} ₪, מספר הזמנה: {payment.charge_id}"
-                )
-            except Exception:
-                pass
+                email_ok = False
+
+            # ואז SMS עם כל הפרטים:
+            if getattr(settings, "SEND_SMS", False):
+                sms_text = _format_booking_sms(payment, booking)
+
+                sent = False
+                try:
+                    from homePage.services.ntfy_gateway import send_sms_via_ntfy
+                    sent = send_sms_via_ntfy(payment.phone, sms_text)
+                except Exception:
+                    sent = False
+
+
+
         else:
             # fail / cancel / refunded — סוגרים את התשלום בלי ליצור הזמנה
             payment.status = new_status
@@ -1494,13 +1537,15 @@ def _send_booking_email(payment, booking):
 </html>
 """
 
-    send_mail(
+    sent = send_mail(
         subject=subject,
-        message=text_body,        # גיבוי טקסטואלי עם RLM
-        from_email=None,          # ישתמש ב-DEFAULT_FROM_EMAIL אם קיים
+        message=text_body,
+        from_email=None,
         recipient_list=[payment.email],
-        html_message=html_body,   # HTML RTL ממורכז לחלוטין
+        html_message=html_body,
         fail_silently=True,
     )
+
+    return sent >= 1
 
 
