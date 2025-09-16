@@ -108,21 +108,21 @@ class Booking(models.Model):
         ("failed", "נכשל"),
         ("refunded", "הוחזר"),
     ]
-    activity      = models.ForeignKey('Activity', on_delete=models.PROTECT, related_name='bookings')
-    customer_name = models.CharField(max_length=50, blank=True)
-    customer_phone= models.CharField(max_length=15, blank=True)
-    customer_email= models.EmailField(blank=True)
-    participants  = models.PositiveIntegerField(default=1)
-    total_price   = models.DecimalField(max_digits=9, decimal_places=2, null=True, blank=True)
-    payment_method= models.CharField(max_length=20, blank=True)
-    payment_ref   = models.CharField(max_length=64, blank=True, null=True,
+    activity      = models.ForeignKey('Activity', on_delete=models.PROTECT, related_name='bookings', verbose_name="פעילות")
+    customer_name = models.CharField("שם", max_length=50, blank=True)
+    customer_phone= models.CharField("טלפון", max_length=15, blank=True)
+    customer_email= models.EmailField("מייל", blank=True)
+    participants  = models.PositiveIntegerField("משתתפים", default=1)
+    total_price   = models.DecimalField("מחיר", max_digits=9, decimal_places=2, null=True, blank=True)
+    payment_method= models.CharField("שיטת תשלום", max_length=20, blank=True)
+    payment_ref   = models.CharField("מס' הזמנה", max_length=64, blank=True, null=True,
                                      unique=True, db_index=True)
-    status        = models.CharField(max_length=10, choices=STATUS_CHOICES, default="pending")
+    status        = models.CharField("סטטוס", max_length=10, choices=STATUS_CHOICES, default="pending")
     details       = models.CharField("פרטים/הערות", blank=True, null=True)
-    start_dt      = models.DateTimeField()   # נוח להצגה וסינון
-    end_dt        = models.DateTimeField()
-    created_at    = models.DateTimeField(auto_now_add=True)
-    updated_at    = models.DateTimeField(auto_now=True)
+    start_dt      = models.DateTimeField("שעת התחלה")
+    end_dt        = models.DateTimeField("שעת סיום")
+    created_at    = models.DateTimeField("נוצר ב-", auto_now_add=True)
+    updated_at    = models.DateTimeField("עודכן ב-", auto_now=True)
     feedback_sms_sent_at = models.DateTimeField(null=True, blank=True)  # מתי נשלח SMS משוב
     feedback_token = models.CharField(max_length=40, blank=True, default="")
     class Meta:
@@ -134,11 +134,11 @@ class Booking(models.Model):
         return f"#{self.id} | {self.activity} | {self.customer_name} | {local_dt:%Y-%m-%d - %H:%M}"
 
 class Appointment(models.Model):
-    date = models.DateField()
-    time = models.TimeField()
-    duration_minutes = models.IntegerField(default=15)
-    is_booked = models.BooleanField(default=False)
-    is_break = models.BooleanField(default=False)
+    date = models.DateField("תאריך")
+    time = models.TimeField("שעה")
+    duration_minutes = models.IntegerField("אורך", default=15)
+    is_booked = models.BooleanField("נקבע", default=False)
+    is_break = models.BooleanField("הפסקה", default=False)
     participants_count = models.IntegerField(default=2)
     is_paid = models.BooleanField(default=False)
     payment_reference = models.CharField(max_length=100, blank=True, null=True)
@@ -160,18 +160,11 @@ class Appointment(models.Model):
         return f"{self.date} {self.time} {'- תפוס' if self.is_booked else '- פנוי'}"
 
 class SiteReview(models.Model):                               # מודל תגובה/דירוג לכל האתר
-    name = models.CharField(                                  # שם המגיב (רשות)
-        max_length=80,
-        blank=True
-    )
-    rating = models.PositiveSmallIntegerField(                # דירוג 1–5
-        validators=[MinValueValidator(1), MaxValueValidator(5)]
-    )
-    comment = models.TextField(                               # טקסט חופשי של התגובה (רשות)
-        blank=True
-    )
-    created_at = models.DateTimeField(auto_now_add=True)      # נוצר ב־save הראשון
-    updated_at = models.DateTimeField(auto_now=True)          # מתעדכן בכל save
+    name = models.CharField("שם", max_length=80, blank=True)
+    rating = models.PositiveSmallIntegerField("דירוג", validators=[MinValueValidator(1), MaxValueValidator(5)])
+    comment = models.TextField("תגובה", blank=True)
+    created_at = models.DateTimeField("נוצר ב-", auto_now_add=True)      # נוצר ב־save הראשון
+    updated_at = models.DateTimeField("עודכן ב-", auto_now=True)          # מתעדכן בכל save
 
     class Meta:
         ordering = ['-created_at']                            # תציגו מהחדש לישן
@@ -192,7 +185,7 @@ class CancellationRequest(models.Model):
     email      = models.EmailField("אימייל (לא חובה)", blank=True)
 
     # זה השדה שהלקוח מקליד — המספר שמופיע לו באישור תשלום/הזמנה
-    order_id   = models.CharField("מס׳ הזמנה (payment_ref)", max_length=80)
+    order_id   = models.CharField("מס׳ הזמנה", max_length=80)
 
     # קישור להזמנה (Booking) אם נמצאה לפי payment_ref
     booking    = models.ForeignKey(
@@ -259,13 +252,13 @@ class CancellationRequest(models.Model):
 class TermsConsent(models.Model):
     POLICY_CHOICES = [("terms","Terms of Service"), ("privacy","Privacy Policy")]
 
-    policy      = models.CharField(max_length=16, choices=POLICY_CHOICES)
-    version     = models.CharField(max_length=16)                 # למשל "1.3"
-    subject_id  = models.CharField(max_length=32, db_index=True)  # כאן נשמור טלפון מנורמל (ספרות בלבד, 0XXXXXXXXX)
-    full_name = models.CharField(max_length=120, blank=True)
-    accepted_at = models.DateTimeField(auto_now_add=True)
-    ip          = models.GenericIPAddressField(null=True, blank=True)
-    user_agent  = models.CharField(max_length=255, blank=True)
+    policy      = models.CharField("מדיניות", max_length=16, choices=POLICY_CHOICES)
+    version     = models.CharField("גרסה", max_length=16)                 # למשל "1.3"
+    subject_id  = models.CharField("ID", max_length=32, db_index=True)  # כאן נשמור טלפון מנורמל (ספרות בלבד, 0XXXXXXXXX)
+    full_name = models.CharField("שם מלא", max_length=120, blank=True)
+    accepted_at = models.DateTimeField("אושר ב-", auto_now_add=True)
+    ip          = models.GenericIPAddressField("IP", null=True, blank=True)
+    user_agent  = models.CharField("user agent", max_length=255, blank=True)
 
     class Meta:
         unique_together = (("policy","version","subject_id"),)

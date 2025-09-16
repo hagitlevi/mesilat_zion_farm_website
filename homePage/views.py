@@ -443,6 +443,8 @@ def confirm_booking(request):
                 "wine": wine or "",
                 "consent_error": "1",
             })
+            return redirect(f"{reverse('booking_form')}?{qs}")
+
         else:
             # יש הסכמה חדשה – נשמור אותה ב-DB (כאן עדיין אין Booking; מעביר None)
             _save_consent_by_phone(request, phone=phone_norm, full_name=full_name)
@@ -1097,11 +1099,30 @@ def pay_start(request):
     phone            = request.POST.get("phone","")
     email            = request.POST.get("email","")
 
-    # חישוב סכום בשרת (אל תסמכי על hidden מהלקוח)
-    activity = get_object_or_404(Activity, id=activity_id)
-    unit_agorot = int(round(float(activity.price) * 100))  # התאימי ללוגיקה שלך
-    amount_agorot = unit_agorot * participants
+    # ✅ NEW: אכיפת/שמירת הסכמה לפני המשך לתשלום
+    full_name = f"{(first_name or '').strip()} {(last_name or '').strip()}".strip()
+    sid = _normalize_phone_il(phone)
+    if not _has_consent_by_phone(sid):
+        if not request.POST.get("accept_terms"):
+            # מחזירים לדף המילוי עם הודעת שגיאה + פרמטרים לשחזור הטופס
+            qs = urlencode({
+                "appointment_id": appointment_id or "",
+                "activity_id": activity_id or "",
+                "duration_minutes": duration_minutes or "",
+                "participants": participants or "",
+                "activity_type": request.POST.get("activity_type") or "",
+                "wine": request.POST.get("wine") or "",
+                "consent_error": "1",
+            })
+            return redirect(f"{reverse('booking_form')}?{qs}")
+        else:
+            # נשמור את ההסכמה כי המשתמש סימן עכשיו
+            _save_consent_by_phone(request, phone=sid, full_name=full_name)
 
+    # -- מכאן ההמשך הקיים שלך --
+    activity = get_object_or_404(Activity, id=activity_id)
+    unit_agorot = int(round(float(activity.price) * 100))
+    amount_agorot = unit_agorot * participants
 
     payment = Payment.objects.create(
         provider="mock",
@@ -1112,13 +1133,11 @@ def pay_start(request):
         activity_id=activity_id,
         duration_minutes=duration_minutes,
         participants=participants,
-        customer_name=f"{first_name} {last_name}".strip(),
+        customer_name=full_name,
         phone=phone.strip(),
         email=email.strip(),
-        # לא חייבים return_url כאן אם לא משתמשים בו כרגע
     )
     request.session['last_payment_id'] = payment.id
-    # הפניה מיידית לעמוד הסליקה המדומה
     return redirect(reverse("mock_checkout", kwargs={"payment_id": payment.id}))
 # ——— 2) חזרה מהסליקה — מחליטים על הודעה, ומפנים לדף הבית ———
 

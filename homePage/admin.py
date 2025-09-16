@@ -397,8 +397,8 @@ class BookingAdmin(admin.ModelAdmin):
 
     form = BookingAdminForm
     list_display  = ("id", "activity", "start_dt", "end_dt",
-                     "customer_name", "customer_phone", "status", "payment_ref", "total_price", "participants")
-    list_filter   = ("activity", "status", "start_dt")
+                     "customer_name", "customer_phone", "status", "payment_ref", "total_price", "participants", "created_at")
+    list_filter   = ("activity", "status","created_at", "start_dt")
     search_fields = ("customer_name", "customer_phone", "customer_email", "payment_ref")
     inlines = [AppointmentInline]
 
@@ -836,9 +836,7 @@ class SiteReviewAdmin(admin.ModelAdmin):
 
 @admin.register(CancellationRequest)
 class CancellationRequestAdmin(admin.ModelAdmin):
-    list_display = ("id", "full_name", "phone", "order_id",
-                    "booking_col", "appointment_col",
-                    "start_dt", "status", "created_at")
+    list_display = ("id", "full_name", "phone", "order_id", "status", "created_at")
     list_filter = ("status", "channel", "created_at")
     search_fields = (
         "full_name", "phone", "email", "order_id",
@@ -846,14 +844,26 @@ class CancellationRequestAdmin(admin.ModelAdmin):
         "appointment__id",
     )
 
-    def booking_col(self, obj):
-        return obj.booking_id or "-"
-    booking_col.short_description = "Booking"
 
-    def appointment_col(self, obj):
-        appt = obj.appointment_resolved
-        return appt.id if appt else "-"
-    appointment_col.short_description = "Appointment"
+    def save_model(self, request, obj, form, change):
+        raw = (getattr(obj, "order_id", "") or "").strip()
+        if raw and not getattr(obj, "booking_id", None):
+            b = Booking.objects.filter(payment_ref__iexact=raw).first()
+            if b:
+                obj.booking = b
+                # אופציונלי: להשלים גם רשומת Appointment ו-start_dt
+                appt = getattr(b, "appointment", None)
+                if appt and not getattr(obj, "appointment_id", None):
+                    obj.appointment = appt
+                if (not getattr(obj, "start_dt", None)) and appt:
+                    try:
+                        obj.start_dt = datetime.combine(appt.date, appt.time)
+                    except Exception:
+                        if getattr(appt, "start_dt", None):
+                            obj.start_dt = appt.start_dt
+        super().save_model(request, obj, form, change)
+
+
 
 @admin.register(TermsConsent)
 class TermsConsentAdmin(admin.ModelAdmin):
