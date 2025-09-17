@@ -111,19 +111,30 @@
           </select>
         </div>
 
-        <!-- אורך -->
+      <!-- סוג רכיבה זוגית (מוצג רק כשהפעילות "רכיבה זוגית") -->
+<label for="couple_variant" id="couple_variant_label" style="display:none">סוג רכיבה זוגית</label>
+<div class="field" id="couple_variant_wrap" style="display:none">
+  <select id="couple_variant" name="couple_variant">
+    <option value="day" selected>יום</option>
+    <option value="night">לילה</option>
+    <option value="sunrise">זריחה</option>
+  </select>
+</div>
+
+
+        <!-- תאריך -->
+        <label for="date">תאריך</label>
+        <div class="field">
+          <input type="date" id="date" name="date" value="{{ today }}" required>
+        </div>
+
+        <!-- אורך פעילות-->
         <label for="duration_minutes">אורך (דקות)</label>
         <div class="field">
           <select id="duration_minutes" name="duration_minutes" required>
             <option value="" selected hidden>בחרי…</option>
             <!-- יתמלא דינמית לפי הפעילות -->
           </select>
-        </div>
-
-        <!-- תאריך -->
-        <label for="date">תאריך</label>
-        <div class="field">
-          <input type="date" id="date" name="date" value="{{ today }}" required>
         </div>
 
         <!-- שעת התחלה -->
@@ -215,6 +226,9 @@
 (function(){
   const DURATIONS = JSON.parse('{{ durations_map_json|escapejs }}');
   const AJAX_URL  = "{{ ajax_times_url }}"; // /admin/homePage/appointment/book/
+  const elVariantLbl = document.getElementById('couple_variant_label');
+  const elVariantWrp = document.getElementById('couple_variant_wrap');
+  const elVariant    = document.getElementById('couple_variant');
 
   const $ = id => document.getElementById(id);
   const elPhotoColorLbl  = document.getElementById('photo_color_label');
@@ -231,79 +245,102 @@
   const elForm   = $('mz-form');
   const elSummary= $('summary-row');
 
+  function updateCoupleExtras(){
+      const isCouple = (elName.value.trim() === 'רכיבה זוגית');
+      const v = isCouple && elVariant ? (elVariant.value || 'day') : 'day';
+      const showWine = isCouple && (v === 'night' || v === 'sunrise'); // רק לא-יום
+      elWineLbl.style.display  = showWine ? '' : 'none';
+      elWineWrap.style.display = showWine ? '' : 'none';
+  }
+
   // 1) כשבוחרים פעילות – למלא אפשרויות אורך תקינות
   function fillDurations(){
-    const showPhotoColor = (elName.value.trim() === 'צילומים');
-    elPhotoColorLbl.style.display  = showPhotoColor ? '' : 'none';
-    elPhotoColorWrap.style.display = showPhotoColor ? '' : 'none';
+      const showPhotoColor = (elName.value.trim() === 'צילומים');
+      elPhotoColorLbl.style.display  = showPhotoColor ? '' : 'none';
+      elPhotoColorWrap.style.display = showPhotoColor ? '' : 'none';
 
-    const name = elName.value || '';
-    elDur.innerHTML = '<option value="" selected hidden>בחרי…</option>';
-    if (!name || !DURATIONS[name] || !DURATIONS[name].length) return;
-    DURATIONS[name].forEach(m=>{
-      const opt = document.createElement('option');
-      opt.value = m; opt.textContent = `דק ${m}`;
-      elDur.appendChild(opt);
-    });
+      const name = elName.value || '';
+      elDur.innerHTML = '<option value="" selected hidden>בחרי…</option>';
+      if (name && DURATIONS[name] && DURATIONS[name].length) {
+        DURATIONS[name].forEach(m=>{
+          const opt = document.createElement('option');
+          opt.value = m; opt.textContent = `דק ${m}`;
+          elDur.appendChild(opt);
+        });
+      }
 
-    // יין לרכיבה זוגית
-    const showWine = (name.trim() === 'רכיבה זוגית');
-    elWineLbl.style.display = showWine ? '' : 'none';
-    elWineWrap.style.display = showWine ? '' : 'none';
+      // ⬅️ חדש: לחשוף/להסתיר את "סוג רכיבה זוגית"
+      const isCouple = (name.trim() === 'רכיבה זוגית');
+      elVariantLbl.style.display = isCouple ? '' : 'none';
+      elVariantWrp.style.display = isCouple ? '' : 'none';
+      if (!isCouple && elVariant) {
+        elVariant.value = 'day';   // איפוס לברירת מחדל כשעוברים מפעילות זוגית לאחרת
+      }
+
+      // יין רק בלילה/זריחה בזוגית
+      updateCoupleExtras();
   }
+
 
   // 2) טעינת שעות התחלה פנויות
   async function loadTimes(){
-    elStart.innerHTML = '<option value="" selected hidden>בחרי…</option>';
-    elHelp.textContent = '';
+      elStart.innerHTML = '<option value="" selected hidden>בחרי…</option>';
+      elHelp.textContent = '';
 
-    const name = elName.value || '';
-    const minutes = elDur.value || '';
-    const date = elDate.value || '';
+      const name = elName.value || '';
+      const minutes = elDur.value || '';
+      const date = elDate.value || '';
+      const variant = (name.trim() === 'רכיבה זוגית') ? (elVariant.value || 'day') : '';
 
-    if (!name || !minutes || !date) {
-      elHelp.textContent = 'בחרי פעילות → בחרי אורך → בחרי תאריך ואז יוצגו שעות פנויות.';
-      return;
-    }
-
-    try {
-      const url = `${AJAX_URL}?ajax=times&name=${encodeURIComponent(name)}&minutes=${encodeURIComponent(minutes)}&date=${encodeURIComponent(date)}`;
-      const res = await fetch(url, {credentials:'same-origin'});
-      const data = await res.json();
-      const times = Array.isArray(data.times) ? data.times : [];
-
-      if (!times.length){
-        elHelp.textContent = 'אין שעות פנויות לתנאים שנבחרו בתאריך זה.';
+      if (!name || !minutes || !date) {
+        elHelp.textContent = 'בחרי פעילות → אורך → תאריך ואז יוצגו שעות פנויות.';
         return;
       }
 
-      times.forEach(t=>{
-        const opt = document.createElement('option');
-        opt.value = t; opt.textContent = t;
-        elStart.appendChild(opt);
-      });
-      elHelp.textContent = `נמצאו ${times.length} שעות פנויות.`;
-    } catch(err){
-      elHelp.textContent = 'שגיאת תקשורת בעת טעינת שעות.';
-    }
+      try {
+        const url = `${AJAX_URL}?ajax=times&name=${encodeURIComponent(name)}&minutes=${encodeURIComponent(minutes)}&date=${encodeURIComponent(date)}&variant=${encodeURIComponent(variant)}`;
+        const res = await fetch(url, {credentials:'same-origin'});
+        const data = await res.json();
+        const times = Array.isArray(data.times) ? data.times : [];
+
+        if (!times.length){
+          elHelp.textContent = 'אין שעות פנויות לתנאים שנבחרו בתאריך זה.';
+          return;
+        }
+        times.forEach(t=>{
+          const opt = document.createElement('option');
+          opt.value = t; opt.textContent = t;
+          elStart.appendChild(opt);
+        });
+        elHelp.textContent = `נמצאו ${times.length} שעות פנויות.`;
+      } catch(err){
+        elHelp.textContent = 'שגיאת תקשורת בעת טעינת שעות.';
+      }
   }
+
 
   // 3) תקציר בחירות
   function updateSummary(){
-    const chips = [];
-    if (elName.value) chips.push(`פעילות: ${elName.value}`);
-    if (elDur.value) chips.push(`אורך ${elDur.value} דק`);
-    if (elDate.value) chips.push(`תאריך: ${elDate.value}`);
-    if (elStart.value) chips.push(`שעה: ${elStart.value}`);
-    const p = document.getElementById('participants');
-    if (p && p.value) chips.push(`משתתפים: ${p.value}`);
-    elSummary.innerHTML = chips.map(c=>`<span class="mz-chip">${c}</span>`).join(' ');
+      const chips = [];
+      if (elName.value) chips.push(`פעילות: ${elName.value}`);
+      if (elName.value.trim() === 'רכיבה זוגית' && elVariant && elVariant.value){
+        const map = {day:'יום', night:'לילה', sunrise:'זריחה'};
+        chips.push(`סוג: ${map[elVariant.value] || elVariant.value}`);
+      }
+      if (elDur.value) chips.push(`אורך ${elDur.value} דק`);
+      if (elDate.value) chips.push(`תאריך: ${elDate.value}`);
+      if (elStart.value) chips.push(`שעה: ${elStart.value}`);
+      const p = document.getElementById('participants');
+      if (p && p.value) chips.push(`משתתפים: ${p.value}`);
+      elSummary.innerHTML = chips.map(c=>`<span class="mz-chip">${c}</span>`).join(' ');
   }
+
 
   // חיבור אירועים
   [elName].forEach(el => el.addEventListener('change', ()=>{ fillDurations(); loadTimes(); updateSummary(); }));
   [elDur, elDate].forEach(el => el.addEventListener('change', ()=>{ loadTimes(); updateSummary(); }));
   [elStart].forEach(el => el.addEventListener('change', updateSummary));
+  if (elVariant) elVariant.addEventListener('change', ()=>{updateCoupleExtras(); loadTimes(); updateSummary(); });
 
   // ולידציה בסיסית לפני שליחה
   elForm.addEventListener('submit', (e)=>{

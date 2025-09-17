@@ -1,40 +1,28 @@
 from django.contrib import admin
-from .models import Activity, Appointment, CustomSchedule, Booking, SiteReview,CancellationRequest, TermsConsent, ScheduleBoard
+import json
 from django import forms
+from .models import Activity, Appointment, CustomSchedule, Booking, SiteReview,CancellationRequest, TermsConsent, ScheduleBoard
 from django.contrib import messages
-from django.urls import reverse
 from django.shortcuts import redirect
+from zoneinfo import ZoneInfo
 from django.db import transaction
 import secrets
 from .models import Weekday, BusinessHours, ActivityRule
 from types import SimpleNamespace
-from homePage.views import _send_booking_email
 from django.db.models import Q
 from decimal import Decimal
 from django.contrib.admin.helpers import ActionForm
-from homePage.views import _format_booking_sms, _send_booking_email
 from urllib.parse import urlencode
-import json
+from .views import get_rules_for
 from django.http import JsonResponse
 from django.conf import settings
-from homePage.views import _has_consent_by_phone as has_consent_by_phone
-from homePage.views import _normalize_phone_il as normalize_phone_il
-from homePage.models import TermsConsent
-from homePage.views import _normalize_phone_il as normalize_phone_il
-from django.contrib.admin.actions import delete_selected as _delete_selected
+from homePage.views import _has_consent_by_phone as has_consent_by_phone, _normalize_phone_il as normalize_phone_il, _format_booking_sms, _send_booking_email
 from datetime import datetime, date as ddate, time as dtime, timedelta
 from django.template.response import TemplateResponse
-from django.urls import path
-from datetime import datetime, time, timedelta
+from django.urls import path,reverse
 from django.utils import timezone
-from django.urls import reverse
-from django import forms
-from django.contrib import admin
-from .models import Booking
-from django.contrib import admin
-from django.contrib.admin.actions import delete_selected as _delete_selected
 from django.contrib.admin.actions import delete_selected
-delete_selected.short_description = "מחיקת הזמנות"
+delete_selected.short_description = "מחיקה"
 
 
 def _normalize_il_phone(p: str) -> str:
@@ -84,8 +72,8 @@ def _timeslots(start_h=7, end_h=22, step_min=15):
         end_h_loop = end_h
 
     # יצירת אובייקטי הזמן
-    t = time(hour=start_h, minute=0)
-    end = time(hour=end_h_loop, minute=0)
+    t = dtime(hour=start_h, minute=0)
+    end = dtime(hour=end_h_loop, minute=0)
     out = []
 
     # הלולאה ליצירת זמנים
@@ -430,19 +418,34 @@ class BookingAdmin(admin.ModelAdmin):
         POST: יוצר הזמנה, תופס סלוטים, נותן payment_ref ייחודי, מחשב מחיר ושולח מייל.
         """
         # ---- AJAX: זמני התחלה פנויים ----
+        # ודאי שבראש הקובץ יש:
+        # from datetime import datetime
+        # from django.http import JsonResponse
+
         if request.method == "GET" and request.GET.get("ajax") == "times":
             name = (request.GET.get("name") or "").strip()
-            minutes = int(request.GET.get("minutes") or 0)
+            minutes_s = (request.GET.get("minutes") or "").strip()
             date_s = (request.GET.get("date") or "").strip()
+            variant = (request.GET.get("variant") or "").strip().lower()  # 'day' | 'night' | 'sunrise' | ''
+
+            # המרות בטוחות
+            try:
+                minutes = int(minutes_s)
+            except ValueError:
+                return JsonResponse({"times": []})
+
             try:
                 picked_date = datetime.fromisoformat(date_s).date()
             except Exception:
-                picked_date = None
+                return JsonResponse({"times": []})
 
             if not (name and minutes and picked_date):
                 return JsonResponse({"times": []})
 
-            times = find_free_start_times(picked_date, minutes, name)
+            # נעביר variant רק כשזו "רכיבה זוגית" וערך חוקי
+            v = variant if (name == "רכיבה זוגית" and variant in ("day", "night", "sunrise")) else None
+
+            times = find_free_start_times(picked_date, minutes, name, variant=v)
             return JsonResponse({"times": times})
 
         # ---- GET רגיל: תצוגת הוויזארד ----
@@ -883,49 +886,122 @@ def durations_for_name(name: str):
         Activity.objects.filter(name=name).values_list("duration_minutes", flat=True)
     ))
 
-def find_free_start_times(chosen_date, minutes, activity_name):
+def find_free_start_times(chosen_date, minutes, activity_name, variant=None):
     """
-    מחזיר רשימת שעות התחלה פנויות (כמחרוזות 'HH:MM') לתאריך ואורך נתונים,
-    תוך ודאיי רצף סלוטים של 15 דק' ובאופרציה כמו באתר (כולל הפסקה של 15 ד' אם >30).
-    אם בסלוטים יש שיוך פעילויות: נאפשר הכלל הסטנדרטי – ריקים או עם הפעילות שנבחרה.
+    זמינות שעות התחלה ('HH:MM') ליום/אורך נתון.
+    תוספת: כשactivity='רכיבה זוגית' משתמשים ב-variant:
+      - day     → סלוטים ללא שיוך פעילות
+      - night   → סלוטים של 'רכיבת לילה'
+      - sunrise → סלוטים של 'רכיבה בזריחה'
+    יתר הפעילויות כמו קודם: סלוטים ריקים או משויכים לפעילות עצמה,
+    או במקרה של 'רכיבה בזריחה'/'רכיבת לילה' – רק סלוטים משויכים.
+    אין חסימת "שעתיים קדימה" ואין כלל 16:00.
     """
-    from datetime import datetime, timedelta, time as dtime
-    base_qs = (Appointment.objects
-               .filter(date=chosen_date, is_booked=False, is_break=False)
-               .order_by("time"))
+    now_aw = timezone.now().astimezone(ZoneInfo("Asia/Jerusalem"))
+    today = now_aw.date()
+    now_naive = datetime.combine(today, now_aw.time())
 
-    # סינון לפי שיוך פעילות (אם לסלוט יש רשימת activities – נאפשר הסלוט רק אם מתאים לשם)
-    act = Activity.objects.filter(name=activity_name).first()
-    if act:
-        base_qs = base_qs.filter(Q(activities__isnull=True) | Q(activities=act))
+    activity = Activity.objects.filter(name=activity_name).first()
 
-    appts = list(base_qs)
-    free_set = {a.time for a in appts}
+    base_qs = (
+        Appointment.objects
+        .filter(is_booked=False, is_break=False, date=chosen_date)
+        .order_by("time")
+        .distinct()
+    )
+
+    apply_window, apply_cutoff = True, False
+    appts_qs = base_qs
+    rules_activity = activity
+
+    if activity and activity.name == "רכיבה זוגית":
+        v = (variant or "day").lower()
+        if v == "day":
+            appts_qs = base_qs.filter(activities__isnull=True)
+            rules_activity = activity
+            apply_cutoff = False
+        elif v == "night":
+            target_acts = Activity.objects.filter(name="רכיבת לילה")
+            appts_qs = base_qs.filter(activities__in=list(target_acts))
+            rules_activity = target_acts.first()
+            apply_cutoff = True   # כמו בטאב night אצלך
+        elif v == "sunrise":
+            target_acts = Activity.objects.filter(name="רכיבה בזריחה")
+            appts_qs = base_qs.filter(activities__in=list(target_acts))
+            rules_activity = target_acts.first()
+            apply_cutoff = True   # כמו בטאב sunrise אצלך
+        else:
+            # לא הועבר variant חוקי → נניח day
+            appts_qs = base_qs.filter(activities__isnull=True)
+            rules_activity = activity
+            apply_cutoff = False
+    else:
+        if activity and activity.name in {"רכיבה בזריחה", "רכיבת לילה"}:
+            appts_qs = base_qs.filter(activities=activity)
+        else:
+            # כללי: ריקים או משויכים לאותה פעילות
+            appts_qs = base_qs.filter(Q(activities__isnull=True) | Q(activities=activity))
+        rules_activity = activity
+        apply_cutoff = False
+
+    appts_list = list(appts_qs)
+    free_set = {a.time for a in appts_list}
+
+    if rules_activity:
+        # get_rules_for אמור להחזיר: (_, cutoff_min, win_start_dt, win_end_dt)
+        _, cutoff_min, win_start_dt, win_end_dt = get_rules_for(rules_activity, chosen_date)
+        cutoff_min = cutoff_min or 0
+    else:
+        cutoff_min, win_start_dt, win_end_dt = 0, None, None
+
+    slots_needed = max(1, (int(minutes) + 14)//15)
+    needs_buffer = int(minutes) > 30
 
     start_times = []
-    slot_count = max(1, (minutes + 14)//15)
 
-    for a in appts:
-        start_dt = datetime.combine(a.date, a.time)
-        # בדיקת רצף 15-דק'
+    for appt in appts_list:
+        start_dt = datetime.combine(appt.date, appt.time)
+
+        if appt.date == today and start_dt < now_naive:
+            continue
+
+        # חלון התחלה
+        if apply_window and win_start_dt and start_dt < win_start_dt:
+            continue
+
+        # cutoff (למשל "חייבים להזמין X דקות מראש") – רלוונטי להיום בלבד וכשapply_cutoff=True
+        if apply_cutoff and appt.date == today and cutoff_min > 0:
+            if start_dt < now_naive + timedelta(minutes=cutoff_min):
+                continue
+
+        # רצף סלוטים לפגישה עצמה
         ok = True
-        for i in range(slot_count):
-            if (start_dt + timedelta(minutes=15*i)).time() not in free_set:
+        for i in range(slots_needed):
+            t = (start_dt + timedelta(minutes=15*i)).time()
+            if t not in free_set:
                 ok = False
                 break
         if not ok:
             continue
 
-        # הפסקה 15 ד' אם >30
-        if minutes > 30:
-            buf_time = (start_dt + timedelta(minutes=15*slot_count)).time()
-            if buf_time not in free_set:
+        # חלון סוף – סיום המפגש (בלי ההפסקה)
+        end_dt = start_dt + timedelta(minutes=int(minutes))
+        if apply_window and win_end_dt and end_dt > win_end_dt:
+            continue
+
+        # הפסקה 15 ד׳ אם צריך
+        if needs_buffer:
+            buffer_start_dt = start_dt + timedelta(minutes=15*slots_needed)
+            buffer_end_dt = buffer_start_dt + timedelta(minutes=15)
+            if apply_window and win_end_dt and buffer_end_dt > win_end_dt:
+                continue
+            if buffer_start_dt.time() not in free_set:
                 continue
 
-        start_times.append(a.time.strftime("%H:%M"))
+        start_times.append(appt.time.strftime("%H:%M"))
 
-    # ייחודי וממויין
     return sorted(set(start_times))
+
 
 
 

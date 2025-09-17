@@ -63,7 +63,7 @@ class Command(BaseCommand):
 
             if not ok:
                 try:
-                    from homePage.services.phone_gateway import send_sms_via_phone
+                    from homePage.services.ntfy_gateway import send_sms_via_phone
                     ok = send_sms_via_phone(phone, text)
                 except Exception:
                     ok = False
