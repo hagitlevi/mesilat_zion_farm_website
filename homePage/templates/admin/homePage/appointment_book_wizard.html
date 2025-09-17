@@ -94,7 +94,7 @@
 {% block content %}
 <div class="mz-wizard">
   <div class="mz-card">
-    <div class="mz-title">קביעת הזמנה ידנית</div>
+    <div class="mz-title">קביעת הזמנה</div>
 
     <form id="mz-form" method="post" action="{{ ajax_times_url }}">
       {% csrf_token %}
@@ -111,15 +111,15 @@
           </select>
         </div>
 
-      <!-- סוג רכיבה זוגית (מוצג רק כשהפעילות "רכיבה זוגית") -->
-<label for="couple_variant" id="couple_variant_label" style="display:none">סוג רכיבה זוגית</label>
-<div class="field" id="couple_variant_wrap" style="display:none">
-  <select id="couple_variant" name="couple_variant">
-    <option value="day" selected>יום</option>
-    <option value="night">לילה</option>
-    <option value="sunrise">זריחה</option>
-  </select>
-</div>
+              <!-- סוג רכיבה זוגית (מוצג רק כשהפעילות "רכיבה זוגית") -->
+        <label for="couple_variant" id="couple_variant_label" style="display:none">סוג רכיבה זוגית</label>
+        <div class="field" id="couple_variant_wrap" style="display:none">
+          <select id="couple_variant" name="couple_variant">
+            <option value="day" selected>יום</option>
+            <option value="night">לילה</option>
+            <option value="sunrise">זריחה</option>
+          </select>
+        </div>
 
 
         <!-- תאריך -->
@@ -128,14 +128,56 @@
           <input type="date" id="date" name="date" value="{{ today }}" required>
         </div>
 
-        <!-- אורך פעילות-->
-        <label for="duration_minutes">אורך (דקות)</label>
-        <div class="field">
-          <select id="duration_minutes" name="duration_minutes" required>
-            <option value="" selected hidden>בחרי…</option>
-            <!-- יתמלא דינמית לפי הפעילות -->
-          </select>
+
+        <!-- בחירת משך -->
+        <label for="duration_group">בחירת משך</label>
+        <div>
+          <!-- הרדיו למעלה, בלי .field כדי לא לקבל את הסגנון הכחול -->
+          <div class="mz-row" style="gap:16px; margin-bottom:8px">
+            <label>
+              <input type="radio" id="mode_preset" name="duration_mode" value="preset" checked>
+              לפי פעילות
+            </label>
+            <label>
+              <input type="radio" id="mode_custom" name="duration_mode" value="custom">
+              משך ידני
+            </label>
+          </div>
+
+          <!-- כאן ה"חלון" הכחול: ה-select שיהיה ילד ישיר של .field -->
+          <div class="field" id="dur_picker_wrap">
+            <!-- יוצג במצב "לפי פעילות" -->
+            <select id="duration_minutes" name="duration_minutes">
+              <option value="" selected hidden>בחרי…</option>
+              <!-- יתמלא דינמית -->
+            </select>
+
+            <!-- יוצג במצב "משך ידני" בלבד -->
+            <select id="custom_duration" name="custom_duration" style="display:none">
+              <option value="" selected hidden>בחרי משך…</option>
+              <option value="15">15 דק׳</option>
+              <option value="30">30 דק׳</option>
+              <option value="45">45 דק׳</option>
+              <option value="60">שעה (60)</option>
+              <option value="90">שעה וחצי (90)</option>
+              <option value="120">שעתיים (120)</option>
+              <option value="150">שעתיים וחצי (150)</option>
+              <option value="180">3 שעות (180)</option>
+              <option value="210">3:30 (210)</option>
+              <option value="240">4 שעות (240)</option>
+              <option value="270">4:30 (270)</option>
+              <option value="300">5 שעות (300)</option>
+            </select>
+          </div>
+
+          <div class="mz-help">בחרי מצב למעלה; כאן יוצג המשך המתאים.</div>
         </div>
+
+
+
+
+        <input type="hidden" id="duration_override" name="duration_override">
+
 
         <!-- שעת התחלה -->
         <label for="start_time">שעת התחלה</label>
@@ -148,10 +190,12 @@
         </div>
 
         <!-- משתתפים -->
-        <label for="participants">משתתפים</label>
-        <div class="field">
+        <label for="participants" id="participants_label" style="display:none">משתתפים</label>
+        <div class="field" id="participants_wrap" style="display:none">
           <input type="number" id="participants" name="participants" value="1" min="1" step="1" required>
         </div>
+
+
 
         <!-- לסמן כשולם -->
         <label for="mark_paid">סמן כשולם</label>
@@ -201,6 +245,19 @@
           </select>
         </div>
 
+
+        <!-- סכום ידני (אופציונלי) -->
+        <label for="manual_total">סכום ידני (₪)</label>
+        <div class="field">
+          <input type="number"
+                 id="manual_total"
+                 name="manual_total"
+                 step="0.01"
+                 min="0"
+                 placeholder="לא חובה">
+        </div>
+
+
           <!-- הצ'קבוקס – תא בעמודה הימנית בלבד -->
         <div class="field col-2" id="consent-cell" style="display:none">
           <label class="checkbox" id="consent-wrap">
@@ -214,6 +271,7 @@
       </div>
 
       <div class="mz-row" style="margin-top:14px" id="summary-row"></div>
+      <div class="mz-row" id="price-row" style="margin-top:6px"></div>
 
       <div class="mz-actions">
         <button id="submit-btn" type="submit">צרי הזמנה</button>
@@ -224,141 +282,427 @@
 
 <script>
 (function(){
-  const DURATIONS = JSON.parse('{{ durations_map_json|escapejs }}');
-  const AJAX_URL  = "{{ ajax_times_url }}"; // /admin/homePage/appointment/book/
-  const elVariantLbl = document.getElementById('couple_variant_label');
-  const elVariantWrp = document.getElementById('couple_variant_wrap');
-  const elVariant    = document.getElementById('couple_variant');
+  const DURATIONS        = JSON.parse('{{ durations_map_json|escapejs }}');
+  const DURATIONS_COUPLE = JSON.parse('{{ durations_couple_json|escapejs }}');
+  const AJAX_URL  = "{{ ajax_times_url }}";
 
+  // ----- refs -----
   const $ = id => document.getElementById(id);
-  const elPhotoColorLbl  = document.getElementById('photo_color_label');
-  const elPhotoColorWrap = document.getElementById('photo_color_wrap');
+
+  const elVariantLbl = $('couple_variant_label');
+  const elVariantWrp = $('couple_variant_wrap');
+  const elVariant    = $('couple_variant');
 
   const elName   = $('activity_name');
-  const elDur    = $('duration_minutes');
+  const elDur    = $('duration_minutes');     // משכי פעילות "רגילים"
+  const elCustomDur = $('custom_duration');   // משך ידני (15–300 דק׳)
+  const elOverride  = $('duration_override'); // hidden: המשך שנשלח לשרת
+
+  const elModePreset = $('mode_preset');      // רדיו: לפי פעילות (ברירת מחדל)
+  const elModeCustom = $('mode_custom');      // רדיו: ידני
+
   const elDate   = $('date');
   const elStart  = $('start_time');
   const elHelp   = $('times-help');
-  const elWine   = $('wine');
-  const elWineLbl= $('wine_label');
-  const elWineWrap=$('wine_wrap');
   const elForm   = $('mz-form');
   const elSummary= $('summary-row');
+  const elPrice  = $('price-row');
+  const elManual = $('manual_total');
+  const submitBtn = $('submit-btn');
 
-  function updateCoupleExtras(){
+  const elWine      = $('wine');
+  const elWineLbl   = $('wine_label');
+  const elWineWrap  = $('wine_wrap');
+
+  const elPhotoColorLbl  = $('photo_color_label');
+  const elPhotoColorWrap = $('photo_color_wrap');
+
+  const wrapPreset = document.getElementById('dur_preset_wrap');
+  const wrapCustom = document.getElementById('dur_custom_wrap');
+
+  const elParticipants    = document.getElementById('participants');
+  const elParticipantsLbl = document.getElementById('participants_label');
+  const elParticipantsWrap= document.getElementById('participants_wrap');
+
+  function syncParticipantsField(){
       const isCouple = (elName.value.trim() === 'רכיבה זוגית');
-      const v = isCouple && elVariant ? (elVariant.value || 'day') : 'day';
-      const showWine = isCouple && (v === 'night' || v === 'sunrise'); // רק לא-יום
-      elWineLbl.style.display  = showWine ? '' : 'none';
-      elWineWrap.style.display = showWine ? '' : 'none';
+
+      if (!elParticipants) return;
+
+      if (isCouple){
+        // ערך קבוע 2, לא חובה, וקורא/ת לא רואה את השדה
+        elParticipants.value = '2';
+        elParticipants.removeAttribute('required');
+        elParticipants.setAttribute('readonly','readonly'); // נשאר נשלח בטופס
+
+        if (elParticipantsLbl)  { elParticipantsLbl.style.display = 'none'; elParticipantsLbl.hidden  = true; }
+        if (elParticipantsWrap) { elParticipantsWrap.style.display = 'none'; elParticipantsWrap.hidden = true; }
+      } else {
+        // מציגים שוב, חובה, מינימום 1
+        elParticipants.removeAttribute('readonly');
+        elParticipants.setAttribute('required','required');
+        if (!elParticipants.value || parseInt(elParticipants.value,10) < 1){
+          elParticipants.value = '1';
+        }
+
+        if (elParticipantsLbl)  { elParticipantsLbl.style.display = ''; elParticipantsLbl.hidden  = false; }
+        if (elParticipantsWrap) { elParticipantsWrap.style.display = ''; elParticipantsWrap.hidden = false; }
+      }
+
+      // עדכון תצוגות
+      if (typeof updateSummary === 'function') updateSummary();
+      if (typeof loadQuote     === 'function') loadQuote();
   }
 
-  // 1) כשבוחרים פעילות – למלא אפשרויות אורך תקינות
+
+  // ----- helpers -----
+  function toggleSubmit(enabled){
+    if (submitBtn) submitBtn.disabled = !enabled;
+  }
+
+  // מצב נבחר: 'preset' או 'custom'
+  function activeMode(){
+    return (elModeCustom && elModeCustom.checked) ? 'custom' : 'preset';
+  }
+
+  // מצב נבחר: 'preset' או 'custom'
+function activeMode(){
+  return (elModeCustom && elModeCustom.checked) ? 'custom' : 'preset';
+}
+
+    // ← הוספה: משך שנבחר בפועל לפי מצב
+    function chosenMinutes(){
+      if (activeMode() === 'custom'){
+        const v = elCustomDur ? parseInt(elCustomDur.value || '0', 10) : 0;
+        return Number.isFinite(v) ? v : 0;
+      }
+      const v = elDur ? parseInt(elDur.value || '0', 10) : 0;
+      return Number.isFinite(v) ? v : 0;
+  }
+
+
+
+  // משך בפועל: לפי המצב
+  // סנכרון תצוגה ו־required בין "לפי פעילות" ל"משך ידני"
+  function syncDurationMode(){
+      const mode = (document.getElementById('mode_custom')?.checked) ? 'custom' : 'preset';
+      const elDur       = document.getElementById('duration_minutes');
+      const elCustomDur = document.getElementById('custom_duration');
+
+      // ה-radio עצמו יהיה חובה (כדי לחייב בחירה של אחד המצבים)
+      const elModePreset = document.getElementById('mode_preset');
+      if (elModePreset) elModePreset.required = true;
+
+      if (mode === 'preset'){
+        // מציגים את ה-select של האורכים לפי פעילות
+        if (elDur){
+          elDur.style.display = '';
+          elDur.setAttribute('required','required');
+        }
+        // מסתירים את הידני
+        if (elCustomDur){
+          elCustomDur.style.display = 'none';
+          elCustomDur.removeAttribute('required');
+          // לא מאפסים ערך, זה לא מזיק
+        }
+      } else {
+        // מציגים את הידני (15→300)
+        if (elCustomDur){
+          elCustomDur.style.display = '';
+          elCustomDur.setAttribute('required','required');
+        }
+        // מסתירים את ה־preset
+        if (elDur){
+          elDur.style.display = 'none';
+          elDur.removeAttribute('required');
+        }
+      }
+
+      // עידכונים תלויים משך (למשל חשיפת יין בזוגית-יום 90+)
+      if (typeof updateCoupleExtras === 'function') updateCoupleExtras();
+  }
+
+
+  function show(el){ if (!el) return; el.closest('.field') ? el.closest('.field').style.display='' : (el.style.display=''); }
+  function hide(el){ if (!el) return; el.closest('.field') ? el.closest('.field').style.display='none' : (el.style.display='none'); }
+
+  // יין: רק בזוגית-יום ולפחות 90 דק׳
+  function updateCoupleExtras(){
+    const isCouple = (elName.value.trim() === 'רכיבה זוגית');
+    const v = isCouple && elVariant ? (elVariant.value || 'day') : 'day';
+    const mChosen = chosenMinutes();
+    const showWine = isCouple && v === 'day' && mChosen >= 90;
+    elWineLbl.style.display  = showWine ? '' : 'none';
+    elWineWrap.style.display = showWine ? '' : 'none';
+  }
+
+  // ----- משכים -----
   function fillDurations(){
-      const showPhotoColor = (elName.value.trim() === 'צילומים');
-      elPhotoColorLbl.style.display  = showPhotoColor ? '' : 'none';
-      elPhotoColorWrap.style.display = showPhotoColor ? '' : 'none';
+    const showPhotoColor = (elName.value.trim() === 'צילומים');
+    elPhotoColorLbl.style.display  = showPhotoColor ? '' : 'none';
+    elPhotoColorWrap.style.display = showPhotoColor ? '' : 'none';
 
-      const name = elName.value || '';
+    const name = elName.value || '';
+    const isCouple = (name.trim() === 'רכיבה זוגית');
+
+    // לחשוף/להסתיר בוחר סוג זוגית
+    elVariantLbl.style.display = isCouple ? '' : 'none';
+    elVariantWrp.style.display = isCouple ? '' : 'none';
+    if (!isCouple && elVariant) elVariant.value = 'day';
+
+    // למלא אורכים לפי פעילות/variant
+    if (elDur){
       elDur.innerHTML = '<option value="" selected hidden>בחרי…</option>';
-      if (name && DURATIONS[name] && DURATIONS[name].length) {
-        DURATIONS[name].forEach(m=>{
-          const opt = document.createElement('option');
-          opt.value = m; opt.textContent = `דק ${m}`;
-          elDur.appendChild(opt);
-        });
+      let durs = [];
+      if (isCouple){
+        const v = (elVariant && elVariant.value) ? elVariant.value : 'day';
+        durs = (DURATIONS_COUPLE[v] || []);
+        if (!durs.length) durs = (DURATIONS['רכיבה זוגית'] || []); // פולבק
+      } else {
+        durs = (DURATIONS[name] || []);
       }
 
-      // ⬅️ חדש: לחשוף/להסתיר את "סוג רכיבה זוגית"
-      const isCouple = (name.trim() === 'רכיבה זוגית');
-      elVariantLbl.style.display = isCouple ? '' : 'none';
-      elVariantWrp.style.display = isCouple ? '' : 'none';
-      if (!isCouple && elVariant) {
-        elVariant.value = 'day';   // איפוס לברירת מחדל כשעוברים מפעילות זוגית לאחרת
-      }
+      durs.forEach(m=>{
+        const opt = document.createElement('option');
+        opt.value = m; opt.textContent = `דק ${m}`;
+        elDur.appendChild(opt);
+      });
 
-      // יין רק בלילה/זריחה בזוגית
-      updateCoupleExtras();
+      // אם ב־preset ואין בחירה — בחרי את הראשון
+      if (activeMode() === 'preset'){
+        const current = String(elDur.value || '');
+        const asStrs = durs.map(x => String(x));
+        if ((!current || !asStrs.includes(current)) && durs.length){
+          elDur.value = String(durs[0]);
+        }
+      }
+    }
+
+    updateCoupleExtras();
   }
 
+  // ----- הצעת מחיר -----
+  async function loadQuote(){
+    elPrice.innerHTML = '';
+    const name     = elName.value || '';
+    const minutes  = String(chosenMinutes() || '');
+    const variant  = (name.trim() === 'רכיבה זוגית') ? (elVariant.value || 'day') : '';
+    const participants = (document.getElementById('participants')?.value || '1').trim();
 
-  // 2) טעינת שעות התחלה פנויות
+    // סכום ידני – מציגים אותו במקום המחושב
+    if (elManual && elManual.value.trim() !== '') {
+      const v = parseFloat(elManual.value);
+      if (!Number.isNaN(v) && v >= 0) {
+        elPrice.innerHTML = `<span class="mz-chip">מחיר: ₪ ${v.toFixed(2)} (ידני)</span>`;
+        return;
+      }
+    }
+
+    if (!name || !minutes || !participants){
+      elPrice.innerHTML = '';
+      return;
+    }
+
+    try{
+      const url = `${AJAX_URL}?ajax=quote&name=${encodeURIComponent(name)}&minutes=${encodeURIComponent(minutes)}&variant=${encodeURIComponent(variant)}&participants=${encodeURIComponent(participants)}`;
+      const res = await fetch(url, {credentials:'same-origin'});
+      const data = await res.json();
+
+      if (data && data.ok){
+        const breakdown = data.breakdown_display ? ` — ${data.breakdown_display}` : '';
+        elPrice.innerHTML = `<span class="mz-chip">מחיר: ${data.total_display}${breakdown}</span>`;
+      } else {
+        elPrice.innerHTML = '';
+      }
+    }catch(e){
+      elPrice.innerHTML = '';
+    }
+  }
+
+  // ----- זמני התחלה -----
   async function loadTimes(){
-      elStart.innerHTML = '<option value="" selected hidden>בחרי…</option>';
-      elHelp.textContent = '';
+    elStart.innerHTML = '';
+    elHelp.textContent = '';
 
-      const name = elName.value || '';
-      const minutes = elDur.value || '';
-      const date = elDate.value || '';
-      const variant = (name.trim() === 'רכיבה זוגית') ? (elVariant.value || 'day') : '';
+    const name    = elName.value || '';
+    const minutes = String(chosenMinutes() || '');
+    const date    = elDate.value || '';
+    const variant = (name.trim() === 'רכיבה זוגית') ? (elVariant.value || 'day') : '';
 
-      if (!name || !minutes || !date) {
-        elHelp.textContent = 'בחרי פעילות → אורך → תאריך ואז יוצגו שעות פנויות.';
+    const addDisabledOption = (text) => {
+      const opt = document.createElement('option');
+      opt.value = '';
+      opt.textContent = text;
+      opt.disabled = true;
+      opt.selected = true;
+      elStart.appendChild(opt);
+    };
+
+    if (!name || !minutes || !date) {
+      addDisabledOption('בחרי…');
+      elHelp.textContent = 'בחרי פעילות → משך → תאריך ואז יוצגו שעות פנויות.';
+      toggleSubmit(false);
+      return;
+    }
+
+    try {
+      const url = `${AJAX_URL}?ajax=times&name=${encodeURIComponent(name)}&minutes=${encodeURIComponent(minutes)}&date=${encodeURIComponent(date)}&variant=${encodeURIComponent(variant)}`;
+      const res = await fetch(url, {credentials:'same-origin'});
+      const data = await res.json();
+      const times = Array.isArray(data.times) ? data.times : [];
+
+      if (!times.length){
+        addDisabledOption('אין תורים');
+        elHelp.textContent = 'אין תורים.';
+        toggleSubmit(false);
         return;
       }
 
-      try {
-        const url = `${AJAX_URL}?ajax=times&name=${encodeURIComponent(name)}&minutes=${encodeURIComponent(minutes)}&date=${encodeURIComponent(date)}&variant=${encodeURIComponent(variant)}`;
-        const res = await fetch(url, {credentials:'same-origin'});
-        const data = await res.json();
-        const times = Array.isArray(data.times) ? data.times : [];
-
-        if (!times.length){
-          elHelp.textContent = 'אין שעות פנויות לתנאים שנבחרו בתאריך זה.';
-          return;
-        }
-        times.forEach(t=>{
-          const opt = document.createElement('option');
-          opt.value = t; opt.textContent = t;
-          elStart.appendChild(opt);
-        });
-        elHelp.textContent = `נמצאו ${times.length} שעות פנויות.`;
-      } catch(err){
-        elHelp.textContent = 'שגיאת תקשורת בעת טעינת שעות.';
-      }
+      addDisabledOption('בחרי…');
+      times.forEach(t=>{
+        const opt = document.createElement('option');
+        opt.value = t; opt.textContent = t;
+        elStart.appendChild(opt);
+      });
+      elHelp.textContent = `נמצאו ${times.length} שעות פנויות.`;
+      toggleSubmit(true);
+    } catch(err){
+      addDisabledOption('אין תורים');
+      elHelp.textContent = 'שגיאת תקשורת בעת טעינת שעות.';
+      toggleSubmit(false);
+    }
   }
 
-
-  // 3) תקציר בחירות
+  // ----- סיכום בחירות -----
   function updateSummary(){
-      const chips = [];
-      if (elName.value) chips.push(`פעילות: ${elName.value}`);
-      if (elName.value.trim() === 'רכיבה זוגית' && elVariant && elVariant.value){
-        const map = {day:'יום', night:'לילה', sunrise:'זריחה'};
-        chips.push(`סוג: ${map[elVariant.value] || elVariant.value}`);
-      }
-      if (elDur.value) chips.push(`אורך ${elDur.value} דק`);
-      if (elDate.value) chips.push(`תאריך: ${elDate.value}`);
-      if (elStart.value) chips.push(`שעה: ${elStart.value}`);
-      const p = document.getElementById('participants');
-      if (p && p.value) chips.push(`משתתפים: ${p.value}`);
-      elSummary.innerHTML = chips.map(c=>`<span class="mz-chip">${c}</span>`).join(' ');
+    const chips = [];
+    if (elName.value) chips.push(`פעילות: ${elName.value}`);
+    if (elName.value.trim() === 'רכיבה זוגית' && elVariant && elVariant.value){
+      const map = {day:'יום', night:'לילה', sunrise:'זריחה'};
+      chips.push(`סוג: ${map[elVariant.value] || elVariant.value}`);
+    }
+    const m = chosenMinutes();
+    if (m) chips.push(`אורך ${m} דק`);
+    if (elDate.value) chips.push(`תאריך: ${elDate.value}`);
+    if (elStart.value) chips.push(`שעה: ${elStart.value}`);
+
+    const pInput = document.getElementById('participants');
+    const pVal = (pInput && pInput.value) ? String(pInput.value).trim() : '';
+    if (pVal) chips.push(`משתתפים: ${pVal}`);
+
+    elSummary.innerHTML = chips.map(c=>`<span class="mz-chip">${c}</span>`).join(' ');
   }
 
+  // ----- מאזינים -----
+  // בחירת מצב (רדיו)
+  if (elModePreset) elModePreset.addEventListener('change', ()=>{
+    syncDurationMode();
+    loadTimes(); updateSummary(); loadQuote();
+  });
+  if (elModeCustom) elModeCustom.addEventListener('change', ()=>{
+    syncDurationMode();
+    loadTimes(); updateSummary(); loadQuote();
+  });
 
-  // חיבור אירועים
-  [elName].forEach(el => el.addEventListener('change', ()=>{ fillDurations(); loadTimes(); updateSummary(); }));
-  [elDur, elDate].forEach(el => el.addEventListener('change', ()=>{ loadTimes(); updateSummary(); }));
-  [elStart].forEach(el => el.addEventListener('change', updateSummary));
-  if (elVariant) elVariant.addEventListener('change', ()=>{updateCoupleExtras(); loadTimes(); updateSummary(); });
+  // פעילות
+  elName && elName.addEventListener('change', ()=>{
+    fillDurations();
+    syncDurationMode();
+    syncParticipantsField();   // ← חדש
+    loadTimes();
+    updateSummary();
+    loadQuote();
+  });
 
-  // ולידציה בסיסית לפני שליחה
-  elForm.addEventListener('submit', (e)=>{
-    // שדות חובה
-    if (!elName.value || !elDur.value || !elDate.value || !elStart.value){
+
+  // משך לפי פעילות
+  elDur && elDur.addEventListener('change', ()=>{
+    updateCoupleExtras();
+    loadTimes();
+    updateSummary();
+    loadQuote();
+  });
+
+  // משך ידני
+  elCustomDur && elCustomDur.addEventListener('change', ()=>{
+    updateCoupleExtras();
+    loadTimes();
+    updateSummary();
+    loadQuote();
+  });
+
+  // תאריך
+  elDate && elDate.addEventListener('change', ()=>{
+    loadTimes();
+    updateSummary();
+    loadQuote();
+  });
+
+  // שעה
+  elStart && elStart.addEventListener('change', ()=>{
+    updateSummary();
+    loadQuote();
+  });
+
+  // וריאנט זוגית
+  elVariant && elVariant.addEventListener('change', ()=>{
+      updateCoupleExtras();
+      fillDurations();
+      syncParticipantsField();   // ← הוספנו
+      loadTimes();
+      updateSummary();
+      loadQuote();
+  });
+
+
+  // סכום ידני
+  elManual && elManual.addEventListener('input', ()=>{
+    const val = elManual.value.trim();
+    if (val === ''){
+      loadQuote();
+      return;
+    }
+    const v = parseFloat(val);
+    if (!Number.isNaN(v) && v >= 0){
+      elPrice.innerHTML = `<span class="mz-chip">מחיר: ₪ ${v.toFixed(2)} (ידני)</span>`;
+    } else {
+      elPrice.innerHTML = '';
+    }
+  });
+
+  // משתתפים
+  elParticipants && elParticipants.addEventListener('input', ()=>{
+    updateSummary();
+    loadQuote();
+  });
+
+  // ולידציה לפני שליחה + שיגור המשך בפועל לשדה החבוי
+  elForm && elForm.addEventListener('submit', (e)=>{
+    const mChosen = chosenMinutes();
+    if (!elName.value || !mChosen || !elDate.value || !elStart.value){
       e.preventDefault();
       alert('חסרים נתונים: פעילות/אורך/תאריך/שעה');
       return;
     }
+    if (elOverride) elOverride.value = String(mChosen);
   });
 
-  // אתחול ראשוני
+  // ----- אתחול -----
+  // ודאי שברירת המחדל של הרדיו היא preset
+  if (elModePreset && !elModePreset.checked && elModeCustom && !elModeCustom.checked){
+    elModePreset.checked = true;
+  }
   fillDurations();
+  syncDurationMode();
+  syncParticipantsField();
   updateSummary();
+  loadQuote();
 
-const phone    = document.querySelector('input[name="phone"]');
-const wrapCell = document.getElementById('consent-cell');
-const wrap     = document.getElementById('consent-wrap');
+
+  // ----- הסכמת תנאים לפי טלפון (כמו שהיה) -----
+  const phone    = document.querySelector('input[name="phone"]');
+  const wrapCell = document.getElementById('consent-cell');
+  const wrap     = document.getElementById('consent-wrap');
 
   if (!phone || !wrap) return;
 
@@ -377,13 +721,12 @@ const wrap     = document.getElementById('consent-wrap');
       wrap.querySelector('input[type="checkbox"]').checked = false;
       return;
     }
-    fetch(ADMIN_CONSENT_URL  + encodeURIComponent(p), {credentials:'same-origin'})
+    fetch(ADMIN_CONSENT_URL + encodeURIComponent(p), {credentials:'same-origin'})
       .then(r => r.json())
       .then(data => {
         const needs = data && data.needs_consent === true;
         wrapCell.style.display = needs ? '' : 'none';
         if (!needs) wrap.querySelector('input[type="checkbox"]').checked = false;
-
       })
       .catch(() => { wrap.style.display = 'none'; });
   }

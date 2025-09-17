@@ -285,12 +285,37 @@ def available_appointment_view(request, activity_id):
         base_qs = base_qs.exclude(date=today, time__lte=two_hours_ahead_time)
 
     # --- אם זו רכיבה בזריחה/לילה (או זוגית בטאבים sunrise/night) ואחרי 16:00 — לא מציגים תורים של היום ---
-    is_sunrise_or_night = (
-        activity.name in {"רכיבה בזריחה", "רכיבת לילה"}
-        or (activity.name == "רכיבה זוגית" and variant in ("sunrise", "night"))
+    # --- כללי 16:00 ---
+    # אם זו רכיבת "זריחה" (כולל זוגית-זריחה) ואחרי 16:00,
+    # לא מציגים תורים גם להיום וגם למחרת.
+    # לרכיבת לילה (כולל זוגית-לילה) נשאיר את הכלל הקיים: אחרי 16:00 לא מציגים היום.
+    tomorrow = today + timedelta(days=1)
+
+    is_sunrise = (
+        activity.name == "רכיבה בזריחה"
+        or (activity.name == "רכיבה זוגית" and variant == "sunrise")
     )
-    if is_sunrise_or_night and (selected_date is None or selected_date == today) and now_aw.hour >= 16:
-        base_qs = base_qs.exclude(date=today)
+    is_night = (
+        activity.name == "רכיבת לילה"
+        or (activity.name == "רכיבה זוגית" and variant == "night")
+    )
+
+    if now_aw.hour >= 16:
+        # זריחה: לחסום היום + מחר
+        if is_sunrise:
+            if selected_date is None:
+                # תצוגת טווח (שבוע) – תסנני גם היום וגם מחר
+                base_qs = base_qs.exclude(date=today).exclude(date=tomorrow)
+            elif selected_date == today:
+                base_qs = base_qs.exclude(date=today)
+            elif selected_date == tomorrow:
+                # אם בחרו ספציפית "מחר" – תחזירי ריק
+                base_qs = base_qs.none()
+
+        # לילה: כמו קודם – אחרי 16:00 לא מציגים היום
+        if is_night:
+            if selected_date is None or selected_date == today:
+                base_qs = base_qs.exclude(date=today)
 
     # --- משכים + מקור סלוטים לפי הטאב ---
     if activity.name == "רכיבה זוגית" and variant in ("day", "sunrise", "night"):
