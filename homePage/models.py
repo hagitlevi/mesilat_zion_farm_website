@@ -4,7 +4,9 @@ from django.core.validators import MinValueValidator, MaxValueValidator
 from django.db.models.signals import pre_delete
 from django.dispatch import receiver
 from django.utils import timezone
-
+from django.contrib.auth.models import User
+from django.core.exceptions import ValidationError
+from datetime import time
 ACTIVITY_TYPES = [
     ('basic', 'מתחילים'),
     ('advanced', 'מתקדמים'),
@@ -314,13 +316,92 @@ class Payment(models.Model):
     def __str__(self):
         return f"Payment#{self.id} {(self.amount_agorot/100):.2f} {self.currency} [{self.status}]"
 
-# --- מערכת שעות כאובייקט וירטואלי (בלי טבלה) ---
 class ScheduleBoard(Appointment):
     class Meta:
         proxy = True
-        verbose_name = "לוח שנה"
-        verbose_name_plural = "לוח שנה"
+        verbose_name = "לוח שעות - הזמנות"
+        verbose_name_plural = "לוח שעות - הזמנות"
 
+
+class Instructor(models.Model):
+    user = models.OneToOneField(
+        User, null=True, blank=True, on_delete=models.SET_NULL,
+        related_name="instructor_profile"
+    )
+    full_name = models.CharField("שם מלא של מדריך/ה", max_length=120)
+    phone = models.CharField("טלפון", max_length=32, blank=True)
+    active = models.BooleanField("פעיל/ה", default=True)
+    color = models.CharField("צבע בלוח", max_length=7, blank=True, help_text="HEX כמו #42A5F5")
+
+    class Meta:
+        verbose_name = "מדריך/ה"
+        verbose_name_plural = "מדריכים"
+        ordering = ("full_name",)
+
+    def __str__(self):
+        return self.full_name
+
+
+class TreatmentSession(models.Model):
+    date = models.DateField("תאריך")
+    start_time = models.TimeField("שעת התחלה")
+    end_time = models.TimeField("שעת סיום")
+    LESSON_TYPE_CHOICES = [
+        ("lesson", "שיעור רכיבה"),
+        ("therapy", "רכיבה טיפולית"),
+    ]
+
+    lesson_type = models.CharField(
+        "סוג מפגש",
+        max_length=20,
+        choices=LESSON_TYPE_CHOICES,
+        default="lesson",
+        blank=True
+    )
+    # שם מדריך יילקח מהמודל – אין instructor_name יותר
+    instructor = models.ForeignKey(
+        Instructor, null=True, blank=True, on_delete=models.SET_NULL,
+        related_name="treatment_sessions", verbose_name="מדריך/ה"
+    )
+    payment_ref = models.CharField(
+        "מס' עסקה", max_length=64, blank=True, null=True,
+        unique=True, db_index=True
+    )
+    # פרטי לקוח
+    customer_full_name = models.CharField("שם מלא של לקוח/ה", max_length=120)
+    customer_phone = models.CharField("טלפון לקוח/ה", max_length=32)
+    customer_email = models.EmailField("אימייל לקוח/ה", blank=True)
+
+    details = models.TextField("פרטים/הערות", blank=True)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+
+    def __str__(self):
+        instr = self.instructor.full_name if self.instructor else "—"
+        return f"{self.date:%Y-%m-%d} | {self.start_time:%H:%M}-{self.end_time:%H:%M} | {self.customer_full_name} → {instr}"
+
+    def clean(self):
+        if self.end_time <= self.start_time:
+            raise ValidationError("שעת סיום חייבת להיות אחרי שעת התחלה.")
+        start_limit = time(9, 0)
+        end_limit = time(20, 0)
+        if not (start_limit <= self.start_time <= end_limit):
+            raise ValidationError("שעת התחלה מותרת בין 09:00 ל-20:00.")
+        if not (start_limit <= self.end_time <= end_limit):
+            raise ValidationError("שעת סיום מותרת בין 09:00 ל-20:00.")
+
+    class Meta:
+        verbose_name = "הזמנה לרכיבה טיפולית"
+        verbose_name_plural = "לוח שעות - רכיבה טיפולית"
+        ordering = ("-date", "start_time")
+        indexes = [models.Index(fields=["date", "start_time"])]
+        permissions = [
+            ("can_drag_sessions", "Can drag/resize sessions on calendar"),
+            ("can_create_sessions", "Can create sessions from calendar"),
+            ("change_details_only", "Can change details field only"),
+        ]
 
 # --- שחרור סלוטים כשמוחקים Booking ---
 def release_slots_for_booking(booking, using='default'):

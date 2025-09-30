@@ -1496,7 +1496,7 @@ def _send_booking_email(payment, booking):
         f"מספר עסקה: {charge_id}\n"
         f"סכום ששולם: ₪{amount_nis:.2f}\n"
         f"מספר משתתפים: {participants}\n"
-        + (f"תאריך ושעה: {start_dt:%d.%m.%Y} בשעה {start_dt:%H:%M}"
+        + (f"תאריך: {start_dt:%d.%m.%Y} בשעה {start_dt:%H:%M}"
            + (f"–{end_dt:%H:%M}" if end_dt else "") + "\n" if start_dt else "")
         + "\nנתראה בחווה 🐴\n\n"
         f"שמרו מייל זה. לביטול/החזר תזדקקו למספר העסקה \n"

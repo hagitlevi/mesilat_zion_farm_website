@@ -1,0 +1,443 @@
+{% extends "admin/base_site.html" %}
+{% load static %}
+
+{% block extrastyle %}
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.15/index.global.min.css">
+<style>
+  .mz-cal { direction: rtl; }
+
+  /* ===== כפתורי מעבר למעלה (לוח שנה / רשימת הזמנות) ===== */
+  .seg-switch{display:flex;gap:16px;align-items:center;margin:8px 0 12px}
+  .seg-switch .seg{
+    display:inline-flex;align-items:center;justify-content:center;
+    min-width:140px;padding:12px 18px;border-radius:16px;
+    color:#fff;text-decoration:none;font-weight:800;letter-spacing:.2px;
+    background: linear-gradient(180deg,#98a7b6,#7c8ea1);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.25), 0 1px 2px rgba(0,0,0,.08);
+    transition: transform .06s ease;
+  }
+  .seg-switch .seg:hover{transform: translateY(-1px)}
+  .seg-switch .seg.is-active{
+    background: linear-gradient(180deg,#aab8c6,#8fa2b3);
+  }
+
+  /* ===== סרגל כלים של הלוח ===== */
+  .toolbar{display:flex;gap:12px;align-items:center;margin:10px 0;flex-wrap:wrap}
+  .toolbar .btn{background:#6a879b;color:#fff;padding:8px 12px;text-decoration:none;border-radius:10px;font-weight:700}
+  .filters{margin-inline-start:auto;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+
+  /* הסתרת all-day ושיפור קומפקטי */
+  .fc .fc-timeGridWeek-view .fc-timegrid-all-day,
+  .fc .fc-timeGridDay-view .fc-timegrid-all-day { display:none; }
+  .fc .fc-toolbar-title { font-size:18px; }
+
+  /* תוויות רבע שעה: XX:XX בצד ימין */
+  .fc .fc-timegrid-slot-label { font-size:12px; }
+  .fc-direction-rtl .fc-timegrid { direction: rtl; }
+  .fc-direction-rtl .fc-timegrid-slot-label-frame { text-align: right; }
+
+  /* ללא גלילה אופקית – הכל נכנס בעמוד אחד */
+  #cal-wrap { overflow-x:hidden; }
+  .fc { max-width:100%; box-sizing:border-box; }
+
+  /* אירועים */
+  .fc-timegrid-event .fc-event-main { padding:2px 4px; }
+  .fc-timegrid-event .fc-event-time { display:none; }
+  .fc .fc-timegrid-event,
+  .fc .fc-daygrid-event { border: 0 !important; }
+  .fc .fc-timegrid-slot { border-top:1px solid #eee; }
+  .fc .fc-scrollgrid { border:1px solid #e5e7eb; border-radius:10px; overflow:hidden; }
+  .fc .fc-button { padding:6px 10px; border-radius:8px; }
+  /* --- Segmented control למעבר יום/שבוע --- */
+  .mz-viewseg{
+  display:inline-flex; gap:2px; padding:2px;
+  border:1.5px solid #96a2af; border-radius:999px;
+  background:#f3f6f9; box-shadow:0 1px 0 rgba(0,0,0,.03) inset, 0 1px 2px rgba(0,0,0,.04);
+}
+  .mz-viewseg a{
+  display:inline-block;border-radius:999px;
+  text-decoration:none; font-weight:700; letter-spacing:.2px;
+  color:#334155; transition:all .18s ease;
+  padding:.38rem .9rem;                               /* היה .55rem 1.25rem */
+  font-size:14px;
+  }
+  .mz-viewseg a:hover{ background:#e7edf4 }
+  .mz-viewseg a.active{
+  background:#6b8094; color:#fff;
+  }
+
+  /* === קווים אנכיים רציפים על פני כל עמודת-יום === */
+    #calendar .fc-timegrid-col { position: relative; }
+
+    /* שכבת הרקע של כל עמודה נמתחת מהטופ ועד הבוטום – שמה גבול אנכי */
+    #calendar .fc-timegrid-col .fc-timegrid-col-bg{
+      position: absolute;
+      inset: 0;                          /* top/right/bottom/left: 0 */
+      pointer-events: none;              /* שלא יפריע ללחיצות/גרירה */
+    }
+
+    /* קו בקצה החיצוני של העמודה האחרונה */
+    #calendar .fc-timegrid-col:last-child .fc-timegrid-col-bg{
+      border-inline-end: 1px solid #e6e9ef !important;
+    }
+
+    /* קווים תואמים גם בכותרת הימים למעלה */
+    #calendar .fc-col-header-cell{ position: relative; }
+    #calendar .fc-col-header-cell::before{
+      content: "";
+      position: absolute;
+      inset: 0 0 0 auto;                 /* בצד ההתחלה (ימין ב-RTL) */
+      width: 0;
+      border-inline-start: 1px solid #e6e9ef;
+    }
+    #calendar .fc-col-header-cell:last-child::after{
+      content: "";
+      position: absolute;
+      inset: 0 auto 0 0;                 /* בצד הסיום (שמאל ב-RTL) */
+      width: 0;
+      border-inline-end: 1px solid #e6e9ef;
+    }
+
+    /* קווי רוחב נשארים כמו שהם כדי להשלים לריבועים */
+    #calendar .fc .fc-timegrid-slot{ border-top:1px solid #eee; }
+
+    /* מבטיחים שהאירועים ישבו מעל הקווים */
+    #calendar .fc-timegrid-col-events{ position: relative; z-index: 1; }
+    /* מזיז את הקווים האנכיים בתוך גוף הלוח כמה פיקסלים פנימה (ימינה ב-RTL) */
+    #calendar .fc-timegrid-col { position: relative; }
+    #calendar .fc-timegrid-col .fc-timegrid-col-bg { border: none !important; }
+    #calendar .fc-timegrid-col .fc-timegrid-col-bg::after{
+      content:"";
+      position:absolute; top:0; bottom:0;
+      inset-inline-start: -1px;          /* <- כמה להזיז פנימה */
+      border-inline-start: 1px solid #e6e9ef;
+      pointer-events:none;
+    }
+    /* ==== עיצוב אירוע: שם → סלסול → שעה → סלסול → מדריך ==== */
+    :root{
+      --mz-name-color: #fff;           /* צבע מיוחד לשם הלקוח – אפשר לשנות */
+      --mz-squiggle-stroke: #fff ;      /* צבע הסלסול – אפשר לשנות */
+    }
+
+    .fc-timegrid-event .fc-event-time{ display:none } /* לא צריך זמן ברירת מחדל */
+
+    /* מרכז את כל התוכן בתוך האירוע */
+    .fc-timegrid-event .fc-event-main{
+      display:flex; align-items:center; justify-content:center;
+      text-align:center;
+    }
+
+    /* מעטפה פנימית לאירוע */
+    .mz-ev{
+      display:flex; flex-direction:column; align-items:center;
+      gap:3px; line-height:1.15; padding:2px 4px;
+    }
+
+    /* שורה 1 – שם הלקוח */
+    .mz-ev .name{
+      font-weight:800; font-size:13px; color:var(--mz-name-color);
+    }
+
+    /* שורה 3 – השעה */
+    .mz-ev .time{
+      font-weight:700; font-size:12px;
+    }
+
+    /* שורה 5 – המדריך */
+    .mz-ev .instr{
+      font-size:12px;
+    }
+
+
+    .mz-ev .mz-squiggle{
+      width:100%; height:8px;
+      background-color: var(--mz-squiggle-stroke); /* זה הצבע של הסלסול */
+      -webkit-mask: url("data:image/svg+xml;utf8,\
+    <svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 60 8' preserveAspectRatio='none'>\
+      <path d='M0,4 C10,0 20,8 30,4 C40,0 50,8 60,4' fill='none' stroke='%23fff' stroke-width='1.6' stroke-linecap='round'/>\
+    </svg>") center/60px 8px no-repeat;
+      mask: url("data:image/svg+xml;utf8,\
+    <svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 60 8' preserveAspectRatio='none'>\
+      <path d='M0,4 C10,0 20,8 30,4 C40,0 50,8 60,4' fill='none' stroke='%23fff' stroke-width='1.6' stroke-linecap='round'/>\
+    </svg>") center/60px 8px no-repeat;
+    }
+
+    /* מרכז את הקבוצה ומקטין את הכפתורים */
+    .seg-switch{
+      display:flex;
+      justify-content:center;   /* מרכז אופקית */
+      gap:14px;                 /* מרווח קטן יותר ביניהם */
+      margin:12px auto 16px;
+    }
+
+    .seg-switch .seg{
+      min-width:85px;          /* היה 140px */
+      padding:10px 14px;        /* היה 12px 18px */
+      font-size:12px;           /* קטן יותר */
+      border-radius:18px;       /* טיפה עדין יותר */
+    }
+
+    /* מרכז את סרגל הכלים ומבטל את הדחיפה של המסנן לצד */
+    .toolbar{ justify-content: center; }
+    .filters{ margin-inline-start: 0; }
+    /* השעה תמיד שמאלה→ימינה */
+    .mz-ev .time { direction: ltr; unicode-bidi: isolate; }
+
+    /* הבדג' של סוג המפגש בצד ימין */
+    .mz-ev { position: relative; } /* כדי לאפשר מיקום מוחלט פנימי */
+    .mz-type-badge{
+      position:absolute;
+      top:4px;
+      inset-inline-start:6px;     /* בצד ימין ב-RTL */
+      font-weight:800;
+      font-size:12px;
+      background: rgba(255,255,255,.9);
+      color:#ffffff;
+      padding:2px 8px;
+      border-radius:10px;
+      border:1px solid rgba(0,0,0,.08);
+      line-height:1.2;
+      white-space:nowrap;
+    }
+    .mz-type-badge.is-therapy{ background:#111; } /* צהוב עדין */
+    .mz-type-badge.is-lesson { background:#111; } /* כחול עדין */
+    /* הופך את העטיפה של האירוע לעוגן ומותח אותה על כל רוחב האירוע */
+    .fc-timegrid-event .fc-event-main { position: relative; }  /* נשאר */
+    .mz-ev{
+      display:flex;
+      flex-direction:column;
+      align-items:center;
+      gap:3px;
+      line-height:1.15;
+      padding:2px 4px;
+      position: relative;   /* חשוב: שיהיה עוגן */
+      width: 100%;          /* חשוב: שיימתח על כל רוחב האירוע */
+    }
+
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="mz-cal">
+
+  <!-- כפתורי מעבר בין לוח שנה לרשימת הזמנות -->
+  <div class="seg-switch" role="tablist" aria-label="בחירת תצוגה">
+
+    {% url 'admin:treatmentsession_list' as list_url %}
+    <a class="seg" href="{{ list_url }}">רשימת הזמנות</a>
+  </div>
+
+  <div class="toolbar">
+    <a href="#" id="todayBtn" class="btn">היום</a>
+    <a href="#" id="prevBtn" class="btn">קודם</a>
+    <a href="#" id="nextBtn" class="btn">הבא</a>
+
+  <div class="mz-viewseg" id="viewTabs" role="tablist" aria-label="תצוגת לוח">
+  <a href="#" data-view="timeGridDay" class="active">יום</a>
+  <a href="#" data-view="timeGridWeek">שבוע</a>
+</div>
+
+
+    <div class="filters">
+      <label for="instr">מדריך/ה:</label>
+      <select id="instr">
+        <option value="">כולם</option>
+        {% for i in instructors %}
+          <option value="{{ i.id }}">{{ i.full_name }}</option>
+        {% endfor %}
+      </select>
+    </div>
+  </div>
+
+  <div id="cal-wrap">
+    <div id="calendar"></div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extrahead %}
+<script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.15/index.global.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.15/locales-all.global.min.js"></script>
+<script>
+document.addEventListener("DOMContentLoaded", function() {
+  const calendarEl = document.getElementById("calendar");
+  const instrSel   = document.getElementById("instr");
+  const todayBtn   = document.getElementById("todayBtn");
+  const prevBtn    = document.getElementById("prevBtn");
+  const nextBtn    = document.getElementById("nextBtn");
+
+  function eventsUrl(info) {
+    const base = "{% url 'admin:treatmentsession_events' %}";
+    const params = new URLSearchParams({ start: info.startStr, end: info.endStr });
+    const instr = instrSel.value;
+    if (instr) params.set("instructor", instr);
+    return base + "?" + params.toString();
+  }
+
+  function addUrl(start, end) {
+    const base = "{% url 'admin:homePage_treatmentsession_add' %}";
+    const isoDate = start.toISOString().slice(0,10);
+    const hhmm = (dt)=> String(dt.getHours()).padStart(2,'0') + ':' + String(dt.getMinutes()).padStart(2,'0');
+    const params = new URLSearchParams({
+      date: isoDate,
+      start_time: hhmm(start),
+      end_time: hhmm(end)
+    });
+    if (instrSel.value) params.set("instructor", instrSel.value);
+    return base + "?" + params.toString();
+  }
+
+  function getCookie(name) {
+    const value = `; ${document.cookie}`;
+    const parts = value.split(`; ${name}=`);
+    if (parts.length === 2) return decodeURIComponent(parts.pop().split(';').shift());
+  }
+  const csrftoken = getCookie('csrftoken');
+  const CAN_DRAG   = {{ can_drag|yesno:"true,false" }};
+  const CAN_CREATE = {{ can_create|yesno:"true,false" }};
+
+
+  const calendar = new FullCalendar.Calendar(calendarEl, {
+    locale: 'he',
+    direction: 'rtl',
+    initialView: 'timeGridDay',
+    firstDay: 0,
+    nowIndicator: true,
+    allDaySlot: false,
+    expandRows: true,
+    height: 'auto',
+    slotDuration: '00:15:00',
+    slotLabelInterval: '00:15',
+    slotLabelFormat: { hour: '2-digit', minute: '2-digit', hour12: false },
+    slotMinTime: '09:00:00',
+    slotMaxTime: '20:00:00',
+    headerToolbar: { left: '', center: 'title', right: '' },
+
+    selectable: CAN_CREATE,
+    selectMirror: true,
+    selectOverlap: true,
+
+    events: function(info, success, failure) {
+      fetch(eventsUrl(info))
+        .then(r => r.json())
+        .then(data => success(data))
+        .catch(err => failure(err));
+    },
+
+    eventContent: function(arg) {
+      const p   = arg.event.extendedProps || {};
+      const esc = s => String(s||"").replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+
+      const name = esc(p.customerName || "");
+      const hhmm = d => String(d.getHours()).padStart(2,'0') + ':' + String(d.getMinutes()).padStart(2,'0');
+      const time = (arg.event.start && arg.event.end)
+        ? `${hhmm(arg.event.start)}–${hhmm(arg.event.end)}`
+        : esc(p.timeText || "");
+      const inst = esc(p.instructorName || "");
+
+      // נבנה את המבנה המבוקש: שם → סלסול → שעה → סלסול → מדריך
+      const parts = [];
+      if (name) parts.push(`<div class="name">${name}</div>`);
+      if (time) {
+        parts.push(`<div class="mz-squiggle" aria-hidden="true"></div>`);
+        parts.push(`<div class="time">${time}</div>`);
+      }
+
+      const wrap = document.createElement('div');
+      wrap.className = 'mz-ev';
+      wrap.innerHTML = parts.join('');
+
+      const typeLabel = esc(p.lessonTypeLabel || "");
+      const typeCode  = (p.lessonType || "").toLowerCase(); // "lesson" או "therapy"
+      if (typeLabel) {
+        const badge = document.createElement('div');
+        badge.className = 'mz-type-badge ' + (typeCode === 'therapy' ? 'is-therapy' : 'is-lesson');
+        badge.textContent = typeLabel;
+        wrap.appendChild(badge);
+      }
+
+      return { domNodes: [wrap] };
+    },
+
+
+    eventClick: function(info) {
+      info.jsEvent.preventDefault();
+      if (info.event.url) window.location.href = info.event.url;
+    },
+
+    select: CAN_CREATE ? function(selInfo){
+      window.location.href = addUrl(selInfo.start, selInfo.end);
+    } : null,
+
+    dateClick: CAN_CREATE ? function(info){
+      if ((info.jsEvent.detail||1) >= 2) {
+        const start = new Date(info.date);
+        const end   = new Date(start.getTime() + 30*60000);
+        window.location.href = addUrl(start, end);
+      }
+    } : null,
+
+
+    editable: CAN_DRAG,
+    eventStartEditable: CAN_DRAG,
+    eventDurationEditable: CAN_DRAG,
+
+
+    // ← הוסיפי כאן בתוך האובייקט:
+    selectAllow: function(selectionInfo){
+    return CAN_CREATE;    // בלי הרשאה – אי אפשר לבחור טווח (וליצור)
+    },
+    eventAllow: function(dropInfo, draggedEvent){
+    return CAN_DRAG;      // בלי הרשאה – אי אפשר לגרור/למתוח אירוע
+    },
+
+    eventDrop: sendUpdate,
+    eventResize: sendUpdate,
+
+  });
+
+  const viewTabs = document.querySelectorAll('#viewTabs a');
+  function setActiveView(v){
+  viewTabs.forEach(a => a.classList.toggle('active', a.dataset.view === v));
+}
+  viewTabs.forEach(a => {
+  a.addEventListener('click', (e) => {
+    e.preventDefault();
+    const v = a.dataset.view;
+    calendar.changeView(v);
+    setActiveView(v);
+  });
+});
+
+  calendar.render();
+  setActiveView(calendar.view.type); // מסמן נכון לפי התצוגה הנוכחית
+
+  todayBtn.addEventListener('click', (e)=>{ e.preventDefault(); calendar.today(); });
+  prevBtn.addEventListener('click', (e)=>{ e.preventDefault(); calendar.prev(); });
+  nextBtn.addEventListener('click', (e)=>{ e.preventDefault(); calendar.next(); });
+
+  instrSel.addEventListener('change', () => calendar.refetchEvents());
+
+  function sendUpdate(changeInfo) {
+    if (!CAN_DRAG) { changeInfo.revert(); return; }   // ← הוסיפי
+    const ev = changeInfo.event;
+
+    const fmt = (d)=> {
+      const pad = (n)=> String(n).padStart(2,'0');
+      return { date: d.toISOString().slice(0,10),
+               time: pad(d.getHours())+':'+pad(d.getMinutes())+':'+pad(d.getSeconds()) };
+    };
+    const s = fmt(ev.start), e = fmt(ev.end);
+
+    fetch("{% url 'admin:treatmentsession_events_update' %}", {
+      method: "POST",
+      headers: { "X-CSRFToken": csrftoken, "Content-Type":"application/x-www-form-urlencoded;charset=UTF-8" },
+      body: new URLSearchParams({ id: ev.id, date: s.date, start: s.time, end: e.time })
+    })
+    .then(r => r.json())
+    .then(json => { if (!json.ok) { alert("שמירה נכשלה: " + (json.error || "שגיאה")); changeInfo.revert(); } })
+    .catch(() => { alert("שגיאה בתקשורת לשרת"); changeInfo.revert(); });
+  }
+});
+</script>
+{% endblock %}

@@ -22,6 +22,17 @@ from django.urls import path,reverse
 from django.utils import timezone
 from django.contrib.admin.actions import delete_selected
 from decimal import Decimal, ROUND_HALF_UP
+from django.http import JsonResponse, HttpResponseBadRequest
+from django.shortcuts import get_object_or_404
+from django.core.exceptions import ValidationError
+from datetime import datetime
+from django.core.mail import send_mail
+from django.conf import settings
+from django.utils import timezone
+
+# שליחת SMS דרך NTFY (התאימי את הנתיב אם אצלך השם/המיקום שונים)
+from homePage.services.ntfy_gateway import send_sms_via_ntfy
+
 delete_selected.short_description = "מחיקה"
 
 NIGHT_RE    = r"(night|לילה)"
@@ -374,6 +385,672 @@ def find_free_start_times(chosen_date, minutes, activity_name, variant=None):
         start_times.append(appt.time.strftime("%H:%M"))
 
     return sorted(set(start_times))
+# admin.py
+
+def _gen_unique_ref_any(digits: int = 8) -> str:
+    """
+    מחזיר MZ-XXXXXXXX שלא קיים לא ב-Booking.payment_ref ולא ב-TreatmentSession.payment_ref
+    """
+    for _ in range(25):
+        cand = "MZ-" + "".join(secrets.choice("0123456789") for _ in range(digits))
+        if (not Booking.objects.filter(payment_ref=cand).exists()
+                and not TreatmentSession.objects.filter(payment_ref=cand).exists()):
+            return cand
+    return "MZ-" + timezone.now().strftime("%y%m%d%H%M%S")
+
+def _parse_time_flex(tstr: str):
+        for fmt in ("%H:%M", "%H:%M:%S"):
+            try:
+                return datetime.strptime(tstr, fmt).time().replace(second=0, microsecond=0)
+            except ValueError:
+                pass
+        raise ValueError("bad time")
+
+from datetime import datetime, timedelta
+from django import forms
+from django.contrib import admin
+from django.shortcuts import render
+from django.urls import path, reverse
+from django.utils import timezone
+import re
+from datetime import datetime, timedelta
+from django.utils import timezone
+from django.urls import reverse
+from collections import defaultdict
+from .models import Instructor, TreatmentSession
+
+# ---- עזר לבחירת שעות מדריכים (09:00–20:00 כל 15 דק') ----
+def time_choices(start_h=9, end_h=20, step_min=15):
+    base = datetime(2000, 1, 1, start_h, 0)
+    end = datetime(2000, 1, 1, end_h, 0)
+    out = []
+    while base <= end:
+        out.append((base.time().replace(second=0, microsecond=0), base.strftime("%H:%M")))
+        base += timedelta(minutes=step_min)
+    return out
+
+def _normalize_phone_il(phone: str) -> str:
+    p = "".join(ch for ch in (phone or "") if ch.isdigit())
+    if p.startswith("972") and len(p) >= 11:
+        p = "0" + p[3:]
+    return p
+
+def _format_session_time_range(date_obj, start_time, end_time) -> str:
+    if date_obj and start_time and end_time:
+        return f"{date_obj:%d.%m.%Y} בשעה {start_time.strftime('%H:%M')}–{end_time.strftime('%H:%M')}"
+    if date_obj and start_time:
+        return f"{date_obj:%d.%m.%Y} בשעה {start_time.strftime('%H:%M')}"
+    if date_obj:
+        return f"{date_obj:%d.%m.%Y}"
+    return ""
+
+def _get_treatment_amount_nis(session) -> Decimal | None:
+    """
+    מחזיר מחיר ב-₪ לפי Activity בשם 'שיעורי רכיבה/ טיפולית'.
+    אם יש start_time/end_time – מנסה התאמה מדויקת ל-duration_minutes.
+    אחרת נופל לפעילות הראשונה עם price לא-ריק.
+    """
+    try:
+        qs = Activity.objects.filter(name="שיעורי רכיבה/ טיפולית").exclude(price__isnull=True)
+        if not qs.exists():
+            return None
+
+        minutes = None
+        st = getattr(session, "start_time", None)
+        et = getattr(session, "end_time", None)
+        base_date = getattr(session, "date", None) or timezone.localdate()
+
+        if st and et:
+            start_dt = datetime.combine(base_date, st)
+            end_dt   = datetime.combine(base_date, et)
+            if end_dt <= start_dt:  # ביטחון למקרה חריג
+                end_dt += timedelta(days=1)
+            minutes = int((end_dt - start_dt).total_seconds() // 60)
+
+        act = None
+        if minutes is not None:
+            act = qs.filter(duration_minutes=minutes).order_by("id").first()
+        if not act:
+            act = qs.order_by("duration_minutes", "id").first()
+
+        if act and act.price is not None:
+            return Decimal(act.price)
+
+    except Exception:
+        pass
+    return None
+
+from decimal import Decimal
+
+def _format_session_sms(session, amount: Decimal | None = None) -> str:
+    # אם לא קיבלנו override – נחשב מה-Activity "שיעורי רכיבה/ טיפולית"
+    if amount is None:
+        amount = _get_treatment_amount_nis(session)
+
+    name = (session.customer_full_name or "לקוח/ה").strip()
+    instr = getattr(session.instructor, "full_name", "") if getattr(session, "instructor", None) else ""
+    ref   = session.payment_ref or "—"
+    if getattr(session, "date", None):
+        if session.start_time and session.end_time:
+            when = f"{session.date:%d.%m.%Y} בשעה {session.start_time.strftime('%H:%M')}–{session.end_time.strftime('%H:%M')}"
+        elif session.start_time:
+            when = f"{session.date:%d.%m.%Y} בשעה {session.start_time.strftime('%H:%M')}"
+        else:
+            when = f"{session.date:%d.%m.%Y}"
+    else:
+        when = ""
+
+    lines = [
+        f"היי {name},",
+        "ההזמנה נקבעה בהצלחה בחוות מסילת ציון.",
+        f"מס' הזמנה: {ref}",
+    ]
+    if when:  lines.append(f"תאריך: {when}")
+    if instr: lines.append(f"מדריך/ה: {instr}")
+    if amount is not None:
+        lines.append(f"סכום ששולם: ₪{amount:}")  # חשוב .2f ולא {amount:}
+    lines.append("מיקום: חוות מסילת ציון (Waze: חוות מסילת ציון)")
+    lines.append("יש להגיע עם מכנס ארוך ונעליים סגורות.")
+    lines.append(" ")
+    lines.append("מחכים לראותכם!")
+    lines.append("(יש לשמור את מספר ההזמנה לביטולים והחזרים כספיים)")
+    return "\n".join(lines)
+
+def _send_treatment_email(session, amount: Decimal | None = None) -> bool:
+    if not session.customer_email:
+        return False
+    if amount is None:
+        amount = _get_treatment_amount_nis(session)
+
+    subject_ref = session.payment_ref or "—"
+    subject = f"אישור הזמנה – חוות מסילת ציון · {subject_ref}"
+
+    if getattr(session, "date", None):
+        if session.start_time and session.end_time:
+            when = f"{session.date:%d.%m.%Y} בשעה {session.start_time.strftime('%H:%M')}–{session.end_time.strftime('%H:%M')}"
+        elif session.start_time:
+            when = f"{session.date:%d.%m.%Y} בשעה {session.start_time.strftime('%H:%M')}"
+        else:
+            when = f"{session.date:%d.%m.%Y}"
+    else:
+        when = ""
+    instr = getattr(session.instructor, "full_name", "") if getattr(session, "instructor", None) else ""
+    name  = (session.customer_full_name or "").strip() or "לקוח/ה"
+
+    # טקסט (עם RLM)
+    rlm = "\u200F"
+    text_lines = [
+        f"שלום {name},", "",
+        "ההזמנה שלך בחוות מסילת ציון נקבעה בהצלחה!",
+        f"מספר הזמנה: {subject_ref}",
+    ]
+    if amount is not None: text_lines.append(f"סכום ששולם: ₪{amount:.2f}")
+    if when:               text_lines.append(f"תאריך ושעה: {when}")
+    if instr:              text_lines.append(f"מדריך/ה: {instr}")
+    text_lines += [
+        "", "מיקום: חוות מסילת ציון (Waze: חוות מסילת ציון)",
+        "אנא הגיעו עם מכנס ארוך ונעליים סגורות.", "",
+        "שמרו מייל זה. לביטול/החזר תזדקקו למספר ההזמנה.",
+        "זהו מייל אוטומטי – אין להשיב אליו.",
+    ]
+    text_body = rlm + "\n".join(text_lines)
+
+    amount_row = f"""
+      <tr>
+        <td style="padding:12px 16px;background:#fafafa;font-size:14px;color:#666;text-align:right">סכום ששולם</td>
+        <td style="padding:12px 16px;font-size:14px;color:#111;text-align:right">₪{amount:.2f}</td>
+      </tr>
+    """ if amount is not None else ""
+    time_row = f"""
+      <tr>
+        <td style="padding:12px 16px;background:#fafafa;font-size:14px;color:#666;text-align:right">תאריך ושעה</td>
+        <td style="padding:12px 16px;font-size:14px;color:#111;text-align:right">{when}</td>
+      </tr>
+    """ if when else ""
+    instr_row = f"""
+      <tr>
+        <td style="padding:12px 16px;background:#fafafa;font-size:14px;color:#666;text-align:right">מדריך/ה</td>
+        <td style="padding:12px 16px;font-size:14px;color:#111;text-align:right">{instr}</td>
+      </tr>
+    """ if instr else ""
+
+    html_body = f"""<!doctype html>
+<html lang="he" dir="rtl">
+  <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>אישור הזמנה – חוות מסילת ציון</title></head>
+  <body style="margin:0;background:#f6f7f9;font-family:Arial,Helvetica,'Segoe UI',sans-serif;direction:rtl;">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="width:100%;padding:24px 0;">
+      <tr><td align="center">
+        <table role="presentation" width="600" cellpadding="0" cellspacing="0"
+               style="width:100%;max-width:600px;background:#ffffff;border-radius:12px;overflow:hidden;table-layout:fixed;">
+          <tr><td style="padding:18px 24px;background:#2f2a27;color:#fff;font-weight:700;font-size:18px;text-align:right;">
+            אישור הזמנה – חוות מסילת ציון</td></tr>
+          <tr><td style="padding:22px;word-break:break-word;overflow-wrap:anywhere;">
+            <h1 style="margin:0 0 12px 0;font-size:20px;color:#222;line-height:1.35;">שלום {name},</h1>
+            <p style="margin:0 0 16px 0;font-size:15px;color:#333;line-height:1.6;">ההזמנה נקבעה בהצלחה!</p>
+            <table role="presentation" cellpadding="0" cellspacing="0"
+                   style="width:100%;border:1px solid #eee;border-radius:10px;overflow:hidden;border-collapse:separate;">
+              <tr>
+                <td style="padding:12px 16px;background:#fafafa;font-size:14px;color:#666;text-align:right">מספר הזמנה</td>
+                <td style="padding:12px 16px;font-size:14px;color:#111;text-align:right;word-break:break-word;overflow-wrap:anywhere;">{subject_ref}</td>
+              </tr>
+              {amount_row}{time_row}{instr_row}
+            </table>
+            <p style="margin:10px 0 12px 0;font-size:13.5px;color:#555;line-height:1.6;">
+              שמרו מייל זה. לביטול/החזר תזדקקו למספר ההזמנה.<br>
+              זהו מייל אוטומטי – אין להשיב אליו.
+            </p>
+            <hr style="border:none;border-top:1px solid #eee;margin:18px 0">
+            <p style="margin:0;font-size:12px;color:#999;line-height:1.5;">© חוות מסילת ציון · כל הזכויות שמורות</p>
+          </td></tr>
+        </table>
+      </td></tr>
+    </table>
+  </body>
+</html>"""
+
+    from django.core.mail import send_mail
+    sent = send_mail(subject, text_body, from_email=None,
+                     recipient_list=[session.customer_email],
+                     html_message=html_body, fail_silently=True)
+    return sent >= 1
+# === עזרי חישוב מחיר לפי Activity "שיעורי רכיבה/ טיפולית" ===
+def _minutes_between(date_obj, start_time, end_time):
+    if not (date_obj and start_time and end_time):
+        return None
+    dt0 = datetime.combine(date_obj, start_time)
+    dt1 = datetime.combine(date_obj, end_time)
+    if dt1 <= dt0:  # אם חוצה חצות
+        dt1 += timedelta(days=1)
+    return int((dt1 - dt0).total_seconds() // 60)
+
+def _price_from_treatment_activity_by_minutes(minutes) -> Decimal | None:
+    try:
+        qs = Activity.objects.filter(name="שיעורי רכיבה/ טיפולית").exclude(price__isnull=True)
+        if minutes is not None:
+            act = qs.filter(duration_minutes=minutes).order_by("id").first()
+            if act and act.price is not None:
+                return Decimal(act.price)
+        act = qs.order_by("duration_minutes", "id").first()
+        if act and act.price is not None:
+            return Decimal(act.price)
+    except Exception:
+        pass
+    return None
+
+def _suggest_amount_for_session(session) -> Decimal | None:
+    minutes = _minutes_between(getattr(session, "date", None),
+                               getattr(session, "start_time", None),
+                               getattr(session, "end_time", None))
+    return _price_from_treatment_activity_by_minutes(minutes)
+
+def _format_session_time_range(date_obj, start_time, end_time) -> str:
+    if date_obj and start_time and end_time:
+        return f"{date_obj:%d.%m.%Y} בשעה {start_time.strftime('%H:%M')}–{end_time.strftime('%H:%M')}"
+    if date_obj and start_time:
+        return f"{date_obj:%d.%m.%Y} בשעה {start_time.strftime('%H:%M')}"
+    if date_obj:
+        return f"{date_obj:%d.%m.%Y}"
+    return ""
+
+def _normalize_phone_il(phone: str) -> str:
+    p = "".join(ch for ch in (phone or "") if ch.isdigit())
+    if p.startswith("972") and len(p) >= 11: p = "0" + p[3:]
+    return p
+
+
+class TreatmentSessionAdminForm(forms.ModelForm):
+    # שדות אדמין בלבד (לא נשמרים במודל)
+    calc_amount_nis = forms.DecimalField(
+        label="סכום לתשלום (מחושב) ₪",
+        required=False, disabled=True, decimal_places=2, max_digits=8,
+        help_text="נלקח אוטומטית מה'שיעורי רכיבה/ טיפולית' לפי משך המפגש."
+    )
+    override_amount_nis = forms.DecimalField(
+        label="שינוי מחיר להזמנה זו (₪)",
+        required=False, decimal_places=2, max_digits=8,
+        help_text="אם תוזן כאן–זה יהיה המחיר הסופי להזמנה זו (למייל/‏SMS)."
+    )
+
+    class Meta:
+        model = TreatmentSession
+        fields = "__all__"
+
+    def __init__(self, *args, **kwargs):
+        self.request = kwargs.pop("request", None)
+        super().__init__(*args, **kwargs)
+
+        # ווידג'טים לשעות (כמו אצלך)
+        if "start_time" in self.fields:
+            self.fields["start_time"].widget = forms.Select(choices=time_choices())
+        if "end_time" in self.fields:
+            self.fields["end_time"].widget = forms.Select(choices=time_choices())
+
+        # מחיר מחושב להצגה
+        sug = _suggest_amount_for_session(self.instance)
+        if sug is None:
+            date_i  = self.initial.get("date") or getattr(self.instance, "date", None)
+            st_i    = self.initial.get("start_time") or getattr(self.instance, "start_time", None)
+            et_i    = self.initial.get("end_time") or getattr(self.instance, "end_time", None)
+            minutes = _minutes_between(date_i, st_i, et_i)
+            sug     = _price_from_treatment_activity_by_minutes(minutes)
+        if sug is not None:
+            self.fields["calc_amount_nis"].initial = sug
+
+        # הרשאות מדריכים (נשאר כמו שהיה)
+        user = getattr(self.request, "user", None)
+        is_instructor = bool(user and user.groups.filter(name="Instructors").exists())
+        inst = getattr(self.instance, "instructor", None)
+        owns = bool(is_instructor and inst and getattr(inst, "user_id", None) == getattr(user, "id", None))
+
+        if is_instructor:
+            if owns:
+                for name, field in self.fields.items():
+                    field.disabled = (name != "details")
+                self.fields["details"].required = False
+            else:
+                for field in self.fields.values():
+                    field.disabled = True
+
+    def clean_override_amount_nis(self):
+        v = self.cleaned_data.get("override_amount_nis")
+        if v is not None and v < 0:
+            raise forms.ValidationError("מחיר לא יכול להיות שלילי.")
+        return v
+
+
+@admin.register(Instructor)
+class InstructorAdmin(admin.ModelAdmin):
+    list_display = ("full_name", "phone", "user", "active")
+    list_filter = ("active",)
+    search_fields = ("full_name", "phone", "user__username")
+
+DETAILS_ONLY_PERM = "homePage.change_details_only"
+FULL_CHANGE_PERM  = "homePage.change_treatmentsession"
+@admin.register(TreatmentSession)
+class TreatmentSessionAdmin(admin.ModelAdmin):
+    form = TreatmentSessionAdminForm
+    change_list_template = "admin/homePage/treatmentsession_changelist.html"
+
+    list_display = (
+        "date", "start_time", "end_time","payment_ref", "get_instructor_name",
+        "customer_full_name", "customer_phone", "_details_short"
+    )
+
+    #list_filter = ("date", "instructor")
+    list_filter = ("date",)
+    search_fields = ("customer_full_name", "customer_phone", "instructor__full_name", "details", "payment_ref")
+    ordering = ("-date", "start_time")
+
+    fieldsets = (
+        ("פרטי מפגש", {"fields": ("date", "start_time", "end_time", "instructor", "payment_ref")}),
+        ("פרטי לקוח", {"fields": ("customer_full_name", "customer_phone", "customer_email")}),
+        ("סוג ומחיר", {"fields": ("lesson_type", "calc_amount_nis", "override_amount_nis")}),  # ⬅️ הוספה כאן
+        ("פרטים/הערות", {"fields": ("details",)}),
+    )
+
+    @admin.display(description="מדריך/ה")
+    def instructor_plain(self, obj):
+        return obj.instructor.full_name if obj and obj.instructor else "-"
+
+    def get_fieldsets(self, request, obj=None):
+        fs = list(super().get_fieldsets(request, obj))
+        if request.user.has_perm(DETAILS_ONLY_PERM) and not request.user.has_perm(FULL_CHANGE_PERM):
+            new = []
+            for title, opts in fs:
+                fields = opts.get("fields")
+                if fields:
+                    def repl(x):
+                        if isinstance(x, (list, tuple)):
+                            return tuple("instructor_plain" if f == "instructor" else f for f in x)
+                        return "instructor_plain" if x == "instructor" else x
+
+                    fields = tuple(repl(f) for f in fields)
+                    opts = {**opts, "fields": fields}
+                new.append((title, opts))
+            fs = new
+        return fs
+
+    def formfield_for_foreignkey(self, db_field, request, **kwargs):
+        formfield = super().formfield_for_foreignkey(db_field, request, **kwargs)
+        if db_field.name == "instructor":
+            w = formfield.widget
+            for attr in ("can_add_related", "can_change_related", "can_view_related", "can_delete_related"):
+                if hasattr(w, attr):
+                    setattr(w, attr, False)
+        return formfield
+
+    def changelist_view(self, request, extra_context=None):
+        # אם זה /list/ - מציגים את הרשימה ולא עושים redirect ללוח
+        if getattr(request, "resolver_match", None) and request.resolver_match.url_name == "treatmentsession_list":
+            return super().changelist_view(request, extra_context=extra_context)
+
+        # תמיכה לאחור אם בכל זאת יבוא ?list=1
+        if (request.GET.get("list", "").lower() in {"1", "true", "yes"}):
+            return super().changelist_view(request, extra_context=extra_context)
+
+        # ברירת מחדל: ללוח
+        return redirect(reverse("admin:treatmentsession_calendar"))
+
+    def force_list_view(self, request):
+        """
+        מציג את צ'יינג־ליסט תמיד, בלי תלות בפרמטרים.
+        """
+        return super().changelist_view(request)
+
+    def get_instructor_name(self, obj):
+        return obj.instructor.full_name if obj.instructor else ""
+
+    get_instructor_name.short_description = "מדריך/ה"
+
+    def get_form(self, request, obj=None, **kwargs):
+        Form = super().get_form(request, obj, **kwargs)
+
+        class BoundForm(Form):
+            def __init__(self2, *a, **k):
+                k["request"] = request
+                super().__init__(*a, **k)
+
+        return BoundForm
+
+    def get_changeform_initial_data(self, request):
+        """
+        גורם ל-Add Form לקבל את השעות שנשלחו מהלוח (HH:MM) ולהפוך ל-HH:MM:00
+        כדי שיתאימו ל-choices שהם אובייקטי זמן (str(value) -> 'HH:MM:SS').
+        """
+        data = super().get_changeform_initial_data(request).copy()
+
+        def normalize_time(val: str | None) -> str | None:
+            if not val:
+                return None
+            # אם התקבל 'HH:MM' נוסיף ':00'
+            if len(val) == 5 and val.count(':') == 1:
+                return f"{val}:00"
+            return val
+
+        for key in ("start_time", "end_time"):
+            v = request.GET.get(key)
+            nv = normalize_time(v)
+            if nv:
+                data[key] = nv
+
+        # נעביר גם date ו-instructor אם הגיעו ב-GET
+        if "date" in request.GET:
+            data["date"] = request.GET["date"]
+        if "instructor" in request.GET:
+            data["instructor"] = request.GET["instructor"]
+
+        return data
+
+    def has_add_permission(self, request):
+        return request.user.has_perm("homePage.can_create_sessions")
+
+    def has_delete_permission(self, request, obj=None):
+        if request.user.groups.filter(name="Instructors").exists():
+            return False
+        return super().has_delete_permission(request, obj)
+
+    def has_view_permission(self, request, obj=None):
+        # מדריכים רשאים לראות כל הזמנה (גם אם לא שלהם)
+        if request.user.groups.filter(name="Instructors").exists():
+            return True
+        return super().has_view_permission(request, obj)
+
+
+    def has_change_permission(self, request, obj=None):
+        if request.user.has_perm(DETAILS_ONLY_PERM):
+            return True                          # יוכל להיכנס לעמוד שינוי
+        return super().has_change_permission(request, obj)
+
+    def get_readonly_fields(self, request, obj=None):
+        if request.user.has_perm(DETAILS_ONLY_PERM) and not request.user.has_perm(FULL_CHANGE_PERM):
+            fields = [f.name for f in self.model._meta.fields] + \
+                     [m.name for m in self.model._meta.many_to_many]
+            if "details" in fields:
+                fields.remove("details")
+            fields.append("instructor_plain")
+            if "payment_ref" not in fields:
+                fields.append("payment_ref")
+            return fields
+        base = super().get_readonly_fields(request, obj)
+        return tuple(base) + ("payment_ref",)
+
+    def save_model(self, request, obj, form, change):
+        # מסלול הרשאה מצומצם – נשאר כמו שהיה אצלך
+        if request.user.has_perm(DETAILS_ONLY_PERM) and not request.user.has_perm(FULL_CHANGE_PERM):
+            original = self.model.objects.get(pk=obj.pk)
+            original.details = form.cleaned_data.get("details", original.details)
+            original.save(update_fields=["details"])
+            return
+
+        # יצירת מזהה אם חסר
+        if not obj.payment_ref:
+            obj.payment_ref = _gen_unique_ref_any()
+
+        # === זה הקטע ששאלת עליו בדיוק: מחשבים מחיר אפקטיבי להזמנה הזו ===
+        override = form.cleaned_data.get("override_amount_nis")  # מהטופס (לא במודל)
+        try:
+            calc = _get_treatment_amount_nis(obj)  # מה-Activity
+        except NameError:
+            calc = _suggest_amount_for_session(obj)
+
+        effective_amount = override if override is not None else calc
+
+        # אם הוזן override – נוסיף הערת עקבה ל-details (לא חובה, אבל מומלץ)
+        if override is not None:
+            old = obj.details or ""
+            note = f"\nמחיר הוגדר ידנית להזמנה זו: ₪{Decimal(override):}"
+            if calc is not None:
+                note += f" (במקום המחושב: ₪{Decimal(calc):.2f})"
+            obj.details = (old + note).strip()
+
+        # שמירה רגילה
+        super().save_model(request, obj, form, change)
+
+        # שולחים מייל+SMS רק אחרי יצירה (לא בעדכון)
+        if not change:
+            try:
+                _send_treatment_email(obj, amount=effective_amount)  # ⬅️ מעבירים את המחיר האפקטיבי
+            except Exception:
+                pass
+
+            try:
+                if getattr(settings, "SEND_SMS", False) and obj.customer_phone:
+                    phone = _normalize_phone_il(obj.customer_phone)
+                    sms_text = _format_session_sms(obj, amount=effective_amount)  # ⬅️ גם פה
+                    send_sms_via_ntfy(phone, sms_text)
+            except Exception:
+                pass
+
+    def _details_short(self, obj):
+        if not obj.details:
+            return ""
+        txt = obj.details.strip().replace("\n", " ")
+        return (txt[:60] + "…") if len(txt) > 60 else txt
+    _details_short.short_description = "פרטים"
+
+    def changeform_view(self, request, object_id=None, form_url="", extra_context=None):
+        extra_context = dict(extra_context or {})
+        extra_context["title"] = "פרטי ההזמנה"
+        return super().changeform_view(request, object_id, form_url, extra_context)
+
+    # ---- לוח מדריכים באדמין ----
+    def get_urls(self):
+        urls = super().get_urls()
+        extra = [
+            path("calendar/", self.admin_site.admin_view(self.calendar_view), name="treatmentsession_calendar"),
+            path("list/",     self.admin_site.admin_view(self.force_list_view), name="treatmentsession_list"),
+            path("events/",   self.admin_site.admin_view(self.events_api), name="treatmentsession_events"),
+            path("events/update/", self.admin_site.admin_view(self.events_update), name="treatmentsession_events_update"),
+        ]
+        return extra + urls
+
+    def calendar_view(self, request):
+        from .models import Instructor
+        instructors = Instructor.objects.filter(active=True).order_by("full_name")
+        is_instr = request.user.groups.filter(name="Instructors").exists()
+        ctx = dict(
+            title="לוח שנה – רכיבה טיפולית",
+            opts=TreatmentSession._meta,
+            instructors=instructors,
+            add_perm=self.has_add_permission(request),
+            can_drag=request.user.has_perm("homePage.can_drag_sessions"),
+            can_create=request.user.has_perm("homePage.can_create_sessions"),
+        )
+        return render(request, "admin/homePage/treatmentsession_calendar.html", ctx)
+
+    def events_api(self, request):
+        from django.http import JsonResponse
+        from .models import TreatmentSession
+
+        start = request.GET.get("start")
+        end = request.GET.get("end")
+        instr_id = request.GET.get("instructor")
+
+        qs = TreatmentSession.objects.all()
+        if start and end:
+            qs = qs.filter(date__gte=start[:10], date__lte=end[:10])
+        if instr_id and instr_id.isdigit():
+            qs = qs.filter(instructor_id=int(instr_id))
+
+        # ✅ מיפוי קוד → תווית בעברית
+        def lesson_type_label(code: str) -> str:
+            return dict(TreatmentSession.LESSON_TYPE_CHOICES).get(code, "")
+
+        def color_for(instructor):
+            if instructor:
+                c = (instructor.color or "").strip()
+                if c and not c.startswith("#"):
+                    c = "#" + c
+                if len(c) in (4, 7):
+                    return c
+            return "#607D8B"
+
+        events = []
+        for s in qs.select_related("instructor"):
+            events.append({
+                "id": s.id,
+                "title": "",
+                "start": f"{s.date}T{s.start_time.strftime('%H:%M:%S')}",
+                "end": f"{s.date}T{s.end_time.strftime('%H:%M:%S')}",
+                "url": reverse("admin:homePage_treatmentsession_change", args=[s.id]),
+                "color": color_for(s.instructor),
+                "extendedProps": {
+                    "instructorName": s.instructor.full_name if s.instructor else "",
+                    "customerName": s.customer_full_name,
+                    "customerPhone": s.customer_phone,
+                    "timeText": f"{s.start_time.strftime('%H:%M')} – {s.end_time.strftime('%H:%M')}",
+                    # ✅ הוספות חשובות:
+                    "lessonType": getattr(s, "lesson_type", "") or "",
+                    "lessonTypeLabel": lesson_type_label(getattr(s, "lesson_type", "")),
+                },
+            })
+        return JsonResponse(events, safe=False)
+
+    def events_update(self, request):
+        if not request.user.has_perm("homePage.can_drag_sessions"):
+            return JsonResponse({"ok": False, "error": "אין הרשאה להזיז אירועים"}, status=403)
+
+        if request.method != "POST":
+            return HttpResponseBadRequest("invalid method")
+
+        # חסימה מוחלטת למדריכים – אי אפשר להזיז/למתוח אירועים
+        if request.user.groups.filter(name="Instructors").exists():
+            return JsonResponse({"ok": False, "error": "אין הרשאה להזיז אירועים"}, status=403)
+
+        obj = get_object_or_404(TreatmentSession, pk=request.POST.get("id"))
+
+        # אם המשתמש הוא מדריך – מותר לעדכן רק אירועים שלו
+        if request.user.groups.filter(name="Instructors").exists():
+            instr = getattr(obj, "instructor", None)
+            if not instr or instr.user_id != request.user.id:
+                return JsonResponse({"ok": False, "error": "אין הרשאה לעדכן אירוע זה"}, status=403)
+
+        date_str  = request.POST.get("date")   # YYYY-MM-DD
+        start_str = request.POST.get("start")  # HH:MM או HH:MM:SS
+        end_str   = request.POST.get("end")    # HH:MM או HH:MM:SS
+
+        try:
+            new_date  = datetime.strptime(date_str, "%Y-%m-%d").date()
+            new_start = _parse_time_flex(start_str)
+            new_end   = _parse_time_flex(end_str)
+        except Exception:
+            return JsonResponse({"ok": False, "error": "פורמט תאריך/שעה שגוי"}, status=400)
+
+        # לוג למסוף כדי לראות מה באמת מגיע
+        print(f"[events_update] id={obj.id} date={new_date} {new_start}-{new_end}")
+
+        obj.date = new_date
+        obj.start_time = new_start
+        obj.end_time = new_end
+
+        try:
+            obj.full_clean()  # יאכוף 09:00–20:00 ושעת סיום אחרי התחלה
+            obj.save()
+        except ValidationError as e:
+            return JsonResponse({"ok": False, "error": e.message_dict}, status=400)
+
+        return JsonResponse({"ok": True})
 
 
 class CreateBookingActionForm(ActionForm):
@@ -389,8 +1066,6 @@ class CreateBookingActionForm(ActionForm):
 
 @admin.register(ScheduleBoard)
 class ScheduleBoardAdmin(admin.ModelAdmin):
-    # לא משתמשים ברשימת אובייקטים; מציגים תבנית מותאמת
-    change_list_template = "admin/homePage/schedule/change_list.html"
 
     def has_add_permission(self, request):
         return False
@@ -454,7 +1129,7 @@ class ScheduleBoardAdmin(admin.ModelAdmin):
             "start_day": days[0],
             "opts": self.model._meta,
         }
-        return TemplateResponse(request, self.change_list_template, ctx)
+        return render(request, "admin/homePage/schedule/change_list.html", ctx)
 
 @admin.register(Activity)
 class ActivityAdmin(admin.ModelAdmin):
@@ -559,7 +1234,7 @@ class BookingAdmin(admin.ModelAdmin):
         GET (?ajax=quote): מחזיר הצעת מחיר לפי variant מתאים.
         POST: יוצר הזמנה, תופס סלוטים, נותן payment_ref ייחודי, מחשב מחיר ושולח מייל.
         """
-
+        HIDE_RE = re.compile(r'^\s*שיעורי\s*רכיבה\s*/\s*טיפולית\s*$', re.U)
         # ---- AJAX: זמני התחלה פנויות ----
         if request.method == "GET" and request.GET.get("ajax") == "times":
             name = (request.GET.get("name") or "").strip()
@@ -646,10 +1321,11 @@ class BookingAdmin(admin.ModelAdmin):
                 "breakdown_display": breakdown,
             })
 
-
         # ---- GET רגיל: תצוגת הוויזארד ----
         elif request.method == "GET":
-            names = distinct_activity_names()
+            all_names = distinct_activity_names()
+            names = [n for n in all_names if not HIDE_RE.match((n or "").strip())]
+
             durations_map = {n: durations_for_name(n) for n in names}
 
             # בנייה חסינה של אורכי "רכיבה זוגית" לפי activity_type בפועל
@@ -963,6 +1639,7 @@ class BookingAdmin(admin.ModelAdmin):
     def ajax_durations(self, request):
         name = request.GET.get("name", "")
         return JsonResponse({"durations": durations_for_name(name)})
+
 
 
     @admin.action(description="צור הזמנה מרצף החל מהסלוט")
