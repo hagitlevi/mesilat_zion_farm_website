@@ -1,0 +1,97 @@
+{# templates/admin/homePage/pay_stub.html #}
+{% extends "admin/base_site.html" %}
+{% load i18n %}
+{% block extrastyle %}
+  <style>
+    [dir="rtl"] .mz-card{background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:18px}
+    .mz-row{display:grid;grid-template-columns:120px 1fr;gap:10px;margin:6px 0}
+    .mz-label{color:#6b7280}
+    .mz-val{color:#111}
+    .mz-actions{margin-top:18px;display:flex;gap:10px}
+    .mz-btn{background:#2d3748;color:#fff;border:none;border-radius:8px;padding:10px 16px;cursor:pointer}
+    .mz-btn[disabled]{opacity:.6;cursor:not-allowed}
+  </style>
+{% endblock %}
+
+{% block content %}
+<div dir="rtl">
+  <h1 style="margin-bottom:14px">{{ title|default:"תשלום" }}</h1>
+
+  <div class="mz-card">
+    {# ---- תקציר פרטים לפי מצב ---- #}
+    {% if mode|default:""|slice:":7" == "booking" %}
+      <div class="mz-row"><div class="mz-label">סוג</div><div class="mz-val">הזמנה</div></div>
+
+      {% if obj %}
+        <div class="mz-row"><div class="mz-label">מס'</div><div class="mz-val">#{{ obj.id }}</div></div>
+        <div class="mz-row"><div class="mz-label">פעילות</div><div class="mz-val">{{ obj.activity }}</div></div>
+        <div class="mz-row"><div class="mz-label">מתי</div>
+          <div class="mz-val">
+            {{ obj.start_dt|date:"d.m.Y H:i" }} — {{ obj.end_dt|date:"H:i" }}
+          </div>
+        </div>
+        <div class="mz-row"><div class="mz-label">לקוח/ה</div><div class="mz-val">{{ obj.customer_name }}</div></div>
+        <div class="mz-row"><div class="mz-label">טל'</div><div class="mz-val">{{ obj.customer_phone }}</div></div>
+        <div class="mz-row"><div class="mz-label">סה״כ</div><div class="mz-val">{{ obj.total_price|default:"—" }}</div></div>
+
+      {% elif draft %}
+        <div class="mz-row"><div class="mz-label">מתי</div>
+          <div class="mz-val">{{ draft.date }} {{ draft.start }}</div></div>
+        <div class="mz-row"><div class="mz-label">משתתפים</div><div class="mz-val">{{ draft.participants }}</div></div>
+        <div class="mz-row"><div class="mz-label">לקוח/ה</div>
+          <div class="mz-val">{{ draft.customer.first_name }} {{ draft.customer.last_name }}</div></div>
+        <div class="mz-row"><div class="mz-label">טל'</div><div class="mz-val">{{ draft.customer.phone }}</div></div>
+        <div class="mz-row"><div class="mz-label">סה״כ</div>
+          <div class="mz-val">
+            {% if draft.manual_total %}{{ draft.manual_total }}{% else %}{{ draft.total_price|default:"—" }}{% endif %}
+          </div>
+        </div>
+      {% endif %}
+
+    {% else %}
+      <div class="mz-row"><div class="mz-label">סוג</div><div class="mz-val">מפגש (רכיבה טיפולית/שיעור)</div></div>
+
+      {% if obj %}
+        <div class="mz-row"><div class="mz-label">מס'</div><div class="mz-val">#{{ obj.id }}</div></div>
+        <div class="mz-row"><div class="mz-label">תאריך</div><div class="mz-val">{{ obj.date|date:"d.m.Y" }}</div></div>
+        <div class="mz-row"><div class="mz-label">שעה</div>
+          <div class="mz-val">{{ obj.start_time|time:"H:i" }} — {{ obj.end_time|time:"H:i" }}</div></div>
+        <div class="mz-row"><div class="mz-label">מדריך/ה</div><div class="mz-val">{{ obj.instructor }}</div></div>
+        <div class="mz-row"><div class="mz-label">לקוח/ה</div><div class="mz-val">{{ obj.customer_full_name }}</div></div>
+        <div class="mz-row"><div class="mz-label">טל'</div><div class="mz-val">{{ obj.customer_phone }}</div></div>
+
+      {% elif draft %}
+        <div class="mz-row"><div class="mz-label">תאריך</div><div class="mz-val">{{ draft.date }}</div></div>
+        <div class="mz-row"><div class="mz-label">שעה</div>
+          <div class="mz-val">
+            {% if draft.start_time %}{{ draft.start_time|slice:":5" }}{% endif %}
+            {% if draft.end_time %} — {{ draft.end_time|slice:":5" }}{% endif %}
+          </div>
+        </div>
+        <div class="mz-row"><div class="mz-label">לקוח/ה</div><div class="mz-val">{{ draft.customer_full_name }}</div></div>
+        <div class="mz-row"><div class="mz-label">טל'</div><div class="mz-val">{{ draft.customer_phone }}</div></div>
+      {% endif %}
+    {% endif %}
+
+    {# ---- כפתור תשלום יחיד ---- #}
+    <form method="post" class="mz-actions" id="pay-form">
+      {% csrf_token %}
+      {% if obj %}<input type="hidden" name="id" value="{{ obj.pk }}">{% endif %}
+      <button class="mz-btn" id="pay-btn" type="submit">בצע תשלום</button>
+      <a class="button" href="{% url 'admin:index' %}" style="line-height:36px">חזרה</a>
+    </form>
+  </div>
+</div>
+
+<script>
+  (function(){
+    const f = document.getElementById('pay-form');
+    const b = document.getElementById('pay-btn');
+    if(!f || !b) return;
+    f.addEventListener('submit', function(){
+      b.disabled = true;
+      b.textContent = 'מעבד...';
+    });
+  })();
+</script>
+{% endblock %}
