@@ -258,6 +258,8 @@
 {% block extrahead %}
 <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.15/index.global.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.15/locales-all.global.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.15/index.global.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.15/locales-all.global.min.js"></script>
 <script>
 document.addEventListener("DOMContentLoaded", function() {
   const calendarEl = document.getElementById("calendar");
@@ -296,7 +298,30 @@ document.addEventListener("DOMContentLoaded", function() {
   const CAN_DRAG   = {{ can_drag|yesno:"true,false" }};
   const CAN_CREATE = {{ can_create|yesno:"true,false" }};
 
+  // ===== עזרי זמן + פופ-אפ אישור שינוי =====
+  function pad2(n){ return String(n).padStart(2,'0'); }
+  function hhmm(d){ return pad2(d.getHours())+':'+pad2(d.getMinutes()); }
 
+  function oldTimes(info){
+    const old = info.oldEvent || info.prevEvent;
+    if (old) return { start: old.start, end: old.end };
+    if (info.delta && info.event.start && info.event.end){
+      const ms = info.delta.milliseconds || 0;
+      return { start: new Date(info.event.start - ms),
+               end:   new Date(info.event.end   - ms) };
+    }
+    return { start: info.event.start, end: info.event.end };
+  }
+
+  function confirmTimeChange(info){
+    const o = oldTimes(info);
+    const n = { start: info.event.start, end: info.event.end };
+    const msg = `לאשר שינוי שעת המפגש?\n\n` +
+                `${hhmm(o.start)}–${hhmm(o.end)}  →  ${hhmm(n.start)}–${hhmm(n.end)}`;
+    return window.confirm(msg);
+  }
+
+  // ===== היומן =====
   const calendar = new FullCalendar.Calendar(calendarEl, {
     locale: 'he',
     direction: 'rtl',
@@ -329,26 +354,23 @@ document.addEventListener("DOMContentLoaded", function() {
       const esc = s => String(s||"").replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
 
       const name = esc(p.customerName || "");
-      const hhmm = d => String(d.getHours()).padStart(2,'0') + ':' + String(d.getMinutes()).padStart(2,'0');
+      const hhmm2 = d => String(d.getHours()).padStart(2,'0') + ':' + String(d.getMinutes()).padStart(2,'0');
       const time = (arg.event.start && arg.event.end)
-        ? `${hhmm(arg.event.start)}–${hhmm(arg.event.end)}`
+        ? `${hhmm2(arg.event.start)}–${hhmm2(arg.event.end)}`
         : esc(p.timeText || "");
-      const inst = esc(p.instructorName || "");
+      const typeLabel = esc(p.lessonTypeLabel || "");
+      const typeCode  = (p.lessonType || "").toLowerCase();
 
-      // נבנה את המבנה המבוקש: שם → סלסול → שעה → סלסול → מדריך
+      const wrap = document.createElement('div');
+      wrap.className = 'mz-ev';
       const parts = [];
       if (name) parts.push(`<div class="name">${name}</div>`);
       if (time) {
         parts.push(`<div class="mz-squiggle" aria-hidden="true"></div>`);
         parts.push(`<div class="time">${time}</div>`);
       }
-
-      const wrap = document.createElement('div');
-      wrap.className = 'mz-ev';
       wrap.innerHTML = parts.join('');
 
-      const typeLabel = esc(p.lessonTypeLabel || "");
-      const typeCode  = (p.lessonType || "").toLowerCase(); // "lesson" או "therapy"
       if (typeLabel) {
         const badge = document.createElement('div');
         badge.className = 'mz-type-badge ' + (typeCode === 'therapy' ? 'is-therapy' : 'is-lesson');
@@ -358,7 +380,6 @@ document.addEventListener("DOMContentLoaded", function() {
 
       return { domNodes: [wrap] };
     },
-
 
     eventClick: function(info) {
       info.jsEvent.preventDefault();
@@ -377,65 +398,75 @@ document.addEventListener("DOMContentLoaded", function() {
       }
     } : null,
 
-
     editable: CAN_DRAG,
     eventStartEditable: CAN_DRAG,
     eventDurationEditable: CAN_DRAG,
 
+    // בקרה כללית על יצירה/גרירה
+    selectAllow: function(){ return CAN_CREATE; },
+    eventAllow: function(){ return CAN_DRAG; },
 
-    // ← הוסיפי כאן בתוך האובייקט:
-    selectAllow: function(selectionInfo){
-    return CAN_CREATE;    // בלי הרשאה – אי אפשר לבחור טווח (וליצור)
+    // אישור לפני גרירה/מתיחה + שליחת notify=1
+    eventDrop: function(info){
+      if (!confirmTimeChange(info)) { info.revert(); return; }
+      sendUpdate(info, { notify: true });
     },
-    eventAllow: function(dropInfo, draggedEvent){
-    return CAN_DRAG;      // בלי הרשאה – אי אפשר לגרור/למתוח אירוע
+    eventResize: function(info){
+      if (!confirmTimeChange(info)) { info.revert(); return; }
+      sendUpdate(info, { notify: true });
     },
-
-    eventDrop: sendUpdate,
-    eventResize: sendUpdate,
-
   });
 
+  // מלבני ניווט/תצוגה
   const viewTabs = document.querySelectorAll('#viewTabs a');
-  function setActiveView(v){
-  viewTabs.forEach(a => a.classList.toggle('active', a.dataset.view === v));
-}
+  function setActiveView(v){ viewTabs.forEach(a => a.classList.toggle('active', a.dataset.view === v)); }
   viewTabs.forEach(a => {
-  a.addEventListener('click', (e) => {
-    e.preventDefault();
-    const v = a.dataset.view;
-    calendar.changeView(v);
-    setActiveView(v);
+    a.addEventListener('click', (e) => {
+      e.preventDefault();
+      const v = a.dataset.view;
+      calendar.changeView(v);
+      setActiveView(v);
+    });
   });
-});
 
   calendar.render();
-  setActiveView(calendar.view.type); // מסמן נכון לפי התצוגה הנוכחית
+  setActiveView(calendar.view.type);
 
   todayBtn.addEventListener('click', (e)=>{ e.preventDefault(); calendar.today(); });
   prevBtn.addEventListener('click', (e)=>{ e.preventDefault(); calendar.prev(); });
   nextBtn.addEventListener('click', (e)=>{ e.preventDefault(); calendar.next(); });
-
   instrSel.addEventListener('change', () => calendar.refetchEvents());
 
-  function sendUpdate(changeInfo) {
-    if (!CAN_DRAG) { changeInfo.revert(); return; }   // ← הוסיפי
+  // ===== שליחת עדכון שרת =====
+  function sendUpdate(changeInfo, opts){
+    if (!CAN_DRAG) { changeInfo.revert(); return; }
     const ev = changeInfo.event;
 
     const fmt = (d)=> {
       const pad = (n)=> String(n).padStart(2,'0');
-      return { date: d.toISOString().slice(0,10),
-               time: pad(d.getHours())+':'+pad(d.getMinutes())+':'+pad(d.getSeconds()) };
+      return {
+        date: d.toISOString().slice(0,10),
+        time: pad(d.getHours())+':'+pad(d.getMinutes())+':'+pad(d.getSeconds())
+      };
     };
     const s = fmt(ev.start), e = fmt(ev.end);
+
+    const params = new URLSearchParams({ id: ev.id, date: s.date, start: s.time, end: e.time });
+    if (opts && opts.notify) params.set("notify", "1");
 
     fetch("{% url 'admin:treatmentsession_events_update' %}", {
       method: "POST",
       headers: { "X-CSRFToken": csrftoken, "Content-Type":"application/x-www-form-urlencoded;charset=UTF-8" },
-      body: new URLSearchParams({ id: ev.id, date: s.date, start: s.time, end: e.time })
+      body: params
     })
     .then(r => r.json())
-    .then(json => { if (!json.ok) { alert("שמירה נכשלה: " + (json.error || "שגיאה")); changeInfo.revert(); } })
+    .then(json => {
+      if (!json.ok) {
+        alert("שמירה נכשלה: " + (json.error || "שגיאה"));
+        changeInfo.revert();
+      }
+      // אם json.notified === true – השרת שלח מייל/SMS (אופציונלי להציג הודעה)
+    })
     .catch(() => { alert("שגיאה בתקשורת לשרת"); changeInfo.revert(); });
   }
 });

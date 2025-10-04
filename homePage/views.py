@@ -1190,7 +1190,7 @@ def pay_return(request):
     if payment and payment.status == 'succeeded':
         messages.success(
             request,
-            "הקבלה והפרטים על התור יישלחו במייל ובהודעת SMS.",
+            "הקבלה והפרטים על התור יישלחו במייל ובהודעת SMS בדקות הקרובות.",
             extra_tags="payment_succeeded",
         )
     else:

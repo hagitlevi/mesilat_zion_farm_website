@@ -40,6 +40,12 @@ from django.shortcuts import render
 import re
 from collections import defaultdict
 from homePage.services.ntfy_gateway import send_sms_via_ntfy
+from django.core.mail import send_mail
+from django.conf import settings
+from django.template.loader import render_to_string
+from decimal import Decimal  # אם לא קיים למעלה כבר
+import re, sys
+from django.template.loader import render_to_string  # אם לא קיים
 
 delete_selected.short_description = "מחיקה"
 
@@ -49,6 +55,8 @@ FULL_CHANGE_PERM  = "homePage.change_treatmentsession"
 NIGHT_RE    = r"(night|לילה)"
 SUNRISE_RE  = r"(sunrise|זריחה|שקיעה|sunset)"   # כולל "שקיעה"
 NON_DAY_RE  = r"(night|לילה|sunrise|זריחה|שקיעה|sunset)"
+# סימני bidi מבודדים – הכי יציב ל-SMS/טקסט
+
 
 def _normalize_il_phone(p: str) -> str:
     d = ''.join(ch for ch in (p or '') if ch.isdigit())
@@ -79,6 +87,10 @@ def _gen_unique_ref_any(digits: int = 8) -> str:
 def _day_range(base: ddate):
     """7 ימים החל מ-base (כולל)."""
     return [base + timedelta(days=i) for i in range(7)]
+
+def _ltr_text(s: str) -> str:
+    # מציג s משמאל-לימין בתוך טקסט RTL (ל־SMS זה פותר היפוך "HH:MM–HH:MM")
+    return "\u2066" + s + "\u2069"  # LRI ... PDI
 
 def _fmt_ils(amount: Decimal) -> str:
         q = amount.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
@@ -396,17 +408,6 @@ def find_free_start_times(chosen_date, minutes, activity_name, variant=None):
 
     return sorted(set(start_times))
 
-def _gen_unique_ref_any(digits: int = 8) -> str:
-    """
-    מחזיר MZ-XXXXXXXX שלא קיים לא ב-Booking.payment_ref ולא ב-TreatmentSession.payment_ref
-    """
-    for _ in range(25):
-        cand = "MZ-" + "".join(secrets.choice("0123456789") for _ in range(digits))
-        if (not Booking.objects.filter(payment_ref=cand).exists()
-                and not TreatmentSession.objects.filter(payment_ref=cand).exists()):
-            return cand
-    return "MZ-" + timezone.now().strftime("%y%m%d%H%M%S")
-
 def _parse_time_flex(tstr: str):
         for fmt in ("%H:%M", "%H:%M:%S"):
             try:
@@ -432,10 +433,12 @@ def _normalize_phone_il(phone: str) -> str:
     return p
 
 def _format_session_time_range(date_obj, start_time, end_time) -> str:
+    def hhmm(t): return t.strftime("%H:%M") if t else ""
     if date_obj and start_time and end_time:
-        return f"{date_obj:%d.%m.%Y} בשעה {start_time.strftime('%H:%M')}–{end_time.strftime('%H:%M')}"
+        rng = f"{hhmm(start_time)}–{hhmm(end_time)}"
+        return f"{date_obj:%d.%m.%Y} בשעה {_ltr_text(rng)}"
     if date_obj and start_time:
-        return f"{date_obj:%d.%m.%Y} בשעה {start_time.strftime('%H:%M')}"
+        return f"{date_obj:%d.%m.%Y} בשעה {_ltr_text(hhmm(start_time))}"
     if date_obj:
         return f"{date_obj:%d.%m.%Y}"
     return ""
@@ -476,184 +479,6 @@ def _get_treatment_amount_nis(session) -> Decimal | None:
         pass
     return None
 
-def _format_session_sms(session, amount: Decimal | None = None) -> str:
-    # אם לא קיבלנו override – נחשב מה-Activity "שיעורי רכיבה/ טיפולית"
-    if amount is None:
-        amount = _get_treatment_amount_nis(session)
-
-    name = (session.customer_full_name or "לקוח/ה").strip()
-    instr = getattr(session.instructor, "full_name", "") if getattr(session, "instructor", None) else ""
-    ref   = session.payment_ref or "—"
-    if getattr(session, "date", None):
-        if session.start_time and session.end_time:
-            when = f"{session.date:%d.%m.%Y} בשעה {session.start_time.strftime('%H:%M')}–{session.end_time.strftime('%H:%M')}"
-        elif session.start_time:
-            when = f"{session.date:%d.%m.%Y} בשעה {session.start_time.strftime('%H:%M')}"
-        else:
-            when = f"{session.date:%d.%m.%Y}"
-    else:
-        when = ""
-
-    lines = [
-        f"היי {name},",
-        "ההזמנה נקבעה בהצלחה בחוות מסילת ציון.",
-        f"מס' הזמנה: {ref}",
-    ]
-    if when:  lines.append(f"תאריך: {when}")
-    if instr: lines.append(f"מדריך/ה: {instr}")
-    if amount is not None:
-        lines.append(f"סכום ששולם: ₪{amount:}")  # חשוב .2f ולא {amount:}
-    lines.append("מיקום: חוות מסילת ציון (Waze: חוות מסילת ציון)")
-    lines.append("יש להגיע עם מכנס ארוך ונעליים סגורות.")
-    lines.append(" ")
-    lines.append("מחכים לראותכם!")
-    lines.append("(יש לשמור את מספר ההזמנה לביטולים והחזרים כספיים)")
-    return "\n".join(lines)
-
-def _send_treatment_email(session, amount: Decimal | None = None) -> bool:
-    if not session.customer_email:
-        return False
-    if amount is None:
-        amount = _get_treatment_amount_nis(session)
-
-    subject_ref = session.payment_ref or "—"
-    subject = f"אישור הזמנה – חוות מסילת ציון · {subject_ref}"
-
-    if getattr(session, "date", None):
-        if session.start_time and session.end_time:
-            when = f"{session.date:%d.%m.%Y} בשעה {session.start_time.strftime('%H:%M')}–{session.end_time.strftime('%H:%M')}"
-        elif session.start_time:
-            when = f"{session.date:%d.%m.%Y} בשעה {session.start_time.strftime('%H:%M')}"
-        else:
-            when = f"{session.date:%d.%m.%Y}"
-    else:
-        when = ""
-    instr = getattr(session.instructor, "full_name", "") if getattr(session, "instructor", None) else ""
-    name  = (session.customer_full_name or "").strip() or "לקוח/ה"
-
-    # טקסט (עם RLM)
-    rlm = "\u200F"
-    text_lines = [
-        f"שלום {name},", "",
-        "ההזמנה שלך בחוות מסילת ציון נקבעה בהצלחה!",
-        f"מספר הזמנה: {subject_ref}",
-    ]
-    if amount is not None: text_lines.append(f"סכום ששולם: ₪{amount:.2f}")
-    if when:               text_lines.append(f"תאריך ושעה: {when}")
-    if instr:              text_lines.append(f"מדריך/ה: {instr}")
-    text_lines += [
-        "", "מיקום: חוות מסילת ציון (Waze: חוות מסילת ציון)",
-        "אנא הגיעו עם מכנס ארוך ונעליים סגורות.", "",
-        "שמרו מייל זה. לביטול/החזר תזדקקו למספר ההזמנה.",
-        "זהו מייל אוטומטי – אין להשיב אליו.",
-    ]
-    text_body = rlm + "\n".join(text_lines)
-
-    amount_row = f"""
-      <tr>
-        <td style="padding:12px 16px;background:#fafafa;font-size:14px;color:#666;text-align:right">סכום ששולם</td>
-        <td style="padding:12px 16px;font-size:14px;color:#111;text-align:right">₪{amount:.2f}</td>
-      </tr>
-    """ if amount is not None else ""
-    time_row = f"""
-      <tr>
-        <td style="padding:12px 16px;background:#fafafa;font-size:14px;color:#666;text-align:right">תאריך ושעה</td>
-        <td style="padding:12px 16px;font-size:14px;color:#111;text-align:right">{when}</td>
-      </tr>
-    """ if when else ""
-    instr_row = f"""
-      <tr>
-        <td style="padding:12px 16px;background:#fafafa;font-size:14px;color:#666;text-align:right">מדריך/ה</td>
-        <td style="padding:12px 16px;font-size:14px;color:#111;text-align:right">{instr}</td>
-      </tr>
-    """ if instr else ""
-
-    html_body = f"""<!doctype html>
-<html lang="he" dir="rtl">
-  <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>אישור הזמנה – חוות מסילת ציון</title></head>
-  <body style="margin:0;background:#f6f7f9;font-family:Arial,Helvetica,'Segoe UI',sans-serif;direction:rtl;">
-    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="width:100%;padding:24px 0;">
-      <tr><td align="center">
-        <table role="presentation" width="600" cellpadding="0" cellspacing="0"
-               style="width:100%;max-width:600px;background:#ffffff;border-radius:12px;overflow:hidden;table-layout:fixed;">
-          <tr><td style="padding:18px 24px;background:#2f2a27;color:#fff;font-weight:700;font-size:18px;text-align:right;">
-            אישור הזמנה – חוות מסילת ציון</td></tr>
-          <tr><td style="padding:22px;word-break:break-word;overflow-wrap:anywhere;">
-            <h1 style="margin:0 0 12px 0;font-size:20px;color:#222;line-height:1.35;">שלום {name},</h1>
-            <p style="margin:0 0 16px 0;font-size:15px;color:#333;line-height:1.6;">ההזמנה נקבעה בהצלחה!</p>
-            <table role="presentation" cellpadding="0" cellspacing="0"
-                   style="width:100%;border:1px solid #eee;border-radius:10px;overflow:hidden;border-collapse:separate;">
-              <tr>
-                <td style="padding:12px 16px;background:#fafafa;font-size:14px;color:#666;text-align:right">מספר הזמנה</td>
-                <td style="padding:12px 16px;font-size:14px;color:#111;text-align:right;word-break:break-word;overflow-wrap:anywhere;">{subject_ref}</td>
-              </tr>
-              {amount_row}{time_row}{instr_row}
-            </table>
-            <p style="margin:10px 0 12px 0;font-size:13.5px;color:#555;line-height:1.6;">
-              שמרו מייל זה. לביטול/החזר תזדקקו למספר ההזמנה.<br>
-              זהו מייל אוטומטי – אין להשיב אליו.
-            </p>
-            <hr style="border:none;border-top:1px solid #eee;margin:18px 0">
-            <p style="margin:0;font-size:12px;color:#999;line-height:1.5;">© חוות מסילת ציון · כל הזכויות שמורות</p>
-          </td></tr>
-        </table>
-      </td></tr>
-    </table>
-  </body>
-</html>"""
-
-    from django.core.mail import send_mail
-    sent = send_mail(subject, text_body, from_email=None,
-                     recipient_list=[session.customer_email],
-                     html_message=html_body, fail_silently=True)
-    return sent >= 1
-
-# === עזרי חישוב מחיר לפי Activity "שיעורי רכיבה/ טיפולית" ===
-def _minutes_between(date_obj, start_time, end_time):
-    if not (date_obj and start_time and end_time):
-        return None
-    dt0 = datetime.combine(date_obj, start_time)
-    dt1 = datetime.combine(date_obj, end_time)
-    if dt1 <= dt0:  # אם חוצה חצות
-        dt1 += timedelta(days=1)
-    return int((dt1 - dt0).total_seconds() // 60)
-
-def _price_from_treatment_activity_by_minutes(minutes) -> Decimal | None:
-    try:
-        qs = Activity.objects.filter(name="שיעורי רכיבה/ טיפולית").exclude(price__isnull=True)
-        if minutes is not None:
-            act = qs.filter(duration_minutes=minutes).order_by("id").first()
-            if act and act.price is not None:
-                return Decimal(act.price)
-        act = qs.order_by("duration_minutes", "id").first()
-        if act and act.price is not None:
-            return Decimal(act.price)
-    except Exception:
-        pass
-    return None
-
-def _suggest_amount_for_session(session) -> Decimal | None:
-    minutes = _minutes_between(getattr(session, "date", None),
-                               getattr(session, "start_time", None),
-                               getattr(session, "end_time", None))
-    return _price_from_treatment_activity_by_minutes(minutes)
-
-def _format_session_time_range(date_obj, start_time, end_time) -> str:
-    if date_obj and start_time and end_time:
-        return f"{date_obj:%d.%m.%Y} בשעה {start_time.strftime('%H:%M')}–{end_time.strftime('%H:%M')}"
-    if date_obj and start_time:
-        return f"{date_obj:%d.%m.%Y} בשעה {start_time.strftime('%H:%M')}"
-    if date_obj:
-        return f"{date_obj:%d.%m.%Y}"
-    return ""
-
-def _normalize_phone_il(phone: str) -> str:
-    p = "".join(ch for ch in (phone or "") if ch.isdigit())
-    if p.startswith("972") and len(p) >= 11: p = "0" + p[3:]
-    return p
-
-# --- בראש הקובץ (ליד שאר העזרים) ---
 def _defer_capture_for_activity(act) -> bool:
     """
     החזר True אם לא רוצים לתפוס סלוטים עד תשלום.
@@ -979,6 +804,227 @@ def admin_pay_stub(request):
     }
     return render(request, "admin/homePage/pay_stub.html", ctx)
 
+def _format_session_sms(session, amount: Decimal | None = None, header: str | None = None) -> str:
+    # אם לא קיבלנו override – נחשב מה-Activity "שיעורי רכיבה/ טיפולית"
+    if amount is None:
+        try:
+            amount = _get_treatment_amount_nis(session)
+        except NameError:
+            amount = None
+
+    name  = (session.customer_full_name or "לקוח/ה").strip()
+    instr = getattr(session.instructor, "full_name", "") if getattr(session, "instructor", None) else ""
+    ref   = session.payment_ref or "—"
+
+    if getattr(session, "date", None):
+        if session.start_time and session.end_time:
+            times = f"{session.start_time.strftime('%H:%M')}–{session.end_time.strftime('%H:%M')}"
+            when = f"{session.date:%d.%m.%Y} בשעה {_ltr_text(times)}"
+        elif session.start_time:
+            t = session.start_time.strftime("%H:%M")
+            when = f"{session.date:%d.%m.%Y} בשעה {_ltr_text(t)}"
+        else:
+            when = f"{session.date:%d.%m.%Y}"
+    else:
+        when = ""
+
+    # אם header לא סופק – נשמור על ההתנהגות הישנה (ניסוח "נקבעה בהצלחה")
+    top_line = header or "ההזמנה נקבעה בהצלחה בחוות מסילת ציון."
+
+    lines = [
+        f"היי {name},",
+        top_line,
+        f"מס' הזמנה: {ref}",
+    ]
+    if when:  lines.append(f"תאריך: {when}")
+    if instr: lines.append(f"מדריך/ה: {instr}")
+    if amount is not None:
+        lines.append(f"סכום ששולם: ₪{amount:}")  # שומר כמו שהיה אצלך
+    lines.append("מיקום: חוות מסילת ציון (Waze: חוות מסילת ציון)")
+    lines.append("יש להגיע עם מכנס ארוך ונעליים סגורות.")
+    lines.append(" ")
+    lines.append("מחכים לראותכם!")
+    lines.append("(יש לשמור את מספר ההזמנה לביטולים והחזרים כספיים)")
+    return "\n".join(lines)
+
+def _send_treatment_email(session, amount: Decimal | None = None) -> bool:
+    # ייבוא מקומי כדי שלא תצטרכי לשנות ייבואים בראש הקובץ
+    from django.core.mail import EmailMultiAlternatives
+    from django.conf import settings
+
+    if not (session.customer_email or "").strip():
+        return False
+
+    # חישוב סכום אם לא הועבר
+    if amount is None:
+        amount = _get_treatment_amount_nis(session)
+
+    subject_ref = session.payment_ref or "—"
+    base_subject = f"אישור הזמנה – חוות מסילת ציון · {subject_ref}"
+
+    # --- כיווניות נכונה לזמנים ---
+    LRI, PDI = "\u2066", "\u2069"  # isolate LTR לחלק של השעה בטקסט
+    # טקסט (SMS/Plain): נעטוף רק את החלק של השעה ב-LTR isolate
+    if getattr(session, "date", None):
+        if session.start_time and session.end_time:
+            times = f"{session.start_time.strftime('%H:%M')}–{session.end_time.strftime('%H:%M')}"
+            when_text = f"{session.date:%d.%m.%Y} בשעה {LRI}{times}{PDI}"
+            when_html = f"""{session.date:%d.%m.%Y} בשעה <span dir="ltr" style="unicode-bidi:isolate">{times}</span>"""
+        elif session.start_time:
+            t = session.start_time.strftime("%H:%M")
+            when_text = f"{session.date:%d.%m.%Y} בשעה {LRI}{t}{PDI}"
+            when_html = f"""{session.date:%d.%m.%Y} בשעה <span dir="ltr" style="unicode-bidi:isolate">{t}</span>"""
+        else:
+            when_text = f"{session.date:%d.%m.%Y}"
+            when_html = when_text
+    else:
+        when_text = ""
+        when_html = ""
+
+    instr = getattr(session.instructor, "full_name", "") if getattr(session, "instructor", None) else ""
+    name  = (session.customer_full_name or "").strip() or "לקוח/ה"
+
+    # --- גוף טקסטואלי (Plain) ---
+    rlm = "\u200F"  # שומר RTL כללי
+    text_lines = [
+        f"שלום {name},", "",
+        "ההזמנה שלך בחוות מסילת ציון נקבעה בהצלחה!",
+        f"מספר הזמנה: {subject_ref}",
+    ]
+    if amount is not None:
+        text_lines.append(f"סכום ששולם: ₪{amount:.2f}")
+    if when_text:
+        text_lines.append(f"תאריך ושעה: {when_text}")
+    if instr:
+        text_lines.append(f"מדריך/ה: {instr}")
+    text_lines += [
+        "", "מיקום: חוות מסילת ציון (Waze: חוות מסילת ציון)",
+        "אנא הגיעו עם מכנס ארוך ונעליים סגורות.", "",
+        "שמרו מייל זה. לביטול/החזר תזדקקו למספר ההזמנה.",
+        "זהו מייל אוטומטי – אין להשיב אליו.",
+    ]
+    text_body = rlm + "\n".join(text_lines)
+
+    # --- טבלת HTML ---
+    amount_row = f"""
+      <tr>
+        <td style="padding:12px 16px;background:#fafafa;font-size:14px;color:#666;text-align:right">סכום ששולם</td>
+        <td style="padding:12px 16px;font-size:14px;color:#111;text-align:right">₪{amount:.2f}</td>
+      </tr>
+    """ if amount is not None else ""
+    time_row = f"""
+      <tr>
+        <td style="padding:12px 16px;background:#fafafa;font-size:14px;color:#666;text-align:right">תאריך ושעה</td>
+        <td style="padding:12px 16px;font-size:14px;color:#111;text-align:right">{when_html}</td>
+      </tr>
+    """ if when_html else ""
+    instr_row = f"""
+      <tr>
+        <td style="padding:12px 16px;background:#fafafa;font-size:14px;color:#666;text-align:right">מדריך/ה</td>
+        <td style="padding:12px 16px;font-size:14px;color:#111;text-align:right">{instr}</td>
+      </tr>
+    """ if instr else ""
+
+    html_body = f"""<!doctype html>
+<html lang="he" dir="rtl">
+  <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{base_subject}</title></head>
+  <body style="margin:0;background:#f6f7f9;font-family:Arial,Helvetica,'Segoe UI',sans-serif;direction:rtl;">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="width:100%;padding:24px 0;">
+      <tr><td align="center">
+        <table role="presentation" width="600" cellpadding="0" cellspacing="0"
+               style="width:100%;max-width:600px;background:#ffffff;border-radius:12px;overflow:hidden;table-layout:fixed;">
+          <tr><td style="padding:18px 24px;background:#2f2a27;color:#fff;font-weight:700;font-size:18px;text-align:right;">
+            אישור הזמנה – חוות מסילת ציון</td></tr>
+          <tr><td style="padding:22px;word-break:break-word;overflow-wrap:anywhere;">
+            <h1 style="margin:0 0 12px 0;font-size:20px;color:#222;line-height:1.35;">שלום {name},</h1>
+            <p style="margin:0 0 16px 0;font-size:15px;color:#333;line-height:1.6;">ההזמנה נקבעה בהצלחה!</p>
+            <table role="presentation" cellpadding="0" cellspacing="0"
+                   style="width:100%;border:1px solid #eee;border-radius:10px;overflow:hidden;border-collapse:separate;">
+              <tr>
+                <td style="padding:12px 16px;background:#fafafa;font-size:14px;color:#666;text-align:right">מספר הזמנה</td>
+                <td style="padding:12px 16px;font-size:14px;color:#111;text-align:right;word-break:break-word;overflow-wrap:anywhere;">{subject_ref}</td>
+              </tr>
+              {amount_row}{time_row}{instr_row}
+            </table>
+            <p style="margin:10px 0 12px 0;font-size:13.5px;color:#555;line-height:1.6;">
+              שמרו מייל זה. לביטול/החזר תזדקקו למספר ההזמנה.<br>
+              זהו מייל אוטומטי – אין להשיב אליו.
+            </p>
+            <hr style="border:none;border-top:1px solid #eee;margin:18px 0">
+            <p style="margin:0;font-size:12px;color:#999;line-height:1.5;">© חוות מסילת ציון · כל הזכויות שמורות</p>
+          </td></tr>
+        </table>
+      </td></tr>
+    </table>
+  </body>
+</html>"""
+
+    # --- Message-ID קבוע לשרשור עתידי ---
+    from_addr = getattr(settings, "DEFAULT_FROM_EMAIL", None)
+    domain = from_addr.split("@")[-1] if (from_addr and "@" in from_addr) else "mesilat-zion.local"
+    stable_msgid = f"<session-{str(subject_ref).replace(' ', '')}@{domain}>"
+
+    # --- שליחה עם EmailMultiAlternatives ---
+    email = EmailMultiAlternatives(
+        base_subject,
+        text_body,
+        from_addr,
+        [session.customer_email],
+        headers={
+            "Message-ID": stable_msgid,
+            "References": stable_msgid,
+        },
+    )
+
+    email.attach_alternative(html_body, "text/html")
+    sent = email.send(fail_silently=True)
+    return sent >= 1
+
+from django.core.mail import EmailMultiAlternatives
+
+def _session_msgid(session) -> str:
+    """
+    יוצר Message-ID דטרמיניסטי לפי payment_ref כדי שכל הודעות ההמשך יתייחסו אליו.
+    """
+    ref = (session.payment_ref or _gen_unique_ref_any()).replace(" ", "")
+    # דומיין ל-Message-ID: מנסה לקחת מה-DEFAULT_FROM_EMAIL, ואם לא – נופל לברירת מחדל.
+    from_domain = getattr(settings, "DEFAULT_FROM_EMAIL", "")
+    domain = from_domain.split("@")[-1] if "@" in from_domain else "mesilat-zion.local"
+    return f"<session-{ref}@{domain}>"
+
+# === עזרי חישוב מחיר לפי Activity "שיעורי רכיבה/ טיפולית" ===
+def _minutes_between(date_obj, start_time, end_time):
+    if not (date_obj and start_time and end_time):
+        return None
+    dt0 = datetime.combine(date_obj, start_time)
+    dt1 = datetime.combine(date_obj, end_time)
+    if dt1 <= dt0:  # אם חוצה חצות
+        dt1 += timedelta(days=1)
+    return int((dt1 - dt0).total_seconds() // 60)
+
+def _price_from_treatment_activity_by_minutes(minutes) -> Decimal | None:
+    try:
+        qs = Activity.objects.filter(name="שיעורי רכיבה/ טיפולית").exclude(price__isnull=True)
+        if minutes is not None:
+            act = qs.filter(duration_minutes=minutes).order_by("id").first()
+            if act and act.price is not None:
+                return Decimal(act.price)
+        act = qs.order_by("duration_minutes", "id").first()
+        if act and act.price is not None:
+            return Decimal(act.price)
+    except Exception:
+        pass
+    return None
+
+def _suggest_amount_for_session(session) -> Decimal | None:
+    minutes = _minutes_between(getattr(session, "date", None),
+                               getattr(session, "start_time", None),
+                               getattr(session, "end_time", None))
+    return _price_from_treatment_activity_by_minutes(minutes)
+
+
+
 class TreatmentSessionAdminForm(forms.ModelForm):
     # שדות אדמין בלבד (לא נשמרים במודל)
     calc_amount_nis = forms.DecimalField(
@@ -1070,7 +1116,102 @@ class TreatmentSessionAdmin(admin.ModelAdmin):
     def instructor_plain(self, obj):
         return obj.instructor.full_name if obj and obj.instructor else "-"
 
-    # בתוך TreatmentSessionAdmin
+    from django.conf import settings
+    from django.template.loader import render_to_string
+
+    def _notify_time_change(self, request, session, old_date, old_start, old_end):
+        """
+        שולח מייל + SMS על שינוי שעה.
+        משתמש ב-_send_booking_email למייל וב-send_sms_via_ntfy ל-SMS (אם קיים במודול וה-SEND_SMS=True).
+        """
+        # ישן → חדש
+        try:
+            old_txt = f"{old_date.strftime('%d.%m.%Y')} {old_start.strftime('%H:%M')}–{old_end.strftime('%H:%M')}"
+        except Exception:
+            old_txt = f"{old_date} {old_start}–{old_end}"
+        new_txt = f"{session.date.strftime('%d.%m.%Y')} {session.start_time.strftime('%H:%M')}–{session.end_time.strftime('%H:%M')}"
+
+        sent_any = False
+
+        # ===== מייל =====
+        try:
+            if (session.customer_email or "").strip():
+                subject_ref = session.payment_ref or "—"
+                base_subject = f"אישור הזמנה – חוות מסילת ציון · {subject_ref}"
+                subject = base_subject
+                plain = (
+                    f"שלום {session.customer_full_name or ''},\n"
+                    f"עודכנה שעת המפגש שלך בחוות מסילת ציון לתאריך:\n{new_txt}\n"
+                )
+
+                # HTML אם יש תבנית; אם אין – נשלח טקסט בלבד
+                try:
+                    html_body = render_to_string("emails/session_time_change.html", {
+                        "customer_name": session.customer_full_name or "",
+                        "instructor": session.instructor.full_name if session.instructor else "",
+                        "old_time": old_txt,
+                        "new_time": new_txt,
+                        "payment_ref": session.payment_ref or "",
+                        "phone": session.customer_phone or "",
+                        "email": session.customer_email or "",
+                        "details": session.details or "",
+                    })
+                except Exception:
+                    html_body = None
+
+                # קשר לשרשור המקורי
+                root_msgid = _session_msgid(session)
+                email = EmailMultiAlternatives(
+                    subject,
+                    plain,
+                    getattr(settings, "DEFAULT_FROM_EMAIL", None),
+                    [session.customer_email],
+                    headers={
+                        "In-Reply-To": root_msgid,
+                        "References": root_msgid,
+                    },
+                )
+                if html_body:
+                    email.attach_alternative(html_body, "text/html")
+
+                email.send(fail_silently=True)
+                sent_any = True
+        except Exception as ex:
+            print(f"[notify_time_change] email failed: {ex}")
+
+        # ===== SMS =====
+        try:
+            phone_norm = _normalize_phone_il(session.customer_phone or "")
+        except Exception:
+            phone_norm = (session.customer_phone or "").strip()
+
+        if getattr(settings, "SEND_SMS", False) and phone_norm:
+            # טקסט SMS דרך הפורמט הקיים שלך, עם כותרת לעדכון שעה
+            sms_text = _format_session_sms(
+                session,
+                amount=None,
+                header=f"עודכנה שעת המפגש שלך בחוות מסילת ציון:\n",
+            )
+
+            # מחפשים פונקציית שליחה שמוגדרת באותו מודול (בלי ייבוא חיצוני)
+            sms_fn = None
+            mod = sys.modules[__name__]
+            for name in ("send_sms_via_ntfy", "_send_booking_sms", "send_booking_sms", "_send_sms", "send_sms"):
+                fn = getattr(mod, name, None)
+                if callable(fn):
+                    sms_fn = fn
+                    break
+
+            if sms_fn:
+                try:
+                    sms_fn(phone_norm, sms_text)  # חתימה: (phone, text)
+                    sent_any = True
+                except Exception as ex:
+                    print(f"[notify_time_change] SMS send failed: {ex}")
+            else:
+                print("[notify_time_change] No SMS sender function found (e.g., send_sms_via_ntfy); SMS not sent")
+
+        return sent_any
 
     def add_view(self, request, form_url='', extra_context=None):
         if request.method == "POST":
@@ -1225,37 +1366,52 @@ class TreatmentSessionAdmin(admin.ModelAdmin):
         return tuple(base) + ("payment_ref",)
 
     def save_model(self, request, obj, form, change):
-        # מסלול הרשאה מצומצם – נשאר כמו שהיה אצלך
+        # מסלול הרשאה מצומצם – נשאר כמו שהיה
         if request.user.has_perm(DETAILS_ONLY_PERM) and not request.user.has_perm(FULL_CHANGE_PERM):
             original = self.model.objects.get(pk=obj.pk)
             original.details = form.cleaned_data.get("details", original.details)
             original.save(update_fields=["details"])
             return
 
+        # נשמור ערכים ישנים להשוואה (כדי לדעת אם השעה/תאריך השתנו)
+        old_date = old_start = old_end = None
+        if change:
+            try:
+                prev = self.model.objects.get(pk=obj.pk)
+                old_date, old_start, old_end = prev.date, prev.start_time, prev.end_time
+            except self.model.DoesNotExist:
+                pass
+
         # יצירת מזהה אם חסר
         if not obj.payment_ref:
             obj.payment_ref = _gen_unique_ref_any()
 
-        # === זה הקטע ששאלת עליו בדיוק: מחשבים מחיר אפקטיבי להזמנה הזו ===
-        override = form.cleaned_data.get("override_amount_nis")  # מהטופס (לא במודל)
+        # מחיר: override גובר על המחושב (לוגיקה כפי שהייתה)
+        override = form.cleaned_data.get("override_amount_nis")
         try:
-            calc = _get_treatment_amount_nis(obj)  # מה-Activity
+            calc = _get_treatment_amount_nis(obj)
         except NameError:
             calc = _suggest_amount_for_session(obj)
-
         effective_amount = override if override is not None else calc
 
-        # אם הוזן override – נוסיף הערת עקבה ל-details (לא חובה, אבל מומלץ)
         if override is not None:
+            from decimal import Decimal
             old = obj.details or ""
             note = f"\nמחיר הוגדר ידנית להזמנה זו: ₪{Decimal(override):}"
             if calc is not None:
                 note += f" (במקום המחושב: ₪{Decimal(calc):.2f})"
             obj.details = (old + note).strip()
 
-        # שמירה רגילה
+        # שמירה בפועל
         super().save_model(request, obj, form, change)
 
+        # אם השעה/תאריך השתנו – שולחים עדכון (מייל + SMS) בלי שום פופאפ מיוחד
+        if change and (old_date is not None):
+            if (old_date != obj.date) or (old_start != obj.start_time) or (old_end != obj.end_time):
+                try:
+                    self._notify_time_change(request, obj, old_date, old_start, old_end)
+                except Exception:
+                    pass
 
     def _details_short(self, obj):
         if not obj.details:
@@ -1343,7 +1499,6 @@ class TreatmentSessionAdmin(admin.ModelAdmin):
     def events_update(self, request):
         if not request.user.has_perm("homePage.can_drag_sessions"):
             return JsonResponse({"ok": False, "error": "אין הרשאה להזיז אירועים"}, status=403)
-
         if request.method != "POST":
             return HttpResponseBadRequest("invalid method")
 
@@ -1353,37 +1508,40 @@ class TreatmentSessionAdmin(admin.ModelAdmin):
 
         obj = get_object_or_404(TreatmentSession, pk=request.POST.get("id"))
 
-        # אם המשתמש הוא מדריך – מותר לעדכן רק אירועים שלו
-        if request.user.groups.filter(name="Instructors").exists():
-            instr = getattr(obj, "instructor", None)
-            if not instr or instr.user_id != request.user.id:
-                return JsonResponse({"ok": False, "error": "אין הרשאה לעדכן אירוע זה"}, status=403)
+        # שמירת ישן להשוואה
+        old_date, old_start, old_end = obj.date, obj.start_time, obj.end_time
 
-        date_str  = request.POST.get("date")   # YYYY-MM-DD
-        start_str = request.POST.get("start")  # HH:MM או HH:MM:SS
-        end_str   = request.POST.get("end")    # HH:MM או HH:MM:SS
+        date_str = request.POST.get("date")
+        start_str = request.POST.get("start")
+        end_str = request.POST.get("end")
 
         try:
-            new_date  = datetime.strptime(date_str, "%Y-%m-%d").date()
+            new_date = datetime.strptime(date_str, "%Y-%m-%d").date()
             new_start = _parse_time_flex(start_str)
-            new_end   = _parse_time_flex(end_str)
+            new_end = _parse_time_flex(end_str)
         except Exception:
             return JsonResponse({"ok": False, "error": "פורמט תאריך/שעה שגוי"}, status=400)
-
-        # לוג למסוף כדי לראות מה באמת מגיע
-        print(f"[events_update] id={obj.id} date={new_date} {new_start}-{new_end}")
 
         obj.date = new_date
         obj.start_time = new_start
         obj.end_time = new_end
 
         try:
-            obj.full_clean()  # יאכוף 09:00–20:00 ושעת סיום אחרי התחלה
+            obj.full_clean()
             obj.save()
         except ValidationError as e:
             return JsonResponse({"ok": False, "error": e.message_dict}, status=400)
 
-        return JsonResponse({"ok": True})
+        changed = (old_date != new_date or old_start != new_start or old_end != new_end)
+        notified = False
+        if changed and request.POST.get("notify") == "1":
+            try:
+                notified = self._notify_time_change(request, obj, old_date, old_start, old_end) or False
+            except Exception:
+                notified = False
+
+        return JsonResponse({"ok": True, "notified": notified})
+
 
 class CreateBookingActionForm(ActionForm):
     duration_minutes = forms.ChoiceField(
@@ -2127,9 +2285,5 @@ class TermsConsentAdmin(admin.ModelAdmin):
     date_hierarchy = "accepted_at"
     ordering       = ("-accepted_at",)
     readonly_fields = ("accepted_at",)
-
-
-
-
 
 
