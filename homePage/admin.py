@@ -16,7 +16,6 @@ from types import SimpleNamespace
 from django.db.models import Q
 from django.contrib.admin.helpers import ActionForm
 from urllib.parse import urlencode
-from .views import get_rules_for
 from django.http import JsonResponse
 from django.conf import settings
 from homePage.views import _has_consent_by_phone as has_consent_by_phone, _normalize_phone_il as normalize_phone_il, _format_booking_sms, _send_booking_email
@@ -46,6 +45,11 @@ from django.template.loader import render_to_string
 from decimal import Decimal  # אם לא קיים למעלה כבר
 import re, sys
 from django.template.loader import render_to_string  # אם לא קיים
+from django.core.mail import EmailMultiAlternatives
+from django.utils.safestring import mark_safe
+
+
+
 
 delete_selected.short_description = "מחיקה"
 
@@ -346,6 +350,7 @@ def find_free_start_times(chosen_date, minutes, activity_name, variant=None):
 
     if rules_activity:
         # get_rules_for אמור להחזיר: (_, cutoff_min, win_start_dt, win_end_dt)
+        from .views import get_rules_for
         _, cutoff_min, win_start_dt, win_end_dt = get_rules_for(rules_activity, chosen_date)
         cutoff_min = cutoff_min or 0
     else:
@@ -840,6 +845,13 @@ def _format_session_sms(session, amount: Decimal | None = None, header: str | No
     if instr: lines.append(f"מדריך/ה: {instr}")
     if amount is not None:
         lines.append(f"סכום ששולם: ₪{amount:}")  # שומר כמו שהיה אצלך
+    try:
+        participants = int(getattr(session, "participants", 0) or 0)
+    except Exception:
+        participants = 0
+    if header is not None and participants >= 2:
+        lines.append(f"מספר משתתפים: {participants}")
+
     lines.append("מיקום: חוות מסילת ציון (Waze: חוות מסילת ציון)")
     lines.append("יש להגיע עם מכנס ארוך ונעליים סגורות.")
     lines.append(" ")
@@ -980,8 +992,6 @@ def _send_treatment_email(session, amount: Decimal | None = None) -> bool:
     email.attach_alternative(html_body, "text/html")
     sent = email.send(fail_silently=True)
     return sent >= 1
-
-from django.core.mail import EmailMultiAlternatives
 
 def _session_msgid(session) -> str:
     """
@@ -1159,7 +1169,7 @@ class TreatmentSessionAdmin(admin.ModelAdmin):
                 except Exception:
                     html_body = None
 
-                # קשר לשרשור המקורי
+
                 root_msgid = _session_msgid(session)
                 email = EmailMultiAlternatives(
                     subject,
@@ -1190,7 +1200,7 @@ class TreatmentSessionAdmin(admin.ModelAdmin):
             sms_text = _format_session_sms(
                 session,
                 amount=None,
-                header=f"עודכנה שעת המפגש שלך בחוות מסילת ציון:\n",
+                header=f" עודכנה שעת המפגש שלך בחוות מסילת ציון:\n",
             )
 
             # מחפשים פונקציית שליחה שמוגדרת באותו מודול (בלי ייבוא חיצוני)
@@ -1668,42 +1678,473 @@ class AppointmentInline(admin.TabularInline):
 
 class BookingAdminForm(forms.ModelForm):
     class Meta:
+        from .models import Booking  # או הייבוא המתאים אצלך
         model = Booking
         fields = "__all__"
         labels = {
-            "activity": "פעילות",
-            "customer_name": "שם לקוח",
-            "customer_phone": "טלפון",
-            "customer_email": "אימייל",
-            "participants": "מספר משתתפים",
-            "total_price": "סה\"כ לתשלום",
-            "payment_method": "אמצעי תשלום",
-            "payment_ref": "אסמכתא/מזהה תשלום",
-            "status": "סטטוס",
-            "notes": "פרטים/הערות",
-            "start_dt": "תאריך ושעת התחלה",
-            "end_dt": "תאריך ושעת סיום",
+            "activity": "פעילות", "customer_name": "שם לקוח", "customer_phone": "טלפון",
+            "customer_email": "אימייל", "participants": "מספר משתתפים",
+            "total_price": "סה\"כ לתשלום", "payment_method": "אמצעי תשלום",
+            "payment_ref": "אסמכתא/מזהה תשלום", "status": "סטטוס",
+            "notes": "פרטים/הערות", "start_dt": "תאריך ושעת התחלה", "end_dt": "תאריך ושעת סיום",
         }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+        inst = getattr(self, "instance", None)
+        if not (inst and inst.pk and inst.start_dt and inst.end_dt and inst.activity_id):
+            return
+
+        f_start = self.fields.get("start_dt")
+        f_end = self.fields.get("end_dt")
+        if not (f_start and f_end):
+            return
+
+        # משך הפעילות בפועל (בלי ההפסקה)
+        minutes_real = int((inst.end_dt - inst.start_dt).total_seconds() // 60)
+        day = inst.start_dt.date()
+        name = inst.activity.name
+
+        # וריאנט לזוגית
+        variant = None
+        if name == "רכיבה זוגית":
+            t = (inst.activity.activity_type or "").lower()
+            if ("night" in t) or ("לילה" in t):
+                variant = "night"
+            elif any(x in t for x in ("sunrise", "זריחה", "שקיעה", "sunset")):
+                variant = "sunrise"
+            else:
+                variant = "day"
+
+        # לבדיקת זמינות – הוספת 15 ד' הפסקה כשמשך>30
+        minutes_for_query = minutes_real + (15 if minutes_real > 30 else 0)
+
+        # השעות הפנויות הרגילות (ללא הסלוטים שלך)
+        times = find_free_start_times(day, minutes_for_query, name, variant=variant)
+
+        # === הוספת "פנויות עבורך": זמני התחלה שמותרים אם מתייחסים לסלוטים של ההזמנה שלך כאל פנויים ===
+        # לא משחרר כלום – רק מוסיף לרשימה של ה-selector.
+        try:
+            from datetime import datetime, timedelta
+
+            slot_cnt_q = max(1, (minutes_for_query + 14) // 15)
+
+            # כל הסלוטים של אותו יום
+            day_rows = list(
+                Appointment.objects.filter(date=day)
+                .values("time", "is_booked", "is_break", "booking_id")
+            )
+            slot_map = {r["time"]: r for r in day_rows}
+            own_set = {r["time"] for r in day_rows if r["booking_id"] == inst.id}
+            all_starts = sorted(slot_map.keys())
+
+            def t_add(t, k=1):
+                return (datetime.combine(day, t) + timedelta(minutes=15 * k)).time()
+
+            def chain_ok(start_t):
+                """אפשר להתחיל ב-start_t אם כל השרשרת זמינה או שייכת להזמנה הזו,
+                   וחייבת להיות חפיפה כלשהי עם סלוטים של ההזמנה הנוכחית."""
+                overlap = False
+                for i in range(slot_cnt_q):
+                    tt = t_add(start_t, i)
+                    row = slot_map.get(tt)
+                    if not row:
+                        return False
+                    # סלוט תפוס ע״י מישהו אחר? נפסל.
+                    if row["is_booked"] and row["booking_id"] != inst.id:
+                        return False
+                    # הפסקה של מישהו אחר? נפסל.
+                    if row["is_break"] and row["booking_id"] != inst.id:
+                        return False
+                    if tt in own_set:
+                        overlap = True
+                return overlap
+
+            extra_times = [t.strftime("%H:%M") for t in all_starts if chain_ok(t)]
+            # מאחדים ומסירים כפילויות
+            times = sorted(set(times) | set(extra_times))
+        except Exception:
+            # לא מפיל את הטופס אם יש תקלה – פשוט נסתמך על times המקורי
+            pass
+
+        # תמיד להציג גם את שעת ההזמנה הנוכחית
+        cur = inst.start_dt.strftime("%H:%M")
+        if cur not in times:
+            times = [cur] + times
+
+        # --- נעילה ויזואלית של start_dt/end_dt + צריבת ה-data ל-selector ---
+        w = f_start.widget
+        if hasattr(w, "widgets"):  # AdminSplitDateTime
+            w.widgets[0].attrs.update({
+                "readonly": "readonly",
+                "style": "pointer-events:none;background:#f6f6f6;",
+            })
+            w.widgets[1].attrs.update({
+                "readonly": "readonly",
+                "style": "pointer-events:none;background:#f6f6f6;",
+                "data-times": json.dumps(times, ensure_ascii=False),
+                "data-day": day.isoformat(),
+                "data-duration": str(minutes_real),  # משך אמיתי (בלי ההפסקה)
+            })
+        else:  # שדה יחיד
+            w.attrs.update({
+                "readonly": "readonly",
+                "style": "pointer-events:none;background:#f6f6f6;",
+                "data-times": json.dumps(times, ensure_ascii=False),
+                "data-day": day.isoformat(),
+                "data-duration": str(minutes_real),
+            })
+
+        w2 = f_end.widget
+        if hasattr(w2, "widgets"):
+            for sub in w2.widgets:
+                sub.attrs.update({"readonly": "readonly", "style": "pointer-events:none;background:#f6f6f6;"})
+        else:
+            w2.attrs.update({"readonly": "readonly", "style": "pointer-events:none;background:#f6f6f6;"})
+
+
+        # מוסיפים selector קטן (ללא טמפלטים), שמעדכן start_dt+end_dt
+        self.fields["end_dt"].help_text = mark_safe(r"""
+<style>
+/* מסתיר את קיצורי "היום/כעת" של שדות השעה */
+#id_start_dt_1 + .datetimeshortcuts,
+#id_end_dt_1   + .datetimeshortcuts { display: none !important; }
+</style>
+<script>
+(function(){
+  function onReady(fn){ if(document.readyState!=='loading') fn(); else document.addEventListener('DOMContentLoaded', fn); }
+  onReady(function(){
+    var dateStart = document.getElementById("id_start_dt_0");
+    var timeStart = document.getElementById("id_start_dt_1") || document.getElementById("id_start_dt");
+    var dateEnd   = document.getElementById("id_end_dt_0");
+    var timeEnd   = document.getElementById("id_end_dt_1") || document.getElementById("id_end_dt");
+    if(!timeStart || !dateStart || !dateEnd || !timeEnd) return;
+
+    var submitRow = document.querySelector(".submit-row");
+    var host = submitRow ? submitRow.parentNode : (document.querySelector("form") || document.body);
+
+    var wrap = document.createElement("div");
+    wrap.style.margin = "8px 0";
+    var label = document.createElement("label");
+    label.style.marginInlineStart = "8px";
+    label.textContent = "שינוי שעה:";
+    var sel = document.createElement("select");
+    sel.style.minWidth = "140px";
+
+    wrap.appendChild(label);
+    wrap.appendChild(sel);
+    if(submitRow) host.insertBefore(wrap, submitRow); else host.appendChild(wrap);
+
+    function needsSeconds(inp){ return /^\d{2}:\d{2}:\d{2}$/.test((inp.value||"").trim()); }
+    function pad(n){ return (n<10?'0':'')+n; }
+    function toHM(d){ return pad(d.getHours())+":"+pad(d.getMinutes()); }
+    function addMinutes(d, m){ return new Date(d.getTime()+m*60000); }
+    function roundUp15(d){ var step=15*60000,t=d.getTime(); return new Date(Math.ceil(t/step)*step); }
+
+    (function fill(){
+      var times = [];
+      try { times = JSON.parse(timeStart.dataset.times || "[]"); } catch(e){}
+      var dayStr = dateStart.value || timeStart.dataset.day || "";
+      var durMin = parseInt(timeStart.dataset.duration || "0") || 0;
+      var wantSeconds = needsSeconds(timeStart);
+
+      // אם זה היום – מתחילים מהשעה הפנויה הקרובה (מעוגל לרבע שעה)
+      try{
+        var today = new Date(); today.setHours(0,0,0,0);
+        var formDay = new Date(dayStr+"T00:00:00");
+        if (today.getTime() === formDay.getTime()){
+          var nowHM = toHM(roundUp15(new Date()));
+          times = times.filter(function(t){ return t >= nowHM; });
+        }
+      }catch(e){}
+
+      // --- כאן ההוספה של ה-placeholder ושל ברירת המחדל ---
+      sel.innerHTML = "";
+
+      var optPlaceholder = document.createElement("option");
+      optPlaceholder.value = "";             // נשארת אופציה חוקית
+      optPlaceholder.textContent = "------"; // הטקסט שביקשת
+      sel.appendChild(optPlaceholder);
+
+      times.forEach(function(t){
+        var opt = document.createElement("option");
+        opt.value = t;
+        opt.textContent = t;
+        sel.appendChild(opt);
+      });
+
+      sel.value = ""; // ברירת מחדל: ה-placeholder מוצג
+      // -----------------------------------------------------
+
+      // שינוי שעה → עדכון start/end (אם בחרו זמן אמיתי)
+      sel.addEventListener("change", function(){
+        var t = sel.value || "";
+        if (!t) return; // אם נבחר "------" לא עושים כלום
+
+        var tWith = wantSeconds ? (t + ":00") : t;
+
+        // עדכון start_dt
+        timeStart.value = tWith;
+
+        // חישוב end_dt בהתאם למשך הפעילות (בלי ההפסקה)
+        var hh = parseInt(t.split(":")[0]||"0"), mm = parseInt(t.split(":")[1]||"0");
+        var startDate = new Date(dayStr+"T00:00:00"); startDate.setHours(hh, mm, 0, 0);
+        var endDate = addMinutes(startDate, durMin);
+
+        dateEnd.value = dayStr;
+        timeEnd.value = toHM(endDate) + (wantSeconds ? ":00" : "");
+      });
+    })();
+  });
+})();
+</script>
+
+""")
+
 
 @admin.register(Booking)
 class BookingAdmin(admin.ModelAdmin):
+    exclude = ("feedback_sms_sent_at", "feedback_token")
     actions = [delete_selected]
-
     form = BookingAdminForm
     list_display  = ("id", "activity", "start_dt", "end_dt",
                      "customer_name", "customer_phone", "status", "payment_ref", "total_price", "participants", "created_at")
     list_filter   = ("activity", "status","created_at", "start_dt")
     search_fields = ("customer_name", "customer_phone", "customer_email", "payment_ref")
-    inlines = [AppointmentInline]
+    inlines = []
 
-    # כפתור "קביעת הזמנה חדשה" בעמוד הרשימה
-    change_list_template = "admin/homePage/appointment_change_list.html"
+    def save_model(self, request, obj, form, change):
+        if change and obj.pk:
+            old = Booking.objects.get(pk=obj.pk)
 
+            # ⬅️ כאן "שומרים את הישן" לזיכרון (משתנים מקומיים)
+            old_start_dt = old.start_dt
+            old_end_dt = old.end_dt
 
+            new_start = form.cleaned_data.get("start_dt") or old.start_dt
+            if new_start != old.start_dt:
+                delta = old.end_dt - old.start_dt
+                ok, err = self._move_booking(old, new_start)
+                if not ok:
+                    messages.error(request, err or "שגיאה בשינוי שעה.")
+                    obj.start_dt, obj.end_dt = old.start_dt, old.end_dt
+                else:
+                    obj.start_dt = new_start
+                    obj.end_dt = new_start + delta
 
+                    # ⬅️ משתמשים בערכים הישנים כדי לשלוח “ישן/חדש”
+                    try:
+                        self._notify_time_change_booking(request, obj, old_start_dt, old_end_dt)
+                    except Exception:
+                        pass
+
+        super().save_model(request, obj, form, change)
+
+    def _move_booking(self, booking, new_start_dt):
+        """
+        מזיז את ההזמנה לזמן התחלה חדש:
+        - בודק רצף סלוטים פנוי למשך הפעילות
+        - אם משך>30 ד' מוסיף סלוט הפסקה של 15 ד' אחרי הפעילות (אם פנוי)
+        - משחרר סלוטים ישנים ותופס חדשים
+        """
+        from django.db import transaction
+        from datetime import timedelta
+
+        minutes = int((booking.end_dt - booking.start_dt).total_seconds() // 60)
+        day = new_start_dt.date()
+
+        # כמה סלוטים (15 דק') נדרשים לפעילות
+        slot_cnt = max(1, (minutes + 14) // 15)
+        need_times = [(new_start_dt + timedelta(minutes=15 * i)).time() for i in range(slot_cnt)]
+        paid = str(booking.status).strip().lower() in {"paid", "שולם"}
+
+        try:
+            with transaction.atomic():
+                # מוודאים רצף פנוי
+                appts = list(
+                    Appointment.objects.select_for_update()
+                    .filter(date=day, time__in=need_times).order_by("time")
+                )
+                if len(appts) != slot_cnt:
+                    return False, "אין רצף סלוטים פנוי."
+
+                for a in appts:
+                    # מותר להשתמש בכל סלוט ששייך לאותה הזמנה (גם אם הוא הפסקה),
+                    # אסור רק אם הוא שייך להזמנה אחרת.
+                    if (a.is_booked or a.is_break) and a.booking_id != booking.id:
+                        return False, "סלוט תפוס."
+
+                # משחררים את הסלוטים הישנים של ההזמנה (כולל הפסקות)
+                for a in Appointment.objects.select_for_update().filter(booking=booking):
+                    a.booking = None
+                    a.is_booked = False
+                    a.is_paid = False
+                    a.is_break = False
+                    a.payment_reference = ""
+                    # אם אצלך FK activity הוא nullable – אפשר גם לנקות:
+                    try:
+                        a.activity = None
+                        upd = ["booking", "is_booked", "is_paid", "is_break", "payment_reference", "activity"]
+                    except Exception:
+                        upd = ["booking", "is_booked", "is_paid", "is_break", "payment_reference"]
+                    # ואם יש M2M activities – לנקות:
+                    if hasattr(a, "activities"):
+                        a.save(update_fields=upd)  # לשמור לפני clear על ה-M2M
+                        a.activities.clear()
+                        continue
+
+                    a.save(update_fields=upd)
+
+                # תופסים את הסלוטים החדשים
+                for a in appts:
+                    a.booking = booking
+                    a.is_booked = True
+                    a.is_paid = paid
+                    a.is_break = False
+                    a.payment_reference = booking.payment_ref or ""
+                    if a.activity_id != booking.activity_id:
+                        a.activity = booking.activity
+                    a.save(
+                        update_fields=["booking", "is_booked", "is_paid", "is_break", "payment_reference", "activity"])
+                    if hasattr(a, "activities"):
+                        a.activities.add(booking.activity)
+
+                # הפסקה של 15 ד' אחרי פעילות אם משך>30 (רק אם פנוי)
+                if minutes > 30:
+                    buf_time = (new_start_dt + timedelta(minutes=15 * slot_cnt)).time()
+                    extra = Appointment.objects.select_for_update().filter(date=day, time=buf_time).first()
+                    if extra and not (extra.is_booked and extra.booking_id != booking.id):
+                        extra.booking = booking
+                        extra.is_booked = True
+                        extra.is_break = True
+                        extra.is_paid = False
+                        extra.payment_reference = booking.payment_ref or ""
+                        if extra.activity_id != booking.activity_id:
+                            extra.activity = booking.activity
+                        extra.save(update_fields=["booking", "is_booked", "is_break", "is_paid", "payment_reference",
+                                                  "activity"])
+
+                # עדכון זמני ההזמנה עצמם
+                booking.start_dt = new_start_dt
+                booking.end_dt = new_start_dt + timedelta(minutes=minutes)
+                booking.save(update_fields=["start_dt", "end_dt"])
+
+            return True, None
+        except Exception as e:
+            return False, f"שגיאה: {e}"
+
+    def _notify_time_change_booking(self, request, booking, old_start_dt, old_end_dt):
+        # טקסטים ישן/חדש
+        try:
+            old_txt = f"{old_start_dt:%d.%m.%Y} {old_start_dt:%H:%M}–{old_end_dt:%H:%M}"
+        except Exception:
+            old_txt = f"{old_start_dt} {old_end_dt}"
+        new_txt = f"{booking.start_dt:%d.%m.%Y} {booking.start_dt:%H:%M}–{booking.end_dt:%H:%M}"
+
+        # ✅ סכום ששולם – לפי ההזמנה
+        amount = None
+        try:
+            if booking.total_price is not None:
+                amount = Decimal(booking.total_price)
+        except Exception:
+            amount = None
+
+        sent_any = False
+
+        # ===== מייל =====
+        try:
+            if (booking.customer_email or "").strip():
+                subject_ref = booking.payment_ref or "—"
+                base_subject = f"אישור הזמנה – חוות מסילת ציון · {subject_ref}"
+                plain = (
+                    f"שלום {booking.customer_name or ''},\n"
+                    f"עודכנה שעת המפגש שלך בחוות מסילת ציון לתאריך:\n{new_txt}\n"
+                )
+
+                try:
+                    html_body = render_to_string("emails/session_time_change.html", {
+                        "customer_name": booking.customer_name or "",
+                        "instructor": "",
+                        "old_time": old_txt,
+                        "new_time": new_txt,
+                        "payment_ref": booking.payment_ref or "",
+                        "phone": booking.customer_phone or "",
+                        "email": booking.customer_email or "",
+                        "details": booking.details or "",
+                        # (אופציונלי) אם התבנית מציגה סכום – נספק לה:
+                        "amount": amount,
+                    })
+                except Exception:
+                    html_body = None
+
+                # קשר לשרשור המקורי
+
+                root_msgid = _session_msgid(booking)
+                email = EmailMultiAlternatives(
+                    base_subject, plain,
+                    getattr(settings, "DEFAULT_FROM_EMAIL", None),
+                    [booking.customer_email],
+                    headers={"In-Reply-To": root_msgid, "References": root_msgid},
+                )
+                if html_body:
+                    email.attach_alternative(html_body, "text/html")
+                email.send(fail_silently=True)
+                sent_any = True
+        except Exception as ex:
+            print(f"[notify_time_change_booking] email failed: {ex}")
+
+        # ===== SMS =====
+        try:
+            phone_norm = _normalize_phone_il(booking.customer_phone or "")
+        except Exception:
+            phone_norm = (booking.customer_phone or "").strip()
+
+        if getattr(settings, "SEND_SMS", False) and phone_norm:
+            # ממפים את Booking ל"מבנה session" כדי להשתמש באותה פונקציית טקסט
+            session_like = SimpleNamespace(
+                date=booking.start_dt.date(),
+                start_time=booking.start_dt.time(),
+                end_time=booking.end_dt.time(),
+                payment_ref=booking.payment_ref or "",
+                customer_full_name=booking.customer_name or "",
+                customer_phone=booking.customer_phone or "",
+                customer_email=booking.customer_email or "",
+                instructor=None,
+                participants=int(booking.participants or 0),
+            )
+
+            # ✅ מעבירים את ה-amount מההזמנה כדי שה-SMS יציג "סכום ששולם" נכון
+            sms_text = _format_session_sms(
+                session_like,
+                amount=amount,
+                header="עודכנה שעת המפגש שלך בחוות מסילת ציון:\n",
+            )
+
+            sms_fn = None
+            mod = sys.modules[__name__]
+            for name in ("send_sms_via_ntfy", "_send_booking_sms", "send_booking_sms", "_send_sms", "send_sms"):
+                fn = getattr(mod, name, None)
+                if callable(fn):
+                    sms_fn = fn
+                    break
+
+            if sms_fn:
+                try:
+                    sms_fn(phone_norm, sms_text)
+                    sent_any = True
+                except Exception as ex:
+                    print(f"[notify_time_change_booking] SMS send failed: {ex}")
+            else:
+                print("[notify_time_change_booking] No SMS sender function found; SMS not sent")
+
+        return sent_any
 
     def has_add_permission(self, request):
-        return False
+        return True
+
+    def add_view(self, request, form_url="", extra_context=None):
+        return redirect(reverse("admin:homePage_appointment_book"))
 
     def get_urls(self):
         urls = super().get_urls()

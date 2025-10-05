@@ -159,10 +159,17 @@
       {% for row in hours_rows %}
         <li>
           <strong>{{ row.label }}:</strong>
-          {% if row.closed %}סגור{% else %}{{ row.start|time:"H:i" }}–{{ row.end|time:"H:i" }}{% endif %}
+          {% if row.closed %}
+            סגור
+          {% else %}
+            <span class="time-range" dir="ltr">
+              {{ row.start|time:"H:i" }}&ndash;{{ row.end|time:"H:i" }}
+            </span>
+          {% endif %}
         </li>
       {% endfor %}
     </ul>
+
 
 
 

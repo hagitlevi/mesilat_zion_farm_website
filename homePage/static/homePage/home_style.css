@@ -384,4 +384,10 @@ footer.contact-section .follow-block > * { margin: 0; }               /* איפ�
 .see-all:hover{ filter: brightness(1.05); }
 
 
+.hours-list .time-range{
+  direction: ltr;
+  unicode-bidi: bidi-override; /* מונע התהפכויות ב-RTL */
+  white-space: nowrap;          /* שלא יישבר לשתי שורות */
+  display: inline-block;
+}
 

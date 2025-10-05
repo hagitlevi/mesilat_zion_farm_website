@@ -6,7 +6,9 @@ from django.dispatch import receiver
 from django.utils import timezone
 from django.contrib.auth.models import User
 from django.core.exceptions import ValidationError
-from datetime import time
+from datetime import datetime, time, timedelta
+from zoneinfo import ZoneInfo
+
 ACTIVITY_TYPES = [
     ('basic', 'מתחילים'),
     ('advanced', 'מתקדמים'),
@@ -75,7 +77,7 @@ class Weekday(models.Model):
 
 class BusinessHours(models.Model):
     season = models.CharField(max_length=10, choices=[("summer","קיץ"),("winter","חורף")])
-    days = models.ManyToManyField(Weekday, related_name="business_hours")
+    days = models.ManyToManyField('Weekday', related_name="business_hours")
     start_time = models.TimeField()
     end_time = models.TimeField()
 
@@ -85,6 +87,32 @@ class BusinessHours(models.Model):
 
     def __str__(self):
         return f"{self.season} {self.start_time}-{self.end_time}"
+
+    # --- חדש: לוגיקה מינימלית שמתאימה את העונה לפי שינוי השעון בישראל ---
+
+    @staticmethod
+    def _season_for_dt(dt=None) -> str:
+        """מחזיר 'summer' אם DST פעיל ב־Asia/Jerusalem, אחרת 'winter'."""
+        tz = ZoneInfo("Asia/Jerusalem")
+        if dt is None:
+            dt = timezone.now()
+        local = dt.astimezone(tz)
+        return "summer" if (local.dst() or timedelta(0)) != timedelta(0) else "winter"
+
+    @classmethod
+    def active_for_now(cls):
+        """QuerySet של שעות העבודה הפעילות כרגע לפי שינוי השעון."""
+        return cls.objects.filter(season=cls._season_for_dt())
+
+    @classmethod
+    def active_for_date(cls, date_obj):
+        """
+        QuerySet של שעות העבודה הפעילות לתאריך מסוים.
+        משתמשים ב־12:00 באותו יום כדי לא ליפול בדיוק על שעת המעבר.
+        """
+        tz = ZoneInfo("Asia/Jerusalem")
+        noon_local = datetime.combine(date_obj, time(12, 0)).replace(tzinfo=tz)
+        return cls.objects.filter(season=cls._season_for_dt(noon_local))
 
 class ActivityRule(models.Model):
     activity = models.ForeignKey("Activity", on_delete=models.CASCADE, related_name="rules")

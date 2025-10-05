@@ -1,11 +1,10 @@
-from homePage.models import ActivityRule, BusinessHours, Season, Booking, Payment
+from homePage.models import ActivityRule, BusinessHours, Season, Activity, Appointment, Booking, Payment
 from .forms import SiteReviewForm, CancelRequestForm
 from .models import SiteReview, CancellationRequest
 from django.http import Http404
 from django.views.decorators.http import require_http_methods
 from django.db.models import Q, Avg
 from django.core.paginator import Paginator
-from datetime import date, time as dt_time, timedelta
 from zoneinfo import ZoneInfo
 from .utils import group_consecutive_hours
 import json
@@ -13,21 +12,20 @@ from django.views.decorators.http import require_GET
 from .models import TermsConsent
 import secrets
 from homePage.utils import assign_unique_ref
-import time
 from django.conf import settings
 from django.shortcuts import render, get_object_or_404
 from django.urls import reverse
 from django.http import HttpResponseBadRequest, JsonResponse
 from django.views.decorators.csrf import csrf_exempt
-from django.conf import settings
 from django.utils import timezone
 from urllib.parse import urlencode, urlsplit, urlunsplit, parse_qsl
-from datetime import datetime
 from decimal import Decimal
 from django.db import transaction
-from homePage.models import Activity, Appointment, Booking, Payment
 from django.shortcuts import redirect
 from django.contrib import messages
+from django.core.mail import EmailMultiAlternatives
+from datetime import date, datetime, timedelta, time as dtime
+import time as time_mod
 
 VARIANT_TO_TYPE = {
     "day":     "רכיבה זוגית ביום",
@@ -47,7 +45,7 @@ def home(request):
     hours_rows = build_business_hours_rows()         # שלך, מחזיר ראשון..שבת
     hours_rows = group_consecutive_hours(hours_rows) # קיבוץ רצפים זהים
     popup_payload = request.session.pop('payment_popup', None)  # קריאה חד-פעמית
-    is_winter = (detect_season(timezone.localdate()) == Season.WINTER)
+    is_winter = ((timezone.localtime().dst() or timedelta(0)) == timedelta(0))
     latest_reviews = list(SiteReview.objects.order_by('-created_at')[:4])  # ← 4 אחרונות
     reviews_total  = SiteReview.objects.count()
     reviews_avg    = SiteReview.objects.aggregate(avg=Avg('rating'))['avg'] or 0
@@ -65,10 +63,12 @@ def riding_lessons_view(request):
     return render(request, 'homePage/riding_lessons.html', {'activity': activity})
 
 def night_riding_view(request):
-    if detect_season(timezone.localdate()) == Season.WINTER:
-        raise Http404("רכיבת לילה אינה פעילה בחורף")
+    is_winter_now = ((timezone.localtime().dst() or timedelta(0)) == timedelta(0))
+    if is_winter_now:
+        raise Http404("‌رכיבת לילה אינה פעילה בחורף")
+
     activity = get_object_or_404(Activity, name="רכיבת לילה")
-    return render(request, 'homePage/night_riding.html', {'activity': activity})
+    return render(request, "homePage/night_riding.html", {"activity": activity})
 
 def sunrise_riding_view(request):
     activity = get_object_or_404(Activity, name="רכיבה בזריחה")
@@ -117,21 +117,30 @@ def _strict_window(activity, base_date):
     """
     name = getattr(activity, "name", "")
     if name == "רכיבת לילה":
-        start_dt = datetime.combine(base_date, time(20, 0))           # 20:00
-        end_dt   = datetime.combine(base_date, time(0, 0)) + timedelta(days=1)  # 24:00 (00:00 שלמחרת)
+        start_dt = datetime.combine(base_date, dtime(20, 0))           # 20:00
+        end_dt   = datetime.combine(base_date, dtime(0, 0)) + timedelta(days=1)  # 24:00 (00:00 שלמחרת)
         return start_dt, end_dt
     if name == "רכיבה בזריחה":
-        start_dt = datetime.combine(base_date, time(5, 0))            # 05:00
-        end_dt   = datetime.combine(base_date, time(8, 0))            # 08:00
+        start_dt = datetime.combine(base_date, dtime(5, 0))            # 05:00
+        end_dt   = datetime.combine(base_date, dtime(8, 0))            # 08:00
         return start_dt, end_dt
     return None, None
 
-def detect_season(d):
+def detect_season(d=None):
     """
-    לוגיקה פשוטה: אפריל–ספטמבר = קיץ, אחרת חורף.
-    אם יש אצלך לוגיקה אחרת/טבלת עונות – החליפי כאן.
+    ▼ גרסה זמנית תואמת-ישראל (DST):
+    - אם d=None → מחליטה לפי עכשיו
+    - אם d הוא date → מחליטה לפי 12:00 באותו יום (נמנע מנפילה על רגע המעבר)
     """
-    return Season.SUMMER if 4 <= d.month <= 9 else Season.WINTER
+    tz = ZoneInfo("Asia/Jerusalem")
+    if d is None:
+        local = timezone.localtime()
+        is_summer = (local.dst() or timedelta(0)) != timedelta(0)
+    else:
+        noon_local = datetime.combine(d, dtime(12, 0)).replace(tzinfo=tz)
+        is_summer = (noon_local.dst() or timedelta(0)) != timedelta(0)
+
+    return Season.SUMMER if is_summer else Season.WINTER
 
 def get_rules_for(activity, d):
     """
@@ -142,8 +151,13 @@ def get_rules_for(activity, d):
       win_end_dt:   סוף חלון (datetime) אם מוגדר
     סדר עדיפויות: ActivityRule (ספציפי לפעילות) → BusinessHours (כללי) → בלי כללים.
     """
-    weekday = d.weekday()                     # Monday=0 ... Sunday=6
-    season = detect_season(d)
+    weekday = d.weekday()  # Monday=0 ... Sunday=6
+
+    # === שינוי קטן: קובע עונה לפי מעבר השעון בישראל (DST) ===
+    # משתמשים ב-12:00 באותו יום כדי לא ליפול בדיוק על שעת המעבר.
+    tz = ZoneInfo("Asia/Jerusalem")
+    noon_local = datetime.combine(d, dtime(12, 0)).replace(tzinfo=tz)
+    season = "summer" if (noon_local.dst() or timedelta(0)) != timedelta(0) else "winter"
 
     # 1) כלל ספציפי לפעילות (אם קיים ליום+עונה)
     arule = (ActivityRule.objects
@@ -157,8 +171,8 @@ def get_rules_for(activity, d):
 
         if arule.end_time:
             # תמיכה ב"סוף היום" (24:00) באמצעות סימון end_is_midnight_next_day
-            if arule.end_is_midnight_next_day:
-                win_end_dt = datetime.combine(d, dt_time(0, 0)) + timedelta(days=1)  # 00:00 שלמחרת
+            if getattr(arule, "end_is_midnight_next_day", False):
+                win_end_dt = datetime.combine(d, dtime(0, 0)) + timedelta(days=1)  # 00:00 שלמחרת
             else:
                 win_end_dt = datetime.combine(d, arule.end_time)
         else:
@@ -172,8 +186,8 @@ def get_rules_for(activity, d):
           .first())
 
     if bh:
-        win_start_dt   = datetime.combine(d, bh.start_time)
-        win_end_dt     = datetime.combine(d, bh.end_time)
+        win_start_dt = datetime.combine(d, bh.start_time)
+        win_end_dt   = datetime.combine(d, bh.end_time)
         # ברירת מחדל עבור שעות כלליות: לא מחייב שיוך, בלי cutoff
         return False, 0, win_start_dt, win_end_dt
 
@@ -216,14 +230,12 @@ def _durations_for_variant(variant: str):
 
     return []
 
-def _detect_season(d):
-    # קיץ: אפריל–ספטמבר; תרגישי חופשי לשנות
-    return Season.SUMMER if 4 <= d.month <= 9 else Season.WINTER
-
 def build_business_hours_rows(season=None):
     """מחזיר רשימה מוכנה לתצוגה: [{label, closed, start, end}, ...] לפי ה-BusinessHours מהאדמין."""
     if season is None:
-        season = _detect_season(timezone.localtime().date())
+        # קובע עונה לפי שינוי השעון בישראל (Asia/Jerusalem) בזמן המקומי הנוכחי
+        now_local = timezone.localtime()
+        season = "summer" if (now_local.dst() or timedelta(0)) != timedelta(0) else "winter"
 
     # Monday=0 ... Sunday=6; נציג לפי ראשון..שבת
     day_map = {0: None, 1: None, 2: None, 3: None, 4: None, 5: None, 6: None}
@@ -1175,15 +1187,15 @@ def pay_return(request):
         return redirect('home')
 
     # נחכה בשקט עד 5 שניות שה-webhook יסיים (בלי להראות "מעבדים...")
-    deadline = time.time() + 5.0
+    deadline = time_mod.time() + 5.0
     payment = None
     finals = ('succeeded', 'failed', 'canceled', 'refunded')
 
-    while time.time() < deadline:
+    while time_mod.time() < deadline:
         payment = Payment.objects.filter(id=pid).only('status', 'charge_id').first()
         if payment and payment.status in finals:
             break
-        time.sleep(0.3)
+        time_mod.sleep(0.3)
 
     # בדיקה אחרונה והודעה אחת בלבד: הצלחה או שגיאה
     payment = Payment.objects.filter(id=pid).only('status', 'charge_id').first()
@@ -1471,11 +1483,10 @@ def mock_checkout(request, payment_id: int):
                   {"payment": payment, "amount_nis": amount_nis})
 
 # ——— 5) התראות — מייל ו־SMS (פשוטים; החליפי בספקים שלך) ———
-from django.core.mail import send_mail
 
 def _send_booking_email(payment, booking):
     if not getattr(payment, "email", None):
-        return
+        return False
 
     # נתונים
     amount_nis   = ((getattr(payment, "amount_agorot", 0) or 0) / 100)
@@ -1517,20 +1528,19 @@ def _send_booking_email(payment, booking):
         )
 
     # --- HTML RTL ממורכז, רספונסיבי, עם מניעת גלישה ---
-    html_body = f"""\
-<!doctype html>
+    html_body = f"""<!doctype html>
 <html lang="he" dir="rtl">
   <head>
     <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">  <!-- חשוב לנייד -->
+    <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>אישור הזמנה – חוות מסילת ציון</title>
   </head>
   <body style="margin:0;background:#f6f7f9;font-family:Arial,Helvetica,'Segoe UI',sans-serif;direction:rtl;-ms-text-size-adjust:100%;-webkit-text-size-adjust:100%;mso-line-height-rule:exactly;">
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0"
            style="width:100%;background:#f6f7f9;padding:24px 0;border-collapse:collapse;mso-table-lspace:0pt;mso-table-rspace:0pt;">
       <tr>
-        <td align="center" style="padding:0;">  <!-- מרכז את התיבה בכל לקוח מייל -->
-          <center>  <!-- תג center עדיין נתמך מצוין ברוב הלקוחות -->
+        <td align="center" style="padding:0;">
+          <center>
             <table role="presentation" width="600" cellpadding="0" cellspacing="0"
                    style="width:100%;max-width:600px;background:#ffffff;border-radius:12px;overflow:hidden;border-collapse:collapse;table-layout:fixed;margin:0 auto;direction:rtl;text-align:right;">
               <tr>
@@ -1581,15 +1591,29 @@ def _send_booking_email(payment, booking):
 </html>
 """
 
-    sent = send_mail(
-        subject=subject,
-        message=text_body,
-        from_email=None,
-        recipient_list=[payment.email],
-        html_message=html_body,
-        fail_silently=True,
-    )
+    # ===== שליחת המייל עם Message-ID קבוע לשרשור =====
+    from_addr = getattr(settings, "DEFAULT_FROM_EMAIL", None)
 
+    root_msgid = _session_msgid(booking)  # אותו יוצר מזהה לפי payment_ref
+
+    email = EmailMultiAlternatives(
+        subject,
+        text_body,
+        getattr(settings, "DEFAULT_FROM_EMAIL", None),
+        [payment.email],
+        headers={"Message-ID": root_msgid, "References": root_msgid},  # ← חדש
+    )
+    if html_body:
+        email.attach_alternative(html_body, "text/html")
+
+    sent = email.send(fail_silently=True)
     return sent >= 1
 
+
+def _session_msgid(session) -> str:
+    ref = (getattr(session, "payment_ref", None) or "—").replace(" ", "")
+    from django.conf import settings
+    from_addr = getattr(settings, "DEFAULT_FROM_EMAIL", "")
+    domain = from_addr.split("@")[-1] if "@" in from_addr else "mesilat-zion.local"
+    return f"<session-{ref}@{domain}>"
 
