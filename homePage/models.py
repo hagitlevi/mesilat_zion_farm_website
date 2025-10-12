@@ -405,6 +405,8 @@ class TreatmentSession(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
+    feedback_sms_sent_at = models.DateTimeField("נשלח SMS משוב ב-", null=True, blank=True)
+    feedback_token = models.CharField("אסימון משוב", max_length=40, blank=True, default="")
 
     def __str__(self):
         instr = self.instructor.full_name if self.instructor else "—"

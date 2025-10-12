@@ -739,6 +739,31 @@ def admin_pay_stub(request):
                         details=session_draft.get("details") or "",
                         payment_ref=_gen_unique_ref_any(),
                     )
+                    sid = normalize_phone_il((obj.customer_phone or "").strip())
+                    if session_draft.get("accept_terms") and sid:
+                        # IP מאחורי פרוקסי (אם יש)
+                        xff = (request.META.get("HTTP_X_FORWARDED_FOR") or "").split(",")[0].strip()
+                        ip = xff or request.META.get("HTTP_CF_CONNECTING_IP") \
+                             or request.META.get("HTTP_X_REAL_IP") \
+                             or request.META.get("REMOTE_ADDR") or ""
+
+                        ua = (request.META.get("HTTP_USER_AGENT") or "")[:400]
+                        full_name = (obj.customer_full_name or "").strip()
+
+                        tv = getattr(settings, "TERMS_VERSION", "1.0")
+                        pv = getattr(settings, "PRIVACY_VERSION", "1.0")
+
+                        TermsConsent.objects.update_or_create(
+                            policy="terms", version=tv, subject_id=sid,
+                            defaults={"accepted_at": timezone.now(), "full_name": full_name, "ip": ip,
+                                      "user_agent": ua},
+                        )
+                        TermsConsent.objects.update_or_create(
+                            policy="privacy", version=pv, subject_id=sid,
+                            defaults={"accepted_at": timezone.now(), "full_name": full_name, "ip": ip,
+                                      "user_agent": ua},
+                        )
+
             except Exception:
                 messages.error(request, "שגיאה במהלך יצירת המפגש/התשלום.")
                 return redirect(reverse("admin:homePage_treatmentsession_add"))
@@ -1047,6 +1072,10 @@ class TreatmentSessionAdminForm(forms.ModelForm):
         required=False, decimal_places=2, max_digits=8,
         help_text="אם תוזן כאן–זה יהיה המחיר הסופי להזמנה זו (למייל/‏SMS)."
     )
+    accept_terms = forms.BooleanField(
+        label="אני מאשר/ת את תנאי השימוש ומדיניות הפרטיות",
+        required=False
+    )
 
     class Meta:
         model = TreatmentSession
@@ -1088,6 +1117,64 @@ class TreatmentSessionAdminForm(forms.ModelForm):
                 for field in self.fields.values():
                     field.disabled = True
 
+        self.fields["accept_terms"].help_text = mark_safe(r"""
+        <script>
+        (function(){
+          function ready(fn){ if(document.readyState!=="loading") fn(); else document.addEventListener("DOMContentLoaded", fn); }
+          ready(function(){
+            var phone = document.getElementById("id_customer_phone");
+            var row   = document.querySelector(".field-accept_terms");
+            var box   = document.getElementById("id_accept_terms");
+            if(!phone || !row || !box) return;
+
+            async function refresh(){
+              var val = (phone.value || "").trim();
+              if(!val){
+                // אין טלפון → נשאיר את הצ'קבוקס גלוי
+                row.style.display = "";
+                box.checked = false;
+                return;
+              }
+              try{
+                const url = "/admin/homePage/treatmentsession/check-consent/?phone=" + encodeURIComponent(val);
+                const r = await fetch(url, {headers: {"X-Requested-With":"XMLHttpRequest"}});
+                const data = await r.json();
+                const has = !!(data.has || data.has_consent);
+                if(has){
+                  row.style.display = "none";
+                  box.checked = true;
+                  box.required = false;   // ← חדש
+                }else{
+                  row.style.display = "";
+                  box.checked = false;
+                  box.required = true;    // ← חדש
+                }
+
+              }catch(e){
+                row.style.display = "";         // במקרה כשל, לא להסתיר
+              }
+            }
+
+            // אירועים רלוונטיים
+            ["change","blur","keyup","input"].forEach(function(ev){
+              phone.addEventListener(ev, function(){ refresh(); });
+            });
+
+            // בדיקה ראשונית בטעינה
+            refresh();
+          });
+        })();
+        </script>
+                """)
+
+    def clean(self):
+        cleaned = super().clean()
+        phone = normalize_phone_il((cleaned.get("customer_phone") or "").strip())
+        need_accept = bool(phone) and (not has_consent_by_phone(phone))
+        if need_accept and not cleaned.get("accept_terms"):
+            self.add_error("accept_terms", "יש לאשר את תנאי השימוש ומדיניות הפרטיות.")
+        return cleaned
+
     def clean_override_amount_nis(self):
         v = self.cleaned_data.get("override_amount_nis")
         if v is not None and v < 0:
@@ -1117,8 +1204,8 @@ class TreatmentSessionAdmin(admin.ModelAdmin):
 
     fieldsets = (
         ("פרטי מפגש", {"fields": ("date", "start_time", "end_time", "instructor", "payment_ref")}),
-        ("פרטי לקוח", {"fields": ("customer_full_name", "customer_phone", "customer_email")}),
-        ("סוג ומחיר", {"fields": ("lesson_type", "calc_amount_nis", "override_amount_nis")}),  # ⬅️ הוספה כאן
+        ("פרטי לקוח", {"fields": ("customer_full_name", "customer_phone", "customer_email", "accept_terms")}),  # ⬅️ כאן
+        ("סוג ומחיר", {"fields": ("lesson_type", "calc_amount_nis", "override_amount_nis")}),
         ("פרטים/הערות", {"fields": ("details",)}),
     )
 
@@ -1239,6 +1326,7 @@ class TreatmentSessionAdmin(admin.ModelAdmin):
                     "customer_email":     cd.get("customer_email") or "",
                     "lesson_type":        cd.get("lesson_type") or "",
                     "details":            cd.get("details") or "",
+                    "accept_terms": bool(cd.get("accept_terms")),
                     # אם יש לך שדה בטופס לשינוי מחיר:
                     "override_amount_nis": str(cd.get("override_amount_nis") or ""),
                 }
@@ -1414,6 +1502,48 @@ class TreatmentSessionAdmin(admin.ModelAdmin):
 
         # שמירה בפועל
         super().save_model(request, obj, form, change)
+        # === שמירת הסכמה: טלפון + IP + User-Agent ===
+        try:
+            if form.cleaned_data.get("accept_terms"):
+                # טלפון מנורמל
+                phone = normalize_phone_il((getattr(obj, "customer_phone", "") or "").strip())
+                if phone:
+                    # שליפת IP מאחורי פרוקסי אם יש
+                    xff = (request.META.get("HTTP_X_FORWARDED_FOR") or "").split(",")[0].strip()
+                    ip = xff or request.META.get("HTTP_CF_CONNECTING_IP") \
+                         or request.META.get("HTTP_X_REAL_IP") \
+                         or request.META.get("REMOTE_ADDR") \
+                         or ""
+
+                    # קיצור ה-UA למניעת גלישה בשדה
+                    ua = (request.META.get("HTTP_USER_AGENT") or "")[:400]
+
+                    full_name = (obj.customer_full_name or "").strip()
+                    tv = getattr(settings, "TERMS_VERSION", "1.0")
+                    pv = getattr(settings, "PRIVACY_VERSION", "1.0")
+
+                    # תנאי שימוש
+                    TermsConsent.objects.update_or_create(
+                        policy="terms", version=tv, subject_id=phone,
+                        defaults={
+                            "accepted_at": timezone.now(),
+                            "full_name": full_name,
+                            "ip": ip,
+                            "user_agent": ua,
+                        },
+                    )
+                    # פרטיות
+                    TermsConsent.objects.update_or_create(
+                        policy="privacy", version=pv, subject_id=phone,
+                        defaults={
+                            "accepted_at": timezone.now(),
+                            "full_name": full_name,
+                            "ip": ip,
+                            "user_agent": ua,
+                        },
+                    )
+        except Exception:
+            pass
 
         # אם השעה/תאריך השתנו – שולחים עדכון (מייל + SMS) בלי שום פופאפ מיוחד
         if change and (old_date is not None):
@@ -1435,6 +1565,12 @@ class TreatmentSessionAdmin(admin.ModelAdmin):
         extra_context["title"] = "פרטי ההזמנה"
         return super().changeform_view(request, object_id, form_url, extra_context)
 
+    def check_consent(self, request):
+        phone_raw = (request.GET.get("phone") or "").strip()
+        sid = normalize_phone_il(phone_raw) if phone_raw else ""
+        has = bool(has_consent_by_phone(sid)) if sid else False
+        return JsonResponse({"has": has})
+
     # ---- לוח מדריכים באדמין ----
     def get_urls(self):
         urls = super().get_urls()
@@ -1443,6 +1579,8 @@ class TreatmentSessionAdmin(admin.ModelAdmin):
             path("list/",     self.admin_site.admin_view(self.force_list_view), name="treatmentsession_list"),
             path("events/",   self.admin_site.admin_view(self.events_api), name="treatmentsession_events"),
             path("events/update/", self.admin_site.admin_view(self.events_update), name="treatmentsession_events_update"),
+            path("check-consent/", self.admin_site.admin_view(self.check_consent), name="treatmentsession_check_consent"),
+
         ]
         return extra + urls
 

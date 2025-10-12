@@ -1,13 +1,21 @@
 from django.core.management.base import BaseCommand
 from django.utils import timezone
 from django.conf import settings
-from datetime import timedelta
 import secrets
+from datetime import datetime, timedelta
+from django.core.cache import cache
+from homePage.models import Booking, TreatmentSession
 
-from homePage.models import Booking
+def _get_name(obj) -> str:
+    # Booking: customer_name  |  TreatmentSession: customer_full_name
+    return (
+        (getattr(obj, "customer_name", "") or "").strip()
+        or (getattr(obj, "customer_full_name", "") or "").strip()
+        or "לקוח/ה"
+    )
 
-def _build_feedback_sms(booking, url: str) -> str:
-    name = (booking.customer_name or "לקוח/ה").strip()
+def _build_feedback_sms(obj, url: str) -> str:
+    name = _get_name(obj)
     lines = [
         f"היי {name}, מקווים שנהנית!",
         "נשמח למשוב קצר על החוויה:",
@@ -19,8 +27,8 @@ class Command(BaseCommand):
     help = "שולח SMS בקשת משוב ~30 דק׳ אחרי סוף ההזמנה ללקוחות שטרם קיבלו בקשה"
 
     def add_arguments(self, parser):
-        parser.add_argument("--window-min", type=int, default=120,
-                            help="כמה דקות אחורה לחפש (ברירת מחדל: 120)")
+        parser.add_argument("--window-min", type=int, default=450,
+                            help="כמה דקות אחורה לחפש (ברירת מחדל: 450)")
         parser.add_argument("--delay-min", type=int, default=30,
                             help="דיליי בדקות אחרי סוף ההזמנה (ברירת מחדל: 30)")
 
@@ -61,16 +69,50 @@ class Command(BaseCommand):
             except Exception:
                 ok = False
 
-            if not ok:
-                try:
-                    from homePage.services.ntfy_gateway import send_sms_via_phone
-                    ok = send_sms_via_phone(phone, text)
-                except Exception:
-                    ok = False
 
             if ok:
                 b.feedback_sms_sent_at = timezone.now()
                 b.save(update_fields=["feedback_sms_sent_at", "feedback_token"])
+                sent += 1
+
+        # === TreatmentSession (טיפולית) – בלי שדות ב-DB, חסימה מכפילויות דרך cache ===
+        tz = timezone.get_current_timezone()
+        s_qs = (TreatmentSession.objects
+                .filter(end_time__isnull=False,
+                        date__gte=(target_after - timedelta(days=1)).date(),
+                        date__lte=(target_before + timedelta(days=1)).date()))
+
+        for s in s_qs:
+            phone = (s.customer_phone or "").strip()
+            if not phone or not base_url:
+                continue
+
+            # מחברים date + end_time לזמן מודע ל-TZ
+            try:
+                end_local = timezone.make_aware(datetime.combine(s.date, s.end_time), tz)
+            except Exception:
+                continue
+
+            # בתוך החלון בלבד (אחרי הדיליי ולפני חלון החיפוש)
+            if not (target_after <= end_local <= target_before):
+                continue
+
+            # דה-דופליקציה: cache key לפי מזהה וזמן סיום
+            cache_key = f"feedback_sms:session:{s.id}:{int(end_local.timestamp())}"
+            if not cache.add(cache_key, 1, timeout=14 * 24 * 3600):  # 14 יום
+                continue
+
+            text = _build_feedback_sms(s, base_url)
+
+            ok = False
+            try:
+                from homePage.services.ntfy_gateway import send_sms_via_ntfy
+                ok = send_sms_via_ntfy(phone, text)
+            except Exception:
+                ok = False
+
+
+            if ok:
                 sent += 1
 
         self.stdout.write(f"Feedback SMS sent: {sent}")
