@@ -313,35 +313,37 @@
   const elParticipantsLbl = document.getElementById('participants_label');
   const elParticipantsWrap= document.getElementById('participants_wrap');
 
-  function syncParticipantsField(){
-      const isCouple = (elName.value.trim() === 'רכיבה זוגית');
+function syncParticipantsField(){
+  const name = (elName.value || '').trim();
+  const HIDE_FOR = new Set(['רכיבת ילדים', 'צילומים']); // ← חדש
+  const isCouple = (name === 'רכיבה זוגית');
 
-      if (!elParticipants) return;
+  if (!elParticipants) return;
 
-      if (isCouple){
-        // ערך קבוע 2, לא חובה, וקורא/ת לא רואה את השדה
-        elParticipants.value = '2';
-        elParticipants.removeAttribute('required');
-        elParticipants.setAttribute('readonly','readonly'); // נשאר נשלח בטופס
+  // לא להשבית (disabled) – כי אז זה לא יישלח ב-POST
+  const hide = isCouple || HIDE_FOR.has(name);
 
-        if (elParticipantsLbl)  { elParticipantsLbl.style.display = 'none'; elParticipantsLbl.hidden  = true; }
-        if (elParticipantsWrap) { elParticipantsWrap.style.display = 'none'; elParticipantsWrap.hidden = true; }
-      } else {
-        // מציגים שוב, חובה, מינימום 1
-        elParticipants.removeAttribute('readonly');
-        elParticipants.setAttribute('required','required');
-        if (!elParticipants.value || parseInt(elParticipants.value,10) < 1){
-          elParticipants.value = '1';
-        }
+  if (hide){
+    // ערך קבוע ושקט, השדה לא מוצג אבל כן נשלח
+    elParticipants.value = isCouple ? '2' : '1';
+    elParticipants.readOnly = true;
+    elParticipants.removeAttribute('required');
 
-        if (elParticipantsLbl)  { elParticipantsLbl.style.display = ''; elParticipantsLbl.hidden  = false; }
-        if (elParticipantsWrap) { elParticipantsWrap.style.display = ''; elParticipantsWrap.hidden = false; }
-      }
+    if (elParticipantsLbl)  { elParticipantsLbl.style.display = 'none'; elParticipantsLbl.hidden = true; }
+    if (elParticipantsWrap) { elParticipantsWrap.style.display = 'none'; elParticipantsWrap.hidden = true; }
+  } else {
+    // מציגים שוב, חובה, מינימום 1
+    elParticipants.readOnly = false;
+    elParticipants.setAttribute('required','required');
+    if (!elParticipants.value || parseInt(elParticipants.value,10) < 1) elParticipants.value = '1';
 
-      // עדכון תצוגות
-      if (typeof updateSummary === 'function') updateSummary();
-      if (typeof loadQuote     === 'function') loadQuote();
+    if (elParticipantsLbl)  { elParticipantsLbl.style.display = ''; elParticipantsLbl.hidden = false; }
+    if (elParticipantsWrap) { elParticipantsWrap.style.display = ''; elParticipantsWrap.hidden = false; }
   }
+
+  if (typeof updateSummary === 'function') updateSummary();
+  if (typeof loadQuote     === 'function') loadQuote();
+}
 
 
   // ----- helpers -----
@@ -674,6 +676,7 @@ function activeMode(){
       return;
     }
     if (elOverride) elOverride.value = String(mChosen);
+    if (!elParticipants.value) elParticipants.value = '1';
   });
 
   // ----- אתחול -----

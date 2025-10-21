@@ -4,6 +4,25 @@ from django.db.models import Q
 from django.utils import timezone
 import secrets
 from django.db import transaction, IntegrityError
+from datetime import date  # ודאי שיש ייבוא
+
+def _get_effective_rule(g_date: date) -> CustomSchedule | None:
+    # 1) כלל לועזי חד־פעמי באותו תאריך
+    r = CustomSchedule.objects.filter(kind="GREGORIAN", date=g_date).first()
+    if r:
+        return r
+    # 2) כלל לועזי שחוזר כל שנה (אותו יום/חודש)
+    r = (CustomSchedule.objects
+         .filter(kind="GREGORIAN", repeat_every_year=True,
+                 date__month=g_date.month, date__day=g_date.day)
+         .first())
+    if r:
+        return r
+    # 3) כלל עברי שתואם (נשתמש במתודה של המודל)
+    for rule in CustomSchedule.objects.filter(kind="HEBREW").iterator():
+        if rule.matches_gregorian_date(g_date):
+            return rule
+    return None
 
 def cleanup_expired_appointments(delete_booked=False):
     """
@@ -119,61 +138,64 @@ def _create_quarter_slots(current_date, start_t: time, end_t: time, activity_nam
 # --- עוזר: קבלת "חלונות" לזמן לפי today + CustomSchedule ---
 def _windows_for_date(current_date):
     """
-    מחזיר רשימת חלונות [(label, start_time, end_time, activity_name), ...]
+    מחזיר [(label, start_time, end_time, activity_name)]
     label: "regular" / "sunrise" / "night"
     """
-    weekday = current_date.weekday()  # Mon=0 ... Sun=6
-    custom = CustomSchedule.objects.filter(date=current_date).first()
-
-    # אם יש CustomSchedule שסגור – ברירת מחדל: כל היום סגור,
-    # אלא אם מפעילים במפורש allow_sunrise/allow_night (כדי לפתוח רק חלון מיוחד).
-    if custom and not custom.is_active:
-        windows = []
-        # חריגים אם ביקשת במפורש:
-        if getattr(custom, "allow_sunrise", False):
-            s_start = getattr(custom, "sunrise_start_time", None) or time(5, 0)
-            s_end   = getattr(custom, "sunrise_end_time", None)   or time(8, 0)
-            windows.append(("sunrise", s_start, s_end, "רכיבה בזריחה"))
-        if getattr(custom, "allow_night", False):
-            n_start = getattr(custom, "night_start_time", None) or time(20, 0)
-            n_end   = getattr(custom, "night_end_time", None)   or time(23, 59)
-            windows.append(("night", n_start, n_end, "רכיבת לילה"))
-        return windows
+    weekday = current_date.weekday()  # Mon=0..Sun=6
+    rule = _get_effective_rule(current_date)
 
     windows = []
+    def add_regular(s, e):
+        if s and e: windows.append(("regular", s, e, None))
+    def add_sunrise(s, e):
+        windows.append(("sunrise", s or time(5, 0), e or time(8, 0), "רכיבה בזריחה"))
+    def add_night(s, e):
+        windows.append(("night", s or time(20, 0), e or time(23, 59), "רכיבת לילה"))
 
-    # --- רגיל ---
-    if custom and (custom.start_time and custom.end_time):
-        r_start, r_end = custom.start_time, custom.end_time
-    else:
-        # ברירות מחדל: ו׳ קצר, ש׳ סגור, שאר הימים 09:00–20:00
-        if weekday == 4:      # Friday
-            r_start, r_end = time(9, 0), time(16, 0)
-        elif weekday == 5:    # Saturday
-            r_start, r_end = None, None  # סגור
+    if rule:
+        # יום לא פעיל: רגיל סגור; אפשר לפתוח זריחה/לילה אם הכלל מאפשר
+        if not rule.is_active:
+            if weekday in {6, 0, 1, 2, 3} and rule.allow_sunrise:
+                add_sunrise(rule.sunrise_start_time, rule.sunrise_end_time)
+            if weekday in {6, 0, 1, 2, 3} and rule.allow_night:
+                add_night(rule.night_start_time, rule.night_end_time)
+            return windows
+
+        # יום פעיל: שעות רגילות לפי הכלל (או ברירת מחדל אם לא הוגדר)
+        if rule.start_time and rule.end_time:
+            add_regular(rule.start_time, rule.end_time)
         else:
-            r_start, r_end = time(9, 0), time(20, 0)
-    if r_start and r_end:
-        windows.append(("regular", r_start, r_end, None))
+            if weekday == 4:        # Fri
+                add_regular(time(9, 0), time(16, 0))
+            elif weekday == 5:      # Sat
+                pass
+            else:
+                add_regular(time(9, 0), time(20, 0))
 
-    # --- זריחה: א׳–ה׳ בלבד ---
+        # זריחה/לילה – רק אם הכלל עצמו מאפשר
+        if weekday in {6, 0, 1, 2, 3} and rule.allow_sunrise:
+            add_sunrise(rule.sunrise_start_time, rule.sunrise_end_time)
+        if weekday in {6, 0, 1, 2, 3} and rule.allow_night:
+            add_night(rule.night_start_time, rule.night_end_time)
+        return windows
+
+    # אין כלל פוגע: ברירות מחדל (כמו שהיה)
+    if weekday == 4:
+        add_regular(time(9, 0), time(16, 0))
+    elif weekday == 5:
+        pass
+    else:
+        add_regular(time(9, 0), time(20, 0))
+
     if weekday in {6, 0, 1, 2, 3}:
-        if getattr(custom, "allow_sunrise", True):  # אם אין שדה – נניח מותר (כמו היום)
-            s_start = getattr(custom, "sunrise_start_time", None) or time(5, 0)
-            s_end   = getattr(custom, "sunrise_end_time", None)   or time(8, 0)
-            windows.append(("sunrise", s_start, s_end, "רכיבה בזריחה"))
-
-    # --- לילה: א׳–ה׳ בלבד ---
-    if weekday in {6, 0, 1, 2, 3}:
-        if getattr(custom, "allow_night", True):
-            n_start = getattr(custom, "night_start_time", None) or time(20, 0)
-            n_end   = getattr(custom, "night_end_time", None)   or time(23, 59)
-            windows.append(("night", n_start, n_end, "רכיבת לילה"))
-
+        add_sunrise(None, None)
+        add_night(None, None)
     return windows
 
 
 def generate_appointments(days_ahead=7):
+    cleanup_expired_appointments(delete_booked=False)
+
     start_date = timezone.localdate()
 
     for day_offset in range(days_ahead):

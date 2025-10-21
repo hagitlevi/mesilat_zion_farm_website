@@ -8,6 +8,11 @@ from django.contrib.auth.models import User
 from django.core.exceptions import ValidationError
 from datetime import datetime, time, timedelta
 from zoneinfo import ZoneInfo
+from django.db.models import Q
+from django.core.exceptions import ValidationError
+from datetime import date
+from convertdate import hebrew as hcal
+
 
 ACTIVITY_TYPES = [
     ('basic', 'מתחילים'),
@@ -38,26 +43,172 @@ class Activity(models.Model):
         return self.name
 
 class CustomSchedule(models.Model):
-    date = models.DateField(unique=True)
-    start_time = models.TimeField(null=True, blank=True)
-    end_time = models.TimeField(null=True, blank=True)
-    is_active = models.BooleanField(default=True)  # האם יש תורים בכלל ביום הזה
+    KIND_CHOICES = [
+        ("GREGORIAN", "תאריך לועזי"),
+        ("HEBREW",    "תאריך עברי חוזר"),
+    ]
 
-    # זריחה
-    allow_sunrise       = models.BooleanField(default=False)
-    sunrise_start_time  = models.TimeField(null=True, blank=True)
-    sunrise_end_time    = models.TimeField(null=True, blank=True)
+    HEB_MONTH_CHOICES = [
+        ("TISHREI",  "תשרי"),
+        ("CHESHVAN", "חשוון"),
+        ("KISLEV",   "כסלו"),
+        ("TEVET",    "טבת"),
+        ("SHEVAT",   "שבט"),
+        ("ADAR",     "אדר"),      # ראו adar_policy לשנים מעוברות
+        ("NISAN",    "ניסן"),
+        ("IYAR",     "אייר"),
+        ("SIVAN",    "סיוון"),
+        ("TAMMUZ",   "תמוז"),
+        ("AV",       "אב"),
+        ("ELUL",     "אלול"),
+        ("ADAR_I",   "אדר א׳"),
+        ("ADAR_II",  "אדר ב׳"),
+    ]
 
-    # לילה
-    allow_night         = models.BooleanField(default=False)
-    night_start_time    = models.TimeField(null=True, blank=True)
-    night_end_time      = models.TimeField(null=True, blank=True)
+    ADAR_POLICY_CHOICES = [
+        ("AUTO_ADAR2", "אוטומטי: אדר רגיל / אדר ב׳ בשנה מעוברת"),
+        ("ALWAYS_A1",  "תמיד אדר א׳ (במעוברת) / אדר רגיל (בשאינה)"),
+        ("ALWAYS_A2",  "תמיד אדר ב׳ (במעוברת) / אדר רגיל (בשאינה)"),
+    ]
+
+    MONTH_NAME_TO_NUM = {
+        # convertdate.hebrew: ניסן=1 ... אלול=6, תשרי=7 ... אדר=12, אדר ב׳=13
+        "NISAN": 1, "IYAR": 2, "SIVAN": 3, "TAMMUZ": 4, "AV": 5, "ELUL": 6,
+        "TISHREI": 7, "CHESHVAN": 8, "KISLEV": 9, "TEVET": 10, "SHEVAT": 11,
+        "ADAR": 12, "ADAR_I": 12, "ADAR_II": 13,
+    }
+
+    # ==== שדות כלליים ====
+    kind      = models.CharField("סוג כלל", max_length=10, choices=KIND_CHOICES)
+    name      = models.CharField("שם (לא חובה)", max_length=100, blank=True, default="")
+    is_active = models.BooleanField("יום פעיל?", default=False,
+                                    help_text="סמן/י אם עובדים ביום הזה. כיבוי = חסום לגמרי.")
+    repeat_every_year = models.BooleanField("לחזור כל שנה?", default=False)
+
+    # ==== לועזי ====
+    date      = models.DateField("תאריך (לועזי)", null=True, blank=True)
+
+    # ==== עברי ====
+    h_month     = models.CharField("חודש עברי", max_length=10, choices=HEB_MONTH_CHOICES, blank=True)
+    h_day       = models.PositiveSmallIntegerField("יום בחודש", null=True, blank=True)
+    adar_policy = models.CharField("מדיניות אדר", max_length=12,
+                                   choices=ADAR_POLICY_CHOICES, default="AUTO_ADAR2", blank=True)
+
+    # ==== טווחי שעות / זריחה / לילה (כמו שהיה אצלך) ====
+    start_time = models.TimeField("שעת התחלה", null=True, blank=True)
+    end_time   = models.TimeField("שעת סיום",   null=True, blank=True)
+
+    allow_sunrise       = models.BooleanField("לאפשר זריחה", default=False)
+    sunrise_start_time  = models.TimeField("זריחה - התחלה", null=True, blank=True)
+    sunrise_end_time    = models.TimeField("זריחה - סיום",   null=True, blank=True)
+
+    allow_night         = models.BooleanField("לאפשר לילה", default=False)
+    night_start_time    = models.TimeField("לילה - התחלה", null=True, blank=True)
+    night_end_time      = models.TimeField("לילה - סיום",   null=True, blank=True)
+
     class Meta:
-        verbose_name = "לוח זמנים מיוחד"
-        verbose_name_plural = "לוחות זמנים מיוחדים"
+        verbose_name = "שינוי שעות יום עבודה"
+        verbose_name_plural = "שינוי שעות יום עבודה"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["date"], condition=Q(kind="GREGORIAN"),
+                name="uniq_customschedule_greg_date"
+            ),
+            models.UniqueConstraint(
+                fields=["h_month", "h_day", "adar_policy"], condition=Q(kind="HEBREW"),
+                name="uniq_customschedule_hebrew_combo"
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["kind", "date"]),
+            models.Index(fields=["kind", "h_month", "h_day"]),
+        ]
+        ordering = ("-id",)
 
+    # ==== הצגה ====
     def __str__(self):
-        return f"{self.date}: {self.start_time} - {self.end_time}" if self.is_active else f"{self.date}: לא פעיל"
+        base = self.label()
+        return f"{base} – {'פעיל' if self.is_active else 'לא פעיל'}"
+
+    def label(self) -> str:
+        if self.kind == "GREGORIAN" and self.date:
+            return self.date.strftime("%d.%m.%Y")
+        if self.kind == "HEBREW" and self.h_month and self.h_day:
+            return f"{self.get_h_month_display()} {self.h_day}"
+        return self.name or "כלל"
+
+    # ==== ולידציה ====
+    def clean(self):
+        errors = {}
+        if self.kind == "GREGORIAN":
+            if not self.date:
+                errors["date"] = "נדרש תאריך לועזי."
+        elif self.kind == "HEBREW":
+            if not self.h_month:
+                errors["h_month"] = "נדרש חודש עברי."
+            if not self.h_day:
+                errors["h_day"] = "נדרש יום בחודש עברי."
+        if errors:
+            raise ValidationError(errors)
+
+    # ==== לוגיקה: האם כלל זה פוגע בתאריך לועזי נתון ====
+    def matches_gregorian_date(self, gregorian_year: date):
+        if self.kind == "GREGORIAN":
+            if not self.date:
+                return None
+            # אם חוזר כל שנה → בונים תאריך עם אותה ימ/חודש לשנה המבוקשת
+            if self.repeat_every_year:
+                return date(gregorian_year, self.date.month, self.date.day)
+            # חד-פעמי → מציגים רק אם זו השנה של התאריך עצמו
+            return self.date if self.date.year == gregorian_year else None
+        if self.kind == "HEBREW":
+            hy, hm, hd = hcal.from_gregorian(gregorian_year.year, gregorian_year.month, gregorian_year.day)
+            target_month = self._resolve_hebrew_month_for_year(hy)
+            return (int(hd) == int(self.h_day or 0)) and (int(hm) == int(target_month))
+        return False
+
+    def to_gregorian_for_year(self, gregorian_year: int):
+        """
+        להמחשה/תצוגה: איזה תאריך לועזי יתקבל בשנה נתונה (אם קיים).
+        """
+        if self.kind == "GREGORIAN":
+            return self.date if (self.date and self.date.year == gregorian_year) else None
+
+        if self.kind == "HEBREW":
+            # יתכנו 2 שנים עבריות בתוך שנה לועזית ← נבדוק את שתיהן
+            hy_a = hcal.from_gregorian(gregorian_year, 1, 1)[0]
+            hy_b = hcal.from_gregorian(gregorian_year, 12, 31)[0]
+            for hy in {hy_a, hy_b}:
+                hm = self._resolve_hebrew_month_for_year(hy)
+                try:
+                    y, m, d = hcal.to_gregorian(hy, hm, int(self.h_day or 1))
+                except Exception:
+                    continue
+                if y == gregorian_year:
+                    return date(y, m, d)
+        return None
+
+    # ==== עזר: הכרעת חודש אדר בשנים מעוברות ====
+    def _resolve_hebrew_month_for_year(self, hebrew_year: int) -> int:
+        base = self.h_month
+        if not base:
+            return 0
+        is_leap = hcal.leap(hebrew_year)
+
+        if base == "ADAR":
+            if self.adar_policy == "AUTO_ADAR2":
+                return 13 if is_leap else 12
+            if self.adar_policy == "ALWAYS_A1":
+                return 12
+            if self.adar_policy == "ALWAYS_A2":
+                return 13 if is_leap else 12
+
+        if base == "ADAR_I":
+            return 12 if is_leap else 12
+        if base == "ADAR_II":
+            return 13 if is_leap else 12
+
+        return self.MONTH_NAME_TO_NUM[base]
 
 class Season(models.TextChoices):
     SUMMER = "summer", _("קיץ")

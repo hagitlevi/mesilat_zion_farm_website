@@ -1,21 +1,23 @@
 from django.core.management.base import BaseCommand
 from django.utils import timezone
 from django.conf import settings
+from datetime import timedelta, datetime
 import secrets
-from datetime import datetime, timedelta
-from django.core.cache import cache
-from homePage.models import Booking, TreatmentSession
 
-def _get_name(obj) -> str:
-    # Booking: customer_name  |  TreatmentSession: customer_full_name
-    return (
-        (getattr(obj, "customer_name", "") or "").strip()
-        or (getattr(obj, "customer_full_name", "") or "").strip()
-        or "לקוח/ה"
-    )
+from homePage.models import Booking, TreatmentSession  # ← NEW
 
-def _build_feedback_sms(obj, url: str) -> str:
-    name = _get_name(obj)
+def _build_feedback_sms(booking, url: str) -> str:
+    name = (booking.customer_name or "לקוח/ה").strip()
+    lines = [
+        f"היי {name}, מקווים שנהנית!",
+        "נשמח למשוב קצר על החוויה:",
+        url
+    ]
+    return "\n".join(lines)
+
+# ← NEW: אותו טקסט לטיפולית, רק שהשם מגיע משדה אחר
+def _build_feedback_sms_session(session, url: str) -> str:
+    name = (getattr(session, "customer_full_name", "") or "לקוח/ה").strip()
     lines = [
         f"היי {name}, מקווים שנהנית!",
         "נשמח למשוב קצר על החוויה:",
@@ -24,13 +26,13 @@ def _build_feedback_sms(obj, url: str) -> str:
     return "\n".join(lines)
 
 class Command(BaseCommand):
-    help = "שולח SMS בקשת משוב ~30 דק׳ אחרי סוף ההזמנה ללקוחות שטרם קיבלו בקשה"
+    help = "שולח SMS בקשת משוב ~30 דק׳ אחרי סוף ההזמנה/המפגש ללקוחות שטרם קיבלו בקשה"
 
     def add_arguments(self, parser):
-        parser.add_argument("--window-min", type=int, default=450,
-                            help="כמה דקות אחורה לחפש (ברירת מחדל: 450)")
+        parser.add_argument("--window-min", type=int, default=120,
+                            help="כמה דקות אחורה לחפש (ברירת מחדל: 120)")
         parser.add_argument("--delay-min", type=int, default=30,
-                            help="דיליי בדקות אחרי סוף ההזמנה (ברירת מחדל: 30)")
+                            help="דיליי בדקות אחרי הסוף (ברירת מחדל: 30)")
 
     def handle(self, *args, **opts):
         if not getattr(settings, "SEND_SMS", False):
@@ -38,25 +40,30 @@ class Command(BaseCommand):
             return
 
         now = timezone.localtime()
-        delay = timedelta(minutes=int(opts["delay_min"]))         # 30 דק׳
-        window = timedelta(minutes=int(opts["window_min"]))       # 120 דק׳ אחורה
+        delay  = timedelta(minutes=int(opts["delay_min"]))
+        window = timedelta(minutes=int(opts["window_min"]))
 
-        target_before = now - delay            # הזמנות שהסתיימו עד הזמן הזה
-        target_after  = now - (delay + window) # אבל לא ישנות מדי
-
-        qs = (Booking.objects
-              .filter(end_dt__lte=target_before, end_dt__gte=target_after)
-              .filter(feedback_sms_sent_at__isnull=True))
+        target_before = now - delay            # הסתיימו עד הזמן הזה
+        target_after  = now - (delay + window) # אבל לא ישנים מדי
 
         base_url = getattr(settings, "FEEDBACK_URL", "")
-        sent = 0
+        if not base_url:
+            self.stdout.write("FEEDBACK_URL not set — skipping.")
+            return
 
-        for b in qs:
+        sent_bookings = 0
+        sent_sessions = 0
+
+        # ====== BOOKINGS (כמו שהיה) ======
+        qs_b = (Booking.objects
+                .filter(end_dt__lte=target_before, end_dt__gte=target_after)
+                .filter(feedback_sms_sent_at__isnull=True))
+
+        for b in qs_b:
             phone = (b.customer_phone or "").strip()
-            if not phone or not base_url:
+            if not phone:
                 continue
 
-            # אסימון ייחודי (אפשר להשתמש בו בעתיד לקישור מותאם)
             if not (b.feedback_token or "").strip():
                 b.feedback_token = secrets.token_urlsafe(16)
 
@@ -69,40 +76,45 @@ class Command(BaseCommand):
             except Exception:
                 ok = False
 
+            if not ok:
+                try:
+                    from homePage.services.ntfy_gateway import send_sms_via_phone
+                    ok = send_sms_via_phone(phone, text)
+                except Exception:
+                    ok = False
 
             if ok:
                 b.feedback_sms_sent_at = timezone.now()
                 b.save(update_fields=["feedback_sms_sent_at", "feedback_token"])
-                sent += 1
+                sent_bookings += 1
 
-        # === TreatmentSession (טיפולית) – בלי שדות ב-DB, חסימה מכפילויות דרך cache ===
+        # ====== TREATMENT SESSIONS (חדש) ======
+        # מסננים לפי תאריך בטווח גס, ואת הדיוק לפי זמן עושים בפייתון
         tz = timezone.get_current_timezone()
-        s_qs = (TreatmentSession.objects
+        qs_s = (TreatmentSession.objects
                 .filter(end_time__isnull=False,
-                        date__gte=(target_after - timedelta(days=1)).date(),
-                        date__lte=(target_before + timedelta(days=1)).date()))
+                        date__gte=target_after.date(),
+                        date__lte=target_before.date())
+                .filter(feedback_sms_sent_at__isnull=True))
 
-        for s in s_qs:
-            phone = (s.customer_phone or "").strip()
-            if not phone or not base_url:
-                continue
-
-            # מחברים date + end_time לזמן מודע ל-TZ
+        for s in qs_s:
+            # הופכים date+end_time ל־aware datetime כדי להשוות ל-now
             try:
-                end_local = timezone.make_aware(datetime.combine(s.date, s.end_time), tz)
+                end_dt = timezone.make_aware(datetime.combine(s.date, s.end_time), tz)
             except Exception:
                 continue
 
-            # בתוך החלון בלבד (אחרי הדיליי ולפני חלון החיפוש)
-            if not (target_after <= end_local <= target_before):
+            if not (target_after <= end_dt <= target_before):
                 continue
 
-            # דה-דופליקציה: cache key לפי מזהה וזמן סיום
-            cache_key = f"feedback_sms:session:{s.id}:{int(end_local.timestamp())}"
-            if not cache.add(cache_key, 1, timeout=14 * 24 * 3600):  # 14 יום
+            phone = (getattr(s, "customer_phone", "") or "").strip()
+            if not phone:
                 continue
 
-            text = _build_feedback_sms(s, base_url)
+            if not (getattr(s, "feedback_token", "") or "").strip():
+                s.feedback_token = secrets.token_urlsafe(16)
+
+            text = _build_feedback_sms_session(s, base_url)
 
             ok = False
             try:
@@ -111,8 +123,16 @@ class Command(BaseCommand):
             except Exception:
                 ok = False
 
+            if not ok:
+                try:
+                    from homePage.services.ntfy_gateway import send_sms_via_phone
+                    ok = send_sms_via_phone(phone, text)
+                except Exception:
+                    ok = False
 
             if ok:
-                sent += 1
+                s.feedback_sms_sent_at = timezone.now()
+                s.save(update_fields=["feedback_sms_sent_at", "feedback_token"])
+                sent_sessions += 1
 
-        self.stdout.write(f"Feedback SMS sent: {sent}")
+        self.stdout.write(f"Feedback SMS sent — bookings: {sent_bookings}, sessions: {sent_sessions}")

@@ -19,13 +19,13 @@ from django.http import HttpResponseBadRequest, JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.utils import timezone
 from urllib.parse import urlencode, urlsplit, urlunsplit, parse_qsl
-from decimal import Decimal
 from django.db import transaction
 from django.shortcuts import redirect
 from django.contrib import messages
-from django.core.mail import EmailMultiAlternatives
 from datetime import date, datetime, timedelta, time as dtime
 import time as time_mod
+from homePage.services.ntfy_gateway import format_booking_sms, send_booking_email, normalize_phone_il
+from decimal import Decimal, ROUND_HALF_UP
 
 VARIANT_TO_TYPE = {
     "day":     "רכיבה זוגית ביום",
@@ -466,7 +466,7 @@ def confirm_booking(request):
 
     # --- שלב 5: אכיפת הסכמה לפי טלפון (ללא קוקיז) ---
     full_name = " ".join(x for x in [(first_name or "").strip(), (last_name or "").strip()] if x)
-    phone_norm = _normalize_phone_il(phone_raw)
+    phone_norm = normalize_phone_il(phone_raw)
     if not _has_consent_by_phone(phone_norm):
         # אם אין רישום הסכמה לגרסאות הנוכחיות – חייב לבוא accept_terms מהטופס
         if not request.POST.get("accept_terms"):
@@ -504,7 +504,7 @@ def confirm_booking(request):
         "total_price": total_price,
         "wine": wine,
     }
-    return render(request, "homePage/payment_page.html", context)
+    return render(request, "homePage/mock_checkout.html", context)
 
 # --- עזר: לתפוס 15 דק' אחרי סוף התור ולהפוך אותן ל"הפסקה" ---
 def _capture_trailing_quarter_slot_as_break(base_appt, slot_count, field_names, activity_obj):
@@ -897,15 +897,8 @@ def cancel_request_view(request):
 
     return render(request, "homePage/cancel_request.html", {"form": form})
 
-def _normalize_phone_il(phone: str) -> str:
-    """ ספרות בלבד; 972xxxxxxxxx -> 0xxxxxxxxx; משאיר 0XXXXXXXXX """
-    p = "".join(ch for ch in (phone or "") if ch.isdigit())
-    if p.startswith("972") and len(p) >= 11:
-        p = "0" + p[3:]
-    return p
-
 def _has_consent_by_phone(phone: str) -> bool:
-    sid = _normalize_phone_il(phone)
+    sid = normalize_phone_il(phone)
     if not sid:
         return False
     tv = getattr(settings, "TERMS_VERSION", "1.0")
@@ -916,7 +909,7 @@ def _has_consent_by_phone(phone: str) -> bool:
     )
 
 def _save_consent_by_phone(request, phone: str, full_name: str = ""):
-    sid = _normalize_phone_il(phone)
+    sid = normalize_phone_il(phone)
     if not sid:
         return
     ip = request.META.get("REMOTE_ADDR")
@@ -1138,7 +1131,7 @@ def pay_start(request):
 
     # ✅ NEW: אכיפת/שמירת הסכמה לפני המשך לתשלום
     full_name = f"{(first_name or '').strip()} {(last_name or '').strip()}".strip()
-    sid = _normalize_phone_il(phone)
+    sid = normalize_phone_il(phone)
     if not _has_consent_by_phone(sid):
         if not request.POST.get("accept_terms"):
             # מחזירים לדף המילוי עם הודעת שגיאה + פרמטרים לשחזור הטופס
@@ -1156,11 +1149,14 @@ def pay_start(request):
             # נשמור את ההסכמה כי המשתמש סימן עכשיו
             _save_consent_by_phone(request, phone=sid, full_name=full_name)
 
-    # -- מכאן ההמשך הקיים שלך --
+    activity_id = request.POST.get("activity_id")
     activity = get_object_or_404(Activity, id=activity_id)
-    unit_agorot = int(round(float(activity.price) * 100))
-    amount_agorot = unit_agorot * participants
 
+    # שימוש במחיר יחידה שמגיע מהטופס (אם אין – נופלים למחיר הפעילות)
+    full_amount = float(request.POST.get("unit_price"))
+    if activity.name != "טיול כרכרה":
+        full_amount =  full_amount * int(participants)
+    amount_agorot = int((Decimal(str(full_amount)) * 100).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
     payment = Payment.objects.create(
         provider="mock",
         amount_agorot=amount_agorot,
@@ -1235,41 +1231,6 @@ def _append_qs(url, **params):
     data.update({k: v for k, v in params.items() if v is not None})
     return urlunsplit((s, n, p, urlencode(data), f))
 # ——— 3) Webhook — כאן קובעים סטטוס סופי, יוצרים Booking, ושולחים מייל+SMS ———
-def _format_booking_sms(payment, booking) -> str:
-    name = (getattr(payment, "customer_name", "") or getattr(booking, "customer_name", "")).strip() or "לקוח/ה"
-    charge_id = getattr(payment, "charge_id", "") or "—"
-    participants = getattr(booking, "participants", None)
-    activity_name = getattr(getattr(booking, "activity", None), "name", "")
-    start_dt = getattr(booking, "start_dt", None)
-    end_dt = getattr(booking, "end_dt", None)
-
-    amount_nis = None
-    try:
-        ag = getattr(payment, "amount_agorot", None)
-        if ag is not None:
-            amount_nis = ag / 100.0
-    except Exception:
-        pass
-
-    lines = [f"היי {name},\n\nההזמנה ל{activity_name} בחוות מסילת ציון בוצעה בהצלחה"]
-    lines.append(f"מס' הזמנה: {charge_id}")
-
-    if start_dt:
-        time_str = f"{start_dt:%d.%m.%Y}\nבשעה {end_dt:%H:%M}" + (f"–{start_dt:%H:%M}" if end_dt else "")
-        lines.append(f"תאריך: {time_str}")
-
-    if participants and participants > 1:
-        lines.append(f"מס' משתתפים: {participants}")
-    if amount_nis is not None:
-        lines.append(f"סכום: ₪{int(amount_nis)}")
-
-    lines.append("מיקום בוויז: חוות מסילת ציון")
-    lines.append("יש להגיע עם מכנס ארוך ונעליים סגורות")
-
-    lines.append(" ")
-    lines.append(f"מחכים לראותכם!\n")
-    lines.append("(יש לשמור את מספר ההזמנה לביטולים והחזרים כספיים)")
-    return "\n".join(lines)
 
 @csrf_exempt
 def pay_webhook(request):
@@ -1328,13 +1289,13 @@ def pay_webhook(request):
 
             email_ok = False
             try:
-                email_ok = _send_booking_email(payment, booking)
+                email_ok = send_booking_email(payment, booking)
             except Exception:
                 email_ok = False
 
             # ואז SMS עם כל הפרטים:
             if getattr(settings, "SEND_SMS", False):
-                sms_text = _format_booking_sms(payment, booking)
+                sms_text = format_booking_sms(payment, booking)
 
                 sent = False
                 try:
@@ -1481,139 +1442,4 @@ def mock_checkout(request, payment_id: int):
     amount_nis = payment.amount_agorot / 100.0
     return render(request, "homePage/mock_checkout.html",
                   {"payment": payment, "amount_nis": amount_nis})
-
-# ——— 5) התראות — מייל ו־SMS (פשוטים; החליפי בספקים שלך) ———
-
-def _send_booking_email(payment, booking):
-    if not getattr(payment, "email", None):
-        return False
-
-    # נתונים
-    amount_nis   = ((getattr(payment, "amount_agorot", 0) or 0) / 100)
-    charge_id    = getattr(payment, "charge_id", None) or "—"
-    customer     = (getattr(payment, "customer_name", "") or "").strip()
-    participants = getattr(booking, "participants", 1)
-    start_dt     = getattr(booking, "start_dt", None)
-    end_dt       = getattr(booking, "end_dt", None)
-
-    # כותרת ייחודית (מפחית קיפול "טקסט מצוטט")
-    subject = f"אישור הזמנה – חוות מסילת ציון · {charge_id}"
-
-    # --- טקסט גיבוי RTL (RLM) ---
-    rlm = "\u200F"
-    text_body_core = (
-        f"שלום {customer},\n\n"
-        f"התשלום עבר בהצלחה!\n\n"
-        f"מספר עסקה: {charge_id}\n"
-        f"סכום ששולם: ₪{amount_nis:.2f}\n"
-        f"מספר משתתפים: {participants}\n"
-        + (f"תאריך: {start_dt:%d.%m.%Y} בשעה {start_dt:%H:%M}"
-           + (f"–{end_dt:%H:%M}" if end_dt else "") + "\n" if start_dt else "")
-        + "\nנתראה בחווה 🐴\n\n"
-        f"שמרו מייל זה. לביטול/החזר תזדקקו למספר העסקה \n"
-        "זהו מייל אוטומטי – אין להשיב אליו."
-    )
-    text_body = rlm + text_body_core
-
-    # --- שורת זמן ל-HTML (רק אם יש start_dt) ---
-    time_row = ""
-    if start_dt:
-        time_row = (
-            f"<tr>"
-            f"<td align='right' style='padding:12px 16px;background:#fafafa;font-size:14px;color:#666;text-align:right'>תאריך ושעה</td>"
-            f"<td align='right' style='padding:12px 16px;font-size:14px;color:#111;text-align:right'>"
-            f"{start_dt:%d.%m.%Y} בשעה {start_dt:%H:%M}"
-            f"{'–' + end_dt.strftime('%H:%M') if end_dt else ''}"
-            f"</td></tr>"
-        )
-
-    # --- HTML RTL ממורכז, רספונסיבי, עם מניעת גלישה ---
-    html_body = f"""<!doctype html>
-<html lang="he" dir="rtl">
-  <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>אישור הזמנה – חוות מסילת ציון</title>
-  </head>
-  <body style="margin:0;background:#f6f7f9;font-family:Arial,Helvetica,'Segoe UI',sans-serif;direction:rtl;-ms-text-size-adjust:100%;-webkit-text-size-adjust:100%;mso-line-height-rule:exactly;">
-    <table role="presentation" width="100%" cellpadding="0" cellspacing="0"
-           style="width:100%;background:#f6f7f9;padding:24px 0;border-collapse:collapse;mso-table-lspace:0pt;mso-table-rspace:0pt;">
-      <tr>
-        <td align="center" style="padding:0;">
-          <center>
-            <table role="presentation" width="600" cellpadding="0" cellspacing="0"
-                   style="width:100%;max-width:600px;background:#ffffff;border-radius:12px;overflow:hidden;border-collapse:collapse;table-layout:fixed;margin:0 auto;direction:rtl;text-align:right;">
-              <tr>
-                <td style="padding:18px 24px;background:#2f2a27;color:#fff;font-weight:700;font-size:18px;text-align:right;word-break:break-word;overflow-wrap:anywhere;">
-                  אישור הזמנה – חוות מסילת ציון
-                </td>
-              </tr>
-              <tr>
-                <td style="padding:22px;word-break:break-word;overflow-wrap:anywhere;">
-                  <h1 style="margin:0 0 12px 0;font-size:20px;color:#222;line-height:1.35;">שלום {customer},</h1>
-                  <p style="margin:0 0 16px 0;font-size:15px;color:#333;line-height:1.6;">התשלום עבר בהצלחה!</p>
-
-                  <table role="presentation" cellpadding="0" cellspacing="0"
-                         style="width:100%;border:1px solid #eee;border-radius:10px;overflow:hidden;border-collapse:separate;">
-                    <tr>
-                      <td align="right" style="padding:12px 16px;background:#fafafa;font-size:14px;color:#666;text-align:right">מספר עסקה</td>
-                      <td align="right" style="padding:12px 16px;font-size:14px;color:#111;text-align:right;word-break:break-word;overflow-wrap:anywhere;">{charge_id}</td>
-                    </tr>
-                    <tr>
-                      <td align="right" style="padding:12px 16px;background:#fafafa;font-size:14px;color:#666;text-align:right">סכום ששולם</td>
-                      <td align="right" style="padding:12px 16px;font-size:14px;color:#111;text-align:right">₪{amount_nis:.2f}</td>
-                    </tr>
-                    <tr>
-                      <td align="right" style="padding:12px 16px;background:#fafafa;font-size:14px;color:#666;text-align:right">מספר משתתפים</td>
-                      <td align="right" style="padding:12px 16px;font-size:14px;color:#111;text-align:right">{participants}</td>
-                    </tr>
-                    {time_row}
-                  </table>
-
-                  <p style="margin:10px 0 12px 0;font-size:13.5px;color:#555;line-height:1.6;">
-                    שמרו מייל זה. לביטול/החזר תזדקקו למספר העסקה <br>
-                    זהו מייל אוטומטי – אין להשיב אליו.
-                  </p>
-
-                  <hr style="border:none;border-top:1px solid #eee;margin:18px 0">
-
-                  <p style="margin:0;font-size:12px;color:#999;line-height:1.5;">
-                    © חוות מסילת ציון · כל הזכויות שמורות
-                  </p>
-                </td>
-              </tr>
-            </table>
-          </center>
-        </td>
-      </tr>
-    </table>
-  </body>
-</html>
-"""
-
-    # ===== שליחת המייל עם Message-ID קבוע לשרשור =====
-    from_addr = getattr(settings, "DEFAULT_FROM_EMAIL", None)
-
-    root_msgid = _session_msgid(booking)  # אותו יוצר מזהה לפי payment_ref
-
-    email = EmailMultiAlternatives(
-        subject,
-        text_body,
-        getattr(settings, "DEFAULT_FROM_EMAIL", None),
-        [payment.email],
-        headers={"Message-ID": root_msgid, "References": root_msgid},  # ← חדש
-    )
-    if html_body:
-        email.attach_alternative(html_body, "text/html")
-
-    sent = email.send(fail_silently=True)
-    return sent >= 1
-
-
-def _session_msgid(session) -> str:
-    ref = (getattr(session, "payment_ref", None) or "—").replace(" ", "")
-    from django.conf import settings
-    from_addr = getattr(settings, "DEFAULT_FROM_EMAIL", "")
-    domain = from_addr.split("@")[-1] if "@" in from_addr else "mesilat-zion.local"
-    return f"<session-{ref}@{domain}>"
 
