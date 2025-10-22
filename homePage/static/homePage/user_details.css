@@ -290,3 +290,8 @@ input::placeholder{
 .legal-consent {
   font-family: "Arial", sans-serif; /* פונט לדוגמה */
 }
+
+/* אם לטופס אין שדות select – אל תציגי אותו בכלל */
+.selector-form:not(:has(select)) {
+  display: none;
+}

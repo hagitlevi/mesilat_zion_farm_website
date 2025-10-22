@@ -1,0 +1,114 @@
+{% extends "admin/base_site.html" %}
+{% load static %}
+{% block extrastyle %}
+<style>
+  .mz-month-summary { direction: rtl; }
+  .mz-month-summary h2 { margin-top: 24px; }
+  .mz-month-summary .toolbar { display:flex; gap:10px; align-items:center; margin: 10px 0 16px; }
+  .mz-month-summary .toolbar a.btn { background:#6a879b; color:#fff; padding:6px 10px; text-decoration:none; border-radius:8px; font-weight:700; }
+  .mz-month-summary .toolbar form { margin-inline-start:auto; display:flex; gap:8px; align-items:center; }
+  .mz-month-summary table { width:100%; border-collapse: collapse; margin: 6px 0 16px; }
+  .mz-month-summary th, .mz-month-summary td { border:1px solid #ddd; padding:8px 10px; text-align:right; }
+  .mz-month-summary th { background:#f4f6f8; }
+  .mz-month-summary .total { font-weight:800; }
+  .muted { color:#666; font-size: 12px; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="mz-month-summary">
+  <h1>{{ title }}</h1>
+
+  <div class="toolbar">
+    <a class="btn" href="{{ nav.prev_url }}">‹ חודש קודם</a>
+    <strong style="margin:0 8px">{{ month_label }}</strong>
+    <a class="btn" href="{{ nav.next_url }}">חודש הבא ›</a>
+
+    <form method="get" action="">
+      <label for="monthpick">קפיצה לחודש:</label>
+      <input id="monthpick" type="month" name="jump" value="{{ nav.value_for_input }}" />
+      <button class="btn" onclick="
+        const v=document.getElementById('monthpick').value;
+        if(!v) return false;
+        const [yy, mm] = v.split('-');
+        const url = new URL(window.location.href);
+        url.searchParams.set('year', yy);
+        url.searchParams.set('month', mm);
+        window.location.href = url.toString();
+        return false;
+      ">עבור</button>
+    </form>
+  </div>
+
+  <p class="muted">
+    טווח נתונים:
+    {{ period_start|date:"d.m.Y H:i" }} — {{ period_end|date:"d.m.Y H:i" }}
+    {% if is_current_month %}(עד עכשיו){% endif %}
+  </p>
+
+  <h2>לפי פעילות</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>פעילות / סוג מפגש</th>
+        <th># הזמנות/מפגשים (סה״כ)</th>
+        <th># שולמו</th>
+        <th>סה״כ הכנסות (שולם)</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in activity_rows %}
+        <tr>
+          <td>{{ row.name }}</td>
+          <td>{{ row.count_total }}</td>
+          <td>{{ row.count_paid }}</td>
+          <td>{{ row.revenue_display }}</td>
+        </tr>
+      {% empty %}
+        <tr><td colspan="4">אין נתונים לחודש זה.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <h2>לפי אמצעי תשלום</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>אמצעי תשלום</th>
+        <th># עסקאות (שולם)</th>
+        <th>סה״כ הכנסות</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in payment_rows %}
+        <tr>
+          <td>{{ row.method }}</td>
+          <td>{{ row.count }}</td>
+          <td>{{ row.revenue_display }}</td>
+        </tr>
+      {% empty %}
+        <tr><td colspan="3">אין תשלומים לחודש זה.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <p class="muted">
+    הערה: הפירוק לפי אמצעי תשלום מתבסס על הזמנות <strong>Booking</strong> בלבד.
+    הכנסות ממפגשי <strong>שיעור/טיפול</strong> נכללות בטבלת הפעילויות ובסיכומים,
+    אך אינן מפורקות לפי אמצעי תשלום. סה״כ הכנסות ממפגשים: <strong>{{ summary.sessions_revenue_display }}</strong>.
+  </p>
+
+  <h2>סיכום כולל</h2>
+  <table>
+    <tbody>
+      <tr><th>סה״כ הזמנות/מפגשים (כל הסטטוסים)</th><td class="total">{{ summary.total_bookings }}</td></tr>
+      <tr><th>סה״כ ששולמו</th><td class="total">{{ summary.total_paid_bookings }}</td></tr>
+      <tr><th>סה״כ הכנסות</th><td class="total">{{ summary.total_revenue_display }}</td></tr>
+    </tbody>
+  </table>
+
+  <div class="toolbar">
+    <a class="btn" href="{{ nav.this_month_url }}">חזרה לחודש הנוכחי</a>
+  </div>
+</div>
+{% endblock %}

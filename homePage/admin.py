@@ -3,7 +3,8 @@ import json
 from .models import (
     Activity, Appointment, CustomSchedule, Booking, SiteReview,
     CancellationRequest, TermsConsent, ScheduleBoard, Weekday,
-    BusinessHours, ActivityRule, Instructor, TreatmentSession
+    BusinessHours, ActivityRule, Instructor, TreatmentSession,
+    MonthlySummary,
 )
 from homePage.services.ntfy_gateway import (
     format_session_sms, format_booking_sms, send_treatment_email,
@@ -34,6 +35,8 @@ from django.conf import settings
 import re
 from django.utils.safestring import mark_safe
 from datetime import date
+from django.db.models.functions import Coalesce
+from django.db.models import Count, Sum, Value, DecimalField
 
 delete_selected.short_description = "מחיקה"
 
@@ -2466,5 +2469,156 @@ class TermsConsentAdmin(admin.ModelAdmin):
     date_hierarchy = "accepted_at"
     ordering       = ("-accepted_at",)
     readonly_fields = ("accepted_at",)
+
+@admin.register(MonthlySummary)
+class MonthlySummaryAdmin(admin.ModelAdmin):
+    # לא רוצים "הוספה/מחיקה/עדכון" – כרטיס דוח בלבד
+    def has_add_permission(self, request): return False
+    def has_delete_permission(self, request, obj=None): return False
+    def has_change_permission(self, request, obj=None): return False
+
+    def changelist_view(self, request, extra_context=None):
+        """
+        סיכום חודשי מאוחד:
+        - Booking: ספירה לכל הסטטוסים; הכנסות לפי status=paid/שולם; פירוק לפי payment_method
+        - TreatmentSession: ספירה לפי lesson_type; הכנסות למי שיש payment_ref
+          (override מתוך details אם קיים; אחרת לפי משך עם _suggest_amount_for_session)
+        """
+        from decimal import Decimal
+        from collections import defaultdict
+        import re
+
+        tz = ZoneInfo("Asia/Jerusalem")
+        now_local = timezone.now().astimezone(tz)
+        y = int(request.GET.get("year") or now_local.year)
+        m = int(request.GET.get("month") or now_local.month)
+        if not (1 <= m <= 12):
+            m = now_local.month; y = now_local.year
+
+        start = datetime(y, m, 1, 0, 0, tzinfo=tz)
+        next_start = datetime(y + (1 if m == 12 else 0), (1 if m == 12 else m + 1), 1, 0, 0, tzinfo=tz)
+        is_current_month = (y == now_local.year and m == now_local.month)
+        end = now_local if is_current_month else next_start
+
+        # ===== BOOKINGS =====
+        base_qs = Booking.objects.filter(start_dt__gte=start, start_dt__lt=end)
+        paid_qs = base_qs.filter(Q(status__iexact="paid") | Q(status__iexact="שולם"))
+
+        counts_map = defaultdict(int)
+        for row in base_qs.values("activity__name").annotate(total=Count("id")):
+            counts_map[row["activity__name"] or "—"] += int(row["total"] or 0)
+
+        rev_map = {}
+        DEC0 = Value(0, output_field=DecimalField(max_digits=12, decimal_places=2))
+
+        for r in (paid_qs.values("activity__name")
+                          .annotate(revenue=Coalesce(Sum("total_price"), DEC0), count_paid=Count("id"))):
+            rev_map[r["activity__name"] or "—"] = {
+                "revenue": Decimal(r["revenue"] or 0),
+                "count_paid": int(r["count_paid"] or 0),
+            }
+
+        payment_rows = []
+        for row in (paid_qs.values("payment_method")
+                          .annotate(revenue=Coalesce(Sum("total_price"), DEC0), count=Count("id"))
+                          .order_by("-revenue")):
+            revenue = Decimal(row["revenue"] or 0)
+            payment_rows.append({
+                "method": (row["payment_method"] or "").strip() or "—",
+                "count": int(row["count"] or 0),
+                "revenue": revenue,
+                "revenue_display": _fmt_ils(revenue),
+            })
+
+        # ===== TREATMENT SESSIONS =====
+        if is_current_month:
+            sess_q = TreatmentSession.objects.filter(
+                Q(date__gte=start.date(), date__lt=now_local.date()) |
+                Q(date=now_local.date(), start_time__lt=now_local.time())
+            )
+        else:
+            sess_q = TreatmentSession.objects.filter(date__gte=start.date(), date__lt=next_start.date())
+
+        def lesson_type_label(code: str) -> str:
+            return dict(TreatmentSession.LESSON_TYPE_CHOICES).get(code or "", "")
+
+        for row in sess_q.values("lesson_type").annotate(total=Count("id")):
+            lbl = lesson_type_label(row["lesson_type"]) or "מפגש"
+            counts_map[lbl] += int(row["total"] or 0)
+
+        sess_paid_q = sess_q.filter(payment_ref__isnull=False).exclude(payment_ref__exact="")
+        ov_re = re.compile(r"מחיר\s+הוגדר\s+ידנית.*?₪\s*([0-9]+(?:\.[0-9]{1,2})?)")
+
+        def _override_from_details(txt: str):
+            if not txt: return None
+            m_ = ov_re.search(txt)
+            if not m_: return None
+            try: return Decimal(m_.group(1))
+            except Exception: return None
+
+        sess_rev_map = defaultdict(Decimal)
+        sess_paid_count_map = defaultdict(int)
+        for s in sess_paid_q.iterator():
+            lbl = lesson_type_label(getattr(s, "lesson_type", "")) or "מפגש"
+            amount = _override_from_details(getattr(s, "details", "")) or _suggest_amount_for_session(s)
+            if amount is None:
+                continue
+            amount = Decimal(amount)
+            sess_rev_map[lbl] += amount
+            sess_paid_count_map[lbl] += 1
+
+        # ===== MERGE =====
+        names = sorted(set(counts_map.keys()) | set(rev_map.keys()) | set(sess_rev_map.keys()))
+        activity_rows = []
+        total_paid_count = Decimal("0")
+        total_revenue = Decimal("0")
+
+        for nm in names:
+            paid_count = int((rev_map.get(nm, {}).get("count_paid", 0) or 0)) + int(sess_paid_count_map.get(nm, 0))
+            revenue = (rev_map.get(nm, {}).get("revenue", Decimal("0")) or Decimal("0")) + (sess_rev_map.get(nm, Decimal("0")) or Decimal("0"))
+            total_paid_count += paid_count
+            total_revenue += revenue
+            activity_rows.append({
+                "name": nm,
+                "count_total": int(counts_map.get(nm, 0) or 0),
+                "count_paid": paid_count,
+                "revenue": revenue,
+                "revenue_display": _fmt_ils(revenue),
+            })
+
+        activity_rows.sort(key=lambda r: r["revenue"], reverse=True)
+
+        total_bookings = base_qs.count() + sess_q.count()
+        sessions_revenue = sum(sess_rev_map.values(), Decimal("0"))
+
+        prev_y, prev_m = (y, m - 1) if m > 1 else (y - 1, 12)
+        next_y, next_m = (y, m + 1) if m < 12 else (y + 1, 1)
+
+        def month_name_he(mi: int) -> str:
+            return {1:"ינואר",2:"פברואר",3:"מרץ",4:"אפריל",5:"מאי",6:"יוני",7:"יולי",8:"אוגוסט",9:"ספטמבר",10:"אוקטובר",11:"נובמבר",12:"דצמבר"}.get(mi, str(mi))
+
+        ctx = {
+            "title": "סיכום חודש",
+            "opts": self.model._meta,
+            "year": y, "month": m,
+            "month_label": f"{month_name_he(m)} {y}",
+            "period_start": start, "period_end": end, "is_current_month": is_current_month,
+            "activity_rows": activity_rows,
+            "payment_rows": payment_rows,  # Booking בלבד
+            "summary": {
+                "total_bookings": total_bookings,
+                "total_paid_bookings": int(total_paid_count),
+                "total_revenue": total_revenue,
+                "total_revenue_display": _fmt_ils(total_revenue),
+                "sessions_revenue_display": _fmt_ils(sessions_revenue),
+            },
+            "nav": {
+                "prev_url": f"?year={prev_y}&month={prev_m}",
+                "next_url": f"?year={next_y}&month={next_m}",
+                "this_month_url": f"?year={now_local.year}&month={now_local.month}",
+                "value_for_input": f"{y}-{m:02d}",
+            },
+        }
+        return render(request, "admin/homePage/monthly_summary.html", ctx)
 
 

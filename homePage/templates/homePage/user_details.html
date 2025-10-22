@@ -48,7 +48,7 @@
       {% endif %}
 
       {# חדש: בחירת צבע היין — מוצג רק ברכיבה זוגית ביום #}
-        {% if is_couple_day %}
+        {% if show_selector  %}
           <select id="wine" name="wine" required onchange="this.form.requestSubmit()">
             <option value="" disabled {% if not wine %}selected{% endif %} hidden>בחרו יין*</option>
             <option value="white" {% if wine == 'white' %}selected{% endif %}>יין לבן</option>
@@ -107,7 +107,7 @@
       <input type="hidden" name="activity_type" value="{{ type_options.0.code }}">
     {% endif %}
       {# מעביר את בחירת היין הלאה רק אם מדובר בזוגית ביום #}
-    {% if is_couple_day %}
+    {% if allow_wine  %}
       <input type="hidden" name="wine" value="{{ wine|default_if_none:'' }}">
     {% endif %}
 
@@ -171,7 +171,7 @@
   // —— ולידציה “בועה” ל-select בזמן submit (כשצריך) ——
   const needParticipants = {% if activity.min_participants != activity.max_participants %}true{% else %}false{% endif %};
   const needType        = {% if type_options|length > 1 and activity.name != "רכיבה זוגית" %}true{% else %}false{% endif %};
-  const needWine        = {% if is_couple_day %}true{% else %}false{% endif %};
+  const needWine        = {% if allow_wine %}true{% else %}false{% endif %};
 
   function requireSelect(e, id, msg){
     const el = document.getElementById(id);

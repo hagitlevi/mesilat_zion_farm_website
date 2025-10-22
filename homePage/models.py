@@ -501,6 +501,11 @@ class ScheduleBoard(Appointment):
         verbose_name = "לוח שעות - הזמנות"
         verbose_name_plural = "לוח שעות - הזמנות"
 
+class MonthlySummary(Booking):
+    class Meta:
+        proxy = True
+        verbose_name = "סיכום חודש"
+        verbose_name_plural = "סיכום חודש"
 
 class Instructor(models.Model):
     user = models.OneToOneField(

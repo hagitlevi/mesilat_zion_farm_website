@@ -957,7 +957,7 @@ def booking_form(request):
     activity    = get_object_or_404(Activity, id=activity_id)
 
     # קביעה מאיזה וריאנט הגענו (רק לזוגית)
-    variant = None
+    variant, is_couple_day = None, False
     if activity.name == "רכיבה זוגית":
         appt_names = set()
         if hasattr(appointment, "activities"):
@@ -968,9 +968,13 @@ def booking_form(request):
         elif "רכיבת לילה" in appt_names:
             variant = "night"
         else:
-            variant = "day"
-    is_couple_day = (variant == "day") #אם אנחנו ברכיבה זוגית ביום
-
+            is_couple_day = True
+    # אם זו רכיבה זוגית ביום והאורך לפחות 90 דק' — מותר לבחור יין
+    try:
+        minutes = int(duration_minutes or 0)
+    except (TypeError, ValueError):
+        minutes = 0
+    allow_wine = bool(is_couple_day and minutes >= 90)
 
     qs = Activity.objects.filter(name=activity.name)
     try:
@@ -1074,28 +1078,25 @@ def booking_form(request):
         else:
             total_price = unit_price
 
-    is_couple_day = False
-    if activity.name == "רכיבה זוגית":
-        # אם לסלוט יש שיוך מפורש ל"רכיבת לילה"/"רכיבה בזריחה" → לא יום
-        names = set()
-        if hasattr(appointment, "activities") and appointment.activities.exists():
-            names = set(appointment.activities.values_list("name", flat=True))
-        else:
-            ap_act = getattr(appointment, "activity", None)
-            if ap_act:
-                names = {ap_act.name}
 
-        is_couple_day = not (("רכיבת לילה" in names) or ("רכיבה בזריחה" in names))
-
-    wine = request.GET.get("wine") if is_couple_day else None
+    wine = request.GET.get("wine") if allow_wine else None
     if wine not in {"white", "red", "none"}:
         wine = None
 
+
     # 7) טווח לבחירת כמות לתבנית
     participants_range = range(activity.min_participants, activity.max_participants + 1)
+    print(wine)
+    show_selector = (
+        (len(type_options) > 1 and activity.name != "רכיבה זוגית") or
+        (activity.min_participants != activity.max_participants) or
+        allow_wine
+    )
 
     # 8) החזרת הקשר לטמפלט
     return render(request, 'homePage/user_details.html', {
+        'show_selector': show_selector,
+        'allow_wine': allow_wine,
         'appointment': appointment,
         'activity': activity,
         'duration': duration_minutes,

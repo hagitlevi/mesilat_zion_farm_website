@@ -213,6 +213,15 @@
       position: relative;   /* חשוב: שיהיה עוגן */
       width: 100%;          /* חשוב: שיימתח על כל רוחב האירוע */
     }
+    /* שבוע: מסתיר את התווית לגמרי */
+    #calendar .fc-timeGridWeek-view .mz-type-badge{
+      display: none !important;
+    }
+
+    /* שבוע: מחזיר את הריווח הרגיל (במקרה שהיה padding-top לתווית) */
+    #calendar .fc-timeGridWeek-view .mz-ev{
+      padding-top: 2px; /* או 0 אם את מעדיפה */
+    }
 
 </style>
 {% endblock %}
