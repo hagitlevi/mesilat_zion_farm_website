@@ -10,27 +10,32 @@
 
 {% block content %}
     <div class="container">
-
         <section class="about">
-            <div class="frame-text">קצת עלינו</div>
-            <p>חוות מסילת ציון בלב הרי ירושלים, מקום שבו הזמן עוצר והחיבור לטבע מתעורר לחיים.
-                <br> החווה שלנו הוקמה מתוך אהבה אמיתית לאדמה, לסוסים ולאנשים – והיא מציעה חוויה אישית, אותנטית ומרגיעה לכל מבקר.<br>
-                אצלנו תמצאו מגוון רחב של פעילויות:<br>
-                -רכיבה זוגית רומנטית עם נופים מדהימים<br>
-                -רכיבת לילה לאור ירח<br>
-                -רכיבה בזריחה עם נוף עוצר נשימה<br>
-                -רכיבת שטח מלאת אנרגיה<br>
-                -רכיבה לילדים<br>
-                -צילומים עם הסוסים וחיות נוספות<br>
-                -שיעורי רכיבה מקצועיים למתחילים ומתקדמים<br>
-                -רכיבה טיפולית <br>
-                -טיול בכרכרה לאווירה כפרית של פעם<br>
+          <div class="frame-text">קצת עלינו</div>
 
-                החווה שלנו היא יותר ממקום – היא חוויה. מקום לחיבור בין אדם לסוס, בין משפחה לטבע. נשמח לארח אתכם באהבה, ולהפוך כל ביקור לחוויה בלתי נשכחת.</p>
+          <p>
+            חוות מסילת ציון בלב הרי ירושלים, מקום שבו הזמן עוצר והחיבור לטבע מתעורר לחיים.
+            החווה שלנו הוקמה מתוך אהבה אמיתית לאדמה, לסוסים ולאנשים – והיא מציעה חוויה אישית, אותנטית ומרגיעה לכל מבקר.
+          </p>
+
+          <ul class="about-list fancy-ink checkmarks">
+              <li>רכיבה זוגית רומנטית עם נופים מדהימים</li>
+              <li>רכיבת לילה לאור ירח</li>
+              <li>רכיבה בזריחה עם נוף עוצר נשימה</li>
+              <li>רכיבת שטח מלאת אנרגיה</li>
+              <li>רכיבה לילדים</li>
+              <li>צילומים עם הסוסים וחיות נוספות</li>
+              <li>שיעורי רכיבה מקצועיים למתחילים ומתקדמים</li>
+              <li>רכיבה טיפולית</li>
+              <li>טיול בכרכרה לאווירה כפרית של פעם</li>
+          </ul>
+
+
+          <p>
+            החווה שלנו היא יותר ממקום – היא חוויה. מקום לחיבור בין אדם לסוס, בין משפחה לטבע.
+            נשמח לארח אתכם באהבה, ולהפוך כל ביקור לחוויה בלתי נשכחת.
+          </p>
         </section>
-
-
-
 
         <section class="activities">
             <h2>לפרטים והזמנת תורים:</h2>
@@ -97,47 +102,46 @@
         </section>
     </div>
 
-<section class="carousel">
-    <h3>תמונות מהחווה שלנו</h3>
-    <div class="carousel-container">
-        <img id="carousel-image" src="{% static 'homePage/images/p1.jpg' %}" alt="תמונה מהחווה">
+    <section class="carousel">
+        <h3>תמונות מהחווה שלנו</h3>
+        <div class="carousel-container">
+            <img id="carousel-image" src="{% static 'homePage/images/p1.jpg' %}" alt="תמונה מהחווה">
 
-        <button class="prev-btn">&lt;</button> <button class="next-btn">&gt;</button> <div class="carousel-dots"></div>
-    </div>
-</section>
+            <button class="prev-btn">&lt;</button> <button class="next-btn">&gt;</button> <div class="carousel-dots"></div>
+        </div>
+    </section>
 
-        <section class="reviews-wrap" dir="rtl">
-          <div class="reviews-header">
-            {% if reviews_total %}
-              <span class="avg">דירוג: {{ reviews_avg|floatformat:1 }} ★</span>
-              <span class="count">({{ reviews_total }} ביקורות)</span>
-            {% else %}
-              <span>עדיין אין ביקורות — תהיו הראשונים!</span>
+    <section class="reviews-wrap" dir="rtl">
+      <div class="reviews-header">
+        {% if reviews_total %}
+          <span class="avg">דירוג: {{ reviews_avg|floatformat:1 }} ★</span>
+          <span class="count">({{ reviews_total }} ביקורות)</span>
+        {% else %}
+          <span>עדיין אין ביקורות — תהיו הראשונים!</span>
+        {% endif %}
+      </div>
+
+      <div class="reviews-grid">
+        {% for r in latest_reviews %}
+          <article class="review-card">
+            <header class="review-head">
+              <strong class="review-who">{{ r.name|default:"אנונימי" }}</strong>
+              <span class="stars" aria-label="{{ r.rating }} כוכבים">
+                {% for i in "12345" %}
+                  {% if forloop.counter <= r.rating %}★{% else %}☆{% endif %}
+                {% endfor %}
+              </span>
+            </header>
+            {% if r.comment %}
+              <p class="review-comment">{{ r.comment|truncatechars:180 }}</p>
             {% endif %}
-          </div>
+            <small class="review-ts">{{ r.created_at|date:"d.m.Y H:i" }}</small>
+          </article>
+        {% endfor %}
+      </div>
 
-          <div class="reviews-grid">
-            {% for r in latest_reviews %}
-              <article class="review-card">
-                <header class="review-head">
-                  <strong class="review-who">{{ r.name|default:"אנונימי" }}</strong>
-                  <span class="stars" aria-label="{{ r.rating }} כוכבים">
-                    {% for i in "12345" %}
-                      {% if forloop.counter <= r.rating %}★{% else %}☆{% endif %}
-                    {% endfor %}
-                  </span>
-                </header>
-                {% if r.comment %}
-                  <p class="review-comment">{{ r.comment|truncatechars:180 }}</p>
-                {% endif %}
-                <small class="review-ts">{{ r.created_at|date:"d.m.Y H:i" }}</small>
-              </article>
-            {% endfor %}
-          </div>
-
-          <a class="see-all" href="{% url 'site_reviews' %}">להשארת ביקורת או צפייה בביקורות</a>
-        </section>
-
+      <a class="see-all" href="{% url 'site_reviews' %}">להשארת ביקורת או צפייה בביקורות</a>
+    </section>
 
 {% endblock %}
 

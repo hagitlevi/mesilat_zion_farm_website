@@ -7,8 +7,21 @@
 {% endblock %}
 
 {% block content %}
+
+    {% block booking_header %}
+    <div class="page-hero" role="banner">
+      <div class="page-hero__inner">
+        <h1 class="page-hero__title">{% block page_title %}{% endblock %}</h1>
+        {% block page_subtitle %}{% endblock %}
+      </div>
+    </div>
+    {% endblock %}
+
     <div class="top-image-container">
         <img src="{% block image_src %}{% endblock %}" alt="{% block image_alt %}{% endblock %}">
+        {% if activity.name != "שיעורי רכיבה/ טיפולית" %}
+          <a href="#booking-notice" class="cta-on-image" aria-label="לעבור להזמנה">להזמנה</a>
+        {% endif %}
         <p class="text_on_picture">
             {% block description_text %}{% endblock %}
                 {% if activity.name != "צילומים" and activity.name != "טיול כרכרה" %}
@@ -34,18 +47,24 @@
         </p>
     </div>
 
-    <div class="cancellation-policy">
+    <div id="booking-notice" class="cancellation-policy">
         <p>
             שימו לב! על מנת להבטיח את מקומכם, נדרש תשלום מלא מראש
         </p>
 
         <p class="section-title">מדיניות ביטולים:</p>
-
-        <ul>
-            <li>ביטול עד 48 שעות לפני המועד — יתקבל החזר של 80% מהתשלום</li>
-            <li>ביטול בין 24-48 שעות לפני המועד — יתקבל החזר של 50% מהתשלום</li>
-            <li>ביטול בתוך 24 שעות לפני המועד או אי-הגעה — לא יתקבל החזר, והתשלום המלא ייגבה</li>
-        </ul>
+        {% if activity.name != "שיעורי רכיבה/ טיפולית" %}
+            <ul>
+                <li>ביטול עד 48 שעות לפני המועד — יתקבל החזר של 80% מהתשלום</li>
+                <li>ביטול בין 24-48 שעות לפני המועד — יתקבל החזר של 50% מהתשלום</li>
+                <li>ביטול בתוך 24 שעות לפני המועד או אי-הגעה — לא יתקבל החזר, והתשלום המלא ייגבה</li>
+            </ul>
+        {% else %}
+            <ul>
+                <li>ביטול עד 24 שעות לפני המועד — יתקבל החזר של 100% מהתשלום</li>
+                <li>ביטול בתוך 24 שעות לפני המועד או אי-הגעה — לא יתקבל החזר, והתשלום המלא ייגבה</li>
+            </ul>
+        {% endif %}
     </div>
 
     {% if activity.name != "שיעורי רכיבה/ טיפולית" %}

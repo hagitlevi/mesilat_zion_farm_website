@@ -38,6 +38,33 @@
   .cookie-table th{ background: #fff6ea; color:#5c3a1d; }
 
   .muted{ color:#000; }
+  /* לא לחרוג לרוחב */
+    *, *::before, *::after { box-sizing: border-box; }
+    html, body { max-width: 100%; overflow-x: hidden; }
+
+    /* RTL: מרווח לרשימות בצד ימין (ולא לשמאל) */
+    .policy-section ul { margin: 6px 1.2em 6px 0; padding: 0; }
+
+    /* שבירת מילים/קודים ארוכים כדי שלא ידחפו לרוחב */
+    .policy-section, .policy-section * {
+      overflow-wrap: anywhere;       /* מאפשר שבירה "אגרסיבית" בעת צורך */
+      word-break: break-word;
+    }
+
+    /* טבלה רספונסיבית: גלילה אופקית בתוך הקונטיינר בלבד */
+    .table-scroll {
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+    }
+    .cookie-table {
+      width: 100%;
+      min-width: 640px;              /* רוחב מינימלי, יגרום לגלילה אם המסך צר */
+      table-layout: fixed;           /* כדי ששבירת שורות תהיה עקבית */
+    }
+    .cookie-table th, .cookie-table td {
+      word-break: break-word;
+    }
+
 </style>
 {% endblock %}
 
@@ -100,37 +127,40 @@
   <section id="cookies" class="policy-section">
     <h2>קוקיות (Cookies)</h2>
     <p>נכון לעדכון זה אנו משתמשים בקוקיות חיוניות בלבד להפעלת האתר. איננו משתמשים בקוקיות פרסום או ניתוח התנהגותי.</p>
-    <table class="cookie-table" aria-label="טבלת קוקיות">
-      <thead>
-        <tr>
-          <th>שם הקוקי</th>
-          <th>ספק</th>
-          <th>מטרה</th>
-          <th>סוג</th>
-          <th>משך שמירה משוער</th>
-          <th>מאפיינים</th>
-        </tr>
-      </thead>
-      <tbody>
-        <tr>
-          <td><code>csrftoken</code></td>
-          <td>האתר (Django)</td>
-          <td>הגנה על טפסים מפני בקשות מזויפות (CSRF)</td>
-          <td>קבוע</td>
-          <td>עד שנה</td>
-          <td>SameSite=Lax</td>
-        </tr>
-        <tr>
-          <td><code>sessionid</code></td>
-          <td>האתר (Django)</td>
-          <td>זיהוי סשן לחיבור בקשות בזמן גלישה</td>
-          <td>סשן/קבוע*</td>
-          <td>עד 14 יום או עד סגירת הדפדפן *</td>
-          <td>HttpOnly, SameSite=Lax</td>
-        </tr>
-      </tbody>
-    </table>
-    <p class="muted">* משך הזמן תלוי בהגדרות השרת/סביבה. אם יתווספו בעתיד כלי מדידה/שיווק – נעדכן את המדיניות ונציג הודעת בחירה מתאימה.</p>
+      <div class="table-scroll">
+          <table class="cookie-table" aria-label="טבלת קוקיות">
+          <thead>
+            <tr>
+              <th>שם הקוקי</th>
+              <th>ספק</th>
+              <th>מטרה</th>
+              <th>סוג</th>
+              <th>משך שמירה משוער</th>
+              <th>מאפיינים</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>csrftoken</code></td>
+              <td>האתר (Django)</td>
+              <td>הגנה על טפסים מפני בקשות מזויפות (CSRF)</td>
+              <td>קבוע</td>
+              <td>עד שנה</td>
+              <td>SameSite=Lax</td>
+            </tr>
+            <tr>
+              <td><code>sessionid</code></td>
+              <td>האתר (Django)</td>
+              <td>זיהוי סשן לחיבור בקשות בזמן גלישה</td>
+              <td>סשן/קבוע*</td>
+              <td>עד 14 יום או עד סגירת הדפדפן *</td>
+              <td>HttpOnly, SameSite=Lax</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <p class="muted">* משך הזמן תלוי בהגדרות השרת/סביבה. אם יתווספו בעתיד כלי מדידה/שיווק – נעדכן את המדיניות ונציג הודעת בחירה מתאימה.</p>
   </section>
 
   <section id="share" class="policy-section">

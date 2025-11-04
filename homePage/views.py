@@ -326,6 +326,14 @@ def available_appointment_view(request, activity_id):
 
         # לילה: כמו קודם – אחרי 16:00 לא מציגים היום
         if is_night:
+            if selected_date:
+                # אם המשתמש בחר תאריך ספציפי – בודקים את העונה של אותו יום
+                if detect_season(selected_date) == Season.WINTER:
+                    base_qs = base_qs.none()
+            else:
+                # תצוגת טווח (שבוע): אם עכשיו חורף – לא מציגים לילות בכלל
+                if detect_season() == Season.WINTER:
+                    base_qs = base_qs.none()
             if selected_date is None or selected_date == today:
                 base_qs = base_qs.exclude(date=today)
 
@@ -801,7 +809,7 @@ def site_reviews(request):
         form = SiteReviewForm(request.POST)
         if form.is_valid():
             form.save()
-            messages.success(request, "תודה! הביקורת נשמרה.")
+            messages.success(request,  "תודה רבה על שיתוף הפעולה." , extra_tags="review_saved")
             return redirect('site_reviews')
         else:
             # אם השגיאה היא על rating — לא מציגים פופאפ כלל, רק נגלול לטופס
@@ -809,7 +817,7 @@ def site_reviews(request):
                 focus_rating_error = True
             else:
                 # לשגיאות אחרות מותר להציג פופאפ (אם תרצי אפשר גם לוותר)
-                messages.error(request, "יש בעיה בפרטים. נסי שוב.")
+                messages.error(request, "יש בעיה בפרטים. נסה שוב." , extra_tags="review_error")
     else:
         form = SiteReviewForm()
 
@@ -969,6 +977,18 @@ def booking_form(request):
             variant = "night"
         else:
             is_couple_day = True
+
+    # חסימת הזמנה ישירה לרכיבת לילה בחורף (גם אם הגיעו עם URL ידני)
+    try:
+        appt_day = appointment.date  # Appointment כאן הוא המודל עם date/time
+    except Exception:
+        appt_day = None
+
+    if (activity.name == "רכיבת לילה" or variant == "night") and appt_day:
+        if detect_season(appt_day) == Season.WINTER:
+            raise Http404("רכיבת לילה אינה פעילה בחורף")
+
+
     # אם זו רכיבה זוגית ביום והאורך לפחות 90 דק' — מותר לבחור יין
     try:
         minutes = int(duration_minutes or 0)

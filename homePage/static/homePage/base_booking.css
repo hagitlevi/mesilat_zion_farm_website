@@ -349,7 +349,7 @@
 .fancy-date-picker{
   display:flex; gap:10px;
   align-items:center;
-  justify-content:flex-start;
+  justify-content:center;
   margin: 10px auto 14px;
   text-align: center;
 }
@@ -414,4 +414,152 @@
   color: black;   /* החליפי לצבע שרוצה */
   font-size: 1.2em;               /* אופציונלי: הגדלת האייקון */
 }
+
+:root{
+  --brown-900:#2C1B10;   /* כהה */
+  --brown-700:#5C3A20;
+  --brown-500:#8B5E34;
+  --brown-300:#C49A6C;   /* בהיר */
+  --cream:#FFF8F1;       /* רקע עדין */
+  --header-bg:#EFE5CF;
+}
+
+/* פס כותרת */
+.page-hero{
+  background: linear-gradient(135deg, var(--brown-500), var(--brown-300));
+  color:#fff;
+  margin: 0 0 16px 0;
+  border-radius: 0 0 18px 18px;
+  box-shadow: 0 6px 16px rgba(0,0,0,.08) inset;
+}
+.page-hero__inner{
+  padding: clamp(14px, 2.5vw, 28px) clamp(14px, 3vw, 32px);
+}
+
+/* הכותרת */
+.page-hero__title{
+  margin: 0;
+  font-weight: 800;
+  letter-spacing: .4px;
+  line-height: 1.2;
+  text-shadow: 0 1px 0 rgba(0,0,0,.14);
+  font-size: clamp(28px, 4.2vw, 46px);
+  text-align: right; /* RTL */
+}
+
+/* תת-כותרת (לא חובה) */
+.page-hero__subtitle{
+  margin: 6px 0 0;
+  font-size: clamp(14px, 2.2vw, 18px);
+  opacity: .95;
+}
+
+/* אם לא מולא page_title – לא להשאיר רווח ריק */
+.page-hero__title:empty{ display:none; }
+
+/* === מרכזת את כותרת ההזמנה ותת-הכותרת === */
+.page-hero__inner{ text-align: center; }   /* גם הכותרת וגם תת-הכותרת במרכז */
+.page-hero__title{ text-align: inherit; }  /* יורש center מהקונטיינר */
+.page-hero__subtitle{ text-align: inherit; }
+
+
+.page-hero{
+  margin-top:0;
+  color:#fff;
+  border-radius:0 0 18px 18px;
+  box-shadow:0 6px 16px rgba(0,0,0,.08) inset;
+  /* שכבה 1: דהייה מרקע ההדר ל־transparent (22px)
+     שכבה 2: הגרדיאנט החום הקיים */
+  background:
+    linear-gradient(to bottom, var(--header-bg), rgba(255,255,255,0) 22px),
+    linear-gradient(135deg, var(--brown-500), var(--brown-300));
+}
+
+/* (רשות) ריווח פנימי אם חסר */
+.page-hero__inner{
+  padding: clamp(14px, 2.5vw, 28px) clamp(14px, 3vw, 32px);
+}
+
+/* ===== CTA על התמונה – טקסט גדול + אנימציה מושכת ===== */
+.top-image-container > img { grid-area: media; z-index: 1; }
+.text_on_picture          { grid-area: text; }
+
+/* הכפתור עצמו */
+.cta-on-image{
+  grid-area: media;
+  justify-self: center;
+  align-self: end;
+  margin-bottom: 14px;
+  position: relative;
+  z-index: 3;
+
+  /* מידות + טיפוגרפיה: הטקסט ממלא ~80% מהכפתור */
+  min-width: 240px;                 /* אפשר להגדיל/להקטין לפי הצורך */
+  height: 56px;
+  padding: 0 16px;                  /* שולי צד קטנים כדי שהטקסט יתפוס יותר מקום */
+  display: inline-flex; align-items: center; justify-content: center;
+  font-size: clamp(24px, 3.6vw, 32px);  /* ↑ זה מה שמגדיל את הכתב */
+  line-height: 1; font-weight: 900; letter-spacing: .3px;
+  text-decoration: none;
+  cursor: pointer;
+
+  /* Glassmorphism עדין (לא חום) */
+  color: #111;
+  background: linear-gradient(180deg, rgba(255,255,255,.82), rgba(255,255,255,.62));
+  backdrop-filter: blur(10px) saturate(1.12);
+  -webkit-backdrop-filter: blur(10px) saturate(1.12);
+  border: 1px solid rgba(255,255,255,.85);
+  border-radius: 999px;
+  box-shadow: 0 10px 24px rgba(0,0,0,.20), inset 0 1px 0 rgba(255,255,255,.65);
+
+  /* אנימציית נשימה עדינה (מעודדת קליק) */
+  animation: cta-breathe 1.8s ease-in-out infinite;
+  will-change: transform, box-shadow;
+  transition: transform .08s ease, box-shadow .2s ease, filter .2s ease, color .2s ease, background-color .2s ease;
+}
+
+
+
+/* מצבי אינטראקציה */
+.cta-on-image:hover{
+  filter: brightness(1.06);
+  box-shadow: 0 14px 30px rgba(0,0,0,.24), inset 0 1px 0 rgba(255,255,255,.72);
+  animation-play-state: paused;     /* עוצר נשימה בזמן ריחוף כדי לא להציף */
+}
+.cta-on-image:active{
+  transform: translateY(1px) scale(.995);
+  color: var(--main-color, #2f6e2f);
+  background: linear-gradient(180deg, rgba(255,255,255,.94), rgba(255,255,255,.74));
+}
+.cta-on-image:focus-visible{
+  outline: 3px solid rgba(255,255,255,.95);
+  outline-offset: 2px;
+}
+
+/* מובייל – מעט קומפקטי */
+@media (max-width: 860px){
+  .cta-on-image{
+    min-width: 200px;
+    height: 52px;
+    font-size: clamp(18px, 4.8vw, 24px);
+    margin-bottom: 10px;
+  }
+}
+
+/* העדפת משתמש להפחתת תנועה */
+@media (prefers-reduced-motion: reduce){
+  .cta-on-image,
+  .cta-on-image::before{ animation: none !important; }
+}
+
+/* ===== Keyframes ===== */
+@keyframes cta-sheen{
+  0%   { transform: translateX(-140%); }
+  100% { transform: translateX(140%); }
+}
+@keyframes cta-breathe{
+  0%,100% { transform: translateY(0) scale(1);   box-shadow: 0 10px 24px rgba(0,0,0,.20), inset 0 1px 0 rgba(255,255,255,.65); }
+  50%     { transform: translateY(-1px) scale(1.02); box-shadow: 0 14px 28px rgba(0,0,0,.24), inset 0 1px 0 rgba(255,255,255,.7); }
+}
+
 

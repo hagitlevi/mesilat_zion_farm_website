@@ -1,0 +1,81 @@
+{% extends "admin/base_site.html" %}
+{% load static %}
+
+{# חשוב כדי לטעון את JS/CSS של ה-AdminDateWidget/AdminTimeWidget #}
+{% block extrahead %}
+  {{ block.super }}
+  {{ form.media }}
+{% endblock %}
+
+{% block content %}
+  <div class="app-appointments-generator">
+
+    <form method="post" novalidate>
+      {% csrf_token %}
+      <input type="hidden" name="_generate" value="1" />
+
+      <fieldset class="module aligned">
+        <div class="form-row field-date">
+          <div>
+            <label for="{{ form.date.id_for_label }}">תאריך:</label>
+            {{ form.date }}  {# כאן אמור להופיע אייקון האדמין #}
+            {% if form.date.errors %}<div class="errors">{{ form.date.errors }}</div>{% endif %}
+          </div>
+        </div>
+
+        <div class="form-row field-activities">
+          <div>
+            <label for="{{ form.activities.id_for_label }}">שיוך לפעילויות:</label>
+            {{ form.activities }}
+            <p class="help">{{ form.activities.help_text }}</p>
+            {% if form.activities.errors %}<div class="errors">{{ form.activities.errors }}</div>{% endif %}
+          </div>
+        </div>
+
+        <div class="form-row field-mode">
+          <div>
+            <label for="{{ form.mode.id_for_label }}">אופן יצירה:</label>
+            {{ form.mode }}
+          </div>
+        </div>
+
+        <div id="window-fields" style="display:none">
+          <div class="form-row field-start_time">
+            <div>
+              <label for="{{ form.start_time.id_for_label }}">שעת התחלה:</label>
+              {{ form.start_time }}
+            </div>
+          </div>
+          <div class="form-row field-end_time">
+            <div>
+              <label for="{{ form.end_time.id_for_label }}">שעת סיום:</label>
+              {{ form.end_time }}
+            </div>
+          </div>
+          <p class="help">תורים ייווצרו כל 15 דקות בין הזמנים.</p>
+        </div>
+      </fieldset>
+
+      <div class="submit-row">
+        <input type="submit" class="default" value="צור/צרי תורים (15 דק׳)" />
+      </div>
+    </form>
+  </div>
+
+  <script>
+    (function(){
+      // הצגת טווח הזמנים רק במצב "טווח"
+      const modeSel = document.getElementById("id_mode");
+      const winBox  = document.getElementById("window-fields");
+      function sync() { if (winBox) winBox.style.display = (modeSel && modeSel.value === "window") ? "" : "none"; }
+      if (modeSel){ modeSel.addEventListener("change", sync); sync(); }
+
+      // Fallback: אם מסיבה כלשהי DateTimeShortcuts של האדמין לא נטען,
+      // נהפוך את השדה ללוח-שנה מקומי של הדפדפן.
+      const d = document.getElementById("id_date");
+      if (d && typeof window.DateTimeShortcuts === "undefined") {
+        try { d.type = "date"; } catch(e){}
+      }
+    })();
+  </script>
+{% endblock %}

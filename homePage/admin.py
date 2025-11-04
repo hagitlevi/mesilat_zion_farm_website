@@ -37,11 +37,14 @@ from django.utils.safestring import mark_safe
 from datetime import date
 from django.db.models.functions import Coalesce
 from django.db.models import Count, Sum, Value, DecimalField
+from django.contrib.admin.widgets import AdminDateWidget, AdminTimeWidget, FilteredSelectMultiple
 
 delete_selected.short_description = "מחיקה"
 
 DETAILS_ONLY_PERM = "homePage.change_details_only"
 FULL_CHANGE_PERM  = "homePage.change_treatmentsession"
+
+MINUTES_PER_SLOT = 15
 
 NIGHT_RE    = r"(night|לילה)"
 SUNRISE_RE  = r"(sunrise|זריחה|שקיעה|sunset)"
@@ -1500,12 +1503,47 @@ class WeekdayAdmin(admin.ModelAdmin):
 
 @admin.register(Appointment)
 class AppointmentAdmin(admin.ModelAdmin):
-    list_display = ("date", "time", "duration_minutes", "is_booked", "is_break")
-    list_filter = ("is_booked", "is_break", "date")
+    list_display = ("date", "time", "duration_minutes", "is_booked", "is_break", "activities_list")
+    list_filter  = ("is_booked", "is_break", "date", "activities")  # ← סינון לפי ה-M2M
     date_hierarchy = "date"
     ordering = ("-date", "time")
     search_fields = ("customer_name", "customer_phone")
-    filter_horizontal = ("activities",)
+    filter_horizontal = ("activities",)  # ← נשאר (זה ה-M2M על Appointment)
+
+    @admin.display(description="פעילויות")
+    def activities_list(self, obj):
+        return ", ".join(obj.activities.values_list("name", flat=True)) or "—"
+
+    # ברירת מחדל: "הוסף תור" פותח את מחולל התורים (השאירי כמו שהיה לך)
+    def add_view(self, request, form_url="", extra_context=None):
+        if request.GET.get("single") == "1":
+            return super().add_view(request, form_url, extra_context)
+
+        if request.method == "POST" and request.POST.get("_generate") == "1":
+            form = SlotGeneratorForm(request.POST)
+            if form.is_valid():
+                totals, err = _generate_slots_from_form(form.cleaned_data)
+                if err:
+                    messages.error(request, err)
+                else:
+                    messages.success(
+                        request,
+                        f"נוצרו {totals['created']} תורים (15 דק׳), "
+                        f"דילוג על {totals['skipped']} קיימים."
+                    )
+                list_url = reverse("admin:homePage_appointment_changelist")
+                return redirect(f"{list_url}?date__exact={form.cleaned_data['date'].isoformat()}")
+        else:
+            form = SlotGeneratorForm()
+
+        context = {
+            **self.admin_site.each_context(request),
+            "opts": self.model._meta,
+            "form": form,
+            "original_add_url": request.path + "?single=1",
+            "title": "יצירת תורים",
+        }
+        return TemplateResponse(request, "admin/homePage/appointment_generate.html", context)
 
 @admin.register(BusinessHours)
 class BusinessHoursAdmin(admin.ModelAdmin):
@@ -1749,7 +1787,6 @@ class BookingAdminForm(forms.ModelForm):
 </script>
 
 """)
-
 
 @admin.register(Booking)
 class BookingAdmin(admin.ModelAdmin):
@@ -2620,5 +2657,138 @@ class MonthlySummaryAdmin(admin.ModelAdmin):
             },
         }
         return render(request, "admin/homePage/monthly_summary.html", ctx)
+
+class SlotGeneratorForm(forms.Form):
+    MODE_CHOICES = (("full", "יום מלא לפי שעות עבודה"), ("window", "טווח שעות ידני"))
+
+    date = forms.DateField(
+        label="תאריך",
+        widget=AdminDateWidget(attrs={"autocomplete": "off"}),
+    )
+    mode = forms.ChoiceField(label="אופן יצירה", choices=MODE_CHOICES, initial="full")
+
+    start_time = forms.TimeField(label="שעת התחלה", widget=AdminTimeWidget, required=False)
+    end_time   = forms.TimeField(label="שעת סיום",    widget=AdminTimeWidget, required=False)
+
+    # ⬇️ חדש: בחירה מרובה ל-M2M (אפשר גם ריק)
+    activities = forms.ModelMultipleChoiceField(
+        label="שיוך לפעילויות (לילה/זריחה)",
+        queryset=Activity.objects.none(),   # נטען ב-__init__
+        required=False,
+        widget=FilteredSelectMultiple("פעילויות", is_stacked=False),
+        help_text="ניתן לבחור כמה פעילויות או להשאיר ריק. רק לא לשכוח שבמקרה של בחירה חייב להגדיר שעת התחלה וסוף",
+    )
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+        qs = Activity.objects.all()
+        # אם יש לך activity_type – נעדיף אותו:
+        try:
+            qs = qs.filter(activity_type__in=["night", "sunrise"])
+        except Exception:
+            qs = Activity.objects.all()
+
+        # גיבוי לפי שם אם אין תוצאות מספקות:
+        if not qs.exists():
+            qs = Activity.objects.filter(
+                Q(name__icontains="לילה")   | Q(name__icontains="night") |
+                Q(name__icontains="זריחה") | Q(name__icontains="sunrise")
+            )
+
+        self.fields["activities"].queryset = qs.order_by("name")
+
+    def clean(self):
+        cleaned = super().clean()
+        if cleaned.get("mode") == "window":
+            st, et = cleaned.get("start_time"), cleaned.get("end_time")
+            if not st or not et:
+                raise forms.ValidationError("במצב טווח שעות חובה למלא גם התחלה וגם סוף.")
+            if et <= st:
+                raise forms.ValidationError("שעת הסיום חייבת להיות אחרי שעת ההתחלה.")
+        return cleaned
+
+
+# ---------- עזרי זמן/חלונות ----------
+def _iter_slot_times(date_obj, start_t: dtime, end_t: dtime, minutes: int = MINUTES_PER_SLOT):
+    """יוצר זמני התחלה במרווח קבוע. start כולל, end אקסקלוסיבי."""
+    step = timedelta(minutes=minutes)
+    cur = datetime.combine(date_obj, start_t)
+    end_dt = datetime.combine(date_obj, end_t)
+    while cur + step <= end_dt:
+        yield cur.time()
+        cur += step
+
+def _business_windows_for_date(g_date):
+    """
+    מחזיר רשימת חלונות [(start_time, end_time)] עבור היום הנתון לפי BusinessHours.
+    אם קיימות מספר רשומות לאותו יום/עונה – נעבור על כולן.
+    ננסה (אם קיים אצלך) לסנן לפי יום בשבוע (days__number=0..6), אחרת ניקח את כל הרשומות לעונה.
+    """
+    qs = BusinessHours.active_for_date(g_date)
+    try:
+        wd = g_date.weekday()  # Monday=0 ... Sunday=6
+        qs_day = qs.filter(days__number=wd)
+        if qs_day.exists():
+            qs = qs_day
+    except Exception:
+        pass
+
+    return [(bh.start_time, bh.end_time) for bh in qs]
+
+MINUTES_PER_SLOT = 15
+
+def _create_slots_for_range(date_obj, start_t, end_t, activities_qs):
+    created = skipped = 0
+
+    for t in _iter_slot_times(date_obj, start_t, end_t):
+        if Appointment.objects.filter(date=date_obj, time=t).exists():
+            skipped += 1
+            continue
+
+        new_obj = Appointment.objects.create(
+            date=date_obj,
+            time=t,
+            duration_minutes=MINUTES_PER_SLOT,
+            is_booked=False,
+            is_break=False,
+            activity=None,  # ← לא משתמשים ב-FK הבודד
+        )
+
+        # שיוך ל-M2M אם נבחר משהו
+        if activities_qs:
+            new_obj.activities.add(*activities_qs)
+
+        created += 1
+
+    return created, skipped, 0  # booked_skipped=0 כאן
+
+def _generate_slots_from_form(cleaned):
+    date_obj   = cleaned["date"]
+    mode       = cleaned["mode"]
+    activities = cleaned["activities"]  # ← ה-QuerySet שנבחר בטופס
+
+    totals = dict(created=0, skipped=0, booked_skipped=0)
+
+    if mode == "full":
+        windows = _business_windows_for_date(date_obj)
+        if not windows:
+            return totals, "לא נמצאו שעות עבודה ליום הזה (בדקי BusinessHours והשיוך לימי השבוע)."
+        for (st, et) in windows:
+            c, s, b = _create_slots_for_range(date_obj, st, et, activities)
+            totals["created"] += c
+            totals["skipped"] += s
+        return totals, None
+
+    # window
+    st, et = cleaned["start_time"], cleaned["end_time"]
+    c, s, b = _create_slots_for_range(date_obj, st, et, activities)
+    totals["created"] += c
+    totals["skipped"] += s
+    return totals, None
+
+def _weekday_number(py_date) -> int:
+    # Python: Monday=0 ... Sunday=6
+    return py_date.weekday()
 
 

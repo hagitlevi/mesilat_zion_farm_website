@@ -6,9 +6,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}חוות סוסים מסילת ציון{% endblock %}</title>
 
+    <link rel="icon" type="image/jpeg" href="{% static 'homePage/images/logo.png' %}?v=1">
     <link rel="stylesheet" href="{% static 'homePage/base.css' %}">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <!-- ספריית סמלים -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 
     {% block extra_css %}{% endblock %}
@@ -43,10 +42,26 @@
             <a href="{% url 'gallery' %}">
                 <i class="fa-regular fa-images gallery-icon"></i>
             </a>
+            <div>
 
-            <div class="shopping-cart-icon">
-                <i class="fa-solid fa-star"></i>
             </div>
+
+        {% if request.path != home_url %}
+        <a href="{{ home_url }}" class="back-icon" aria-label="חזרה" title="חזרה">
+          <svg xmlns="http://www.w3.org/2000/svg"
+               class="icon-chevron"
+               viewBox="0 0 24 24"
+               aria-hidden="true">
+            <path d="M15 19 L8 12 L15 5"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="4.5"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"></path>
+          </svg>
+        </a>
+        {% endif %}
+
 
         </div>
     </header>
@@ -96,7 +111,7 @@
         {% if forloop.first %}
           {% with tags=m.tags|stringformat:"s" %}
             <div class="success-modal__icon" aria-hidden="true">
-              {% if "payment_failed" in tags or "error" in tags %}
+              {% if "payment_failed" in tags or "error" in tags or "review_error" in tags  %}
                 {# איקס אדום #}
                 <svg width="64" height="64" viewBox="0 0 88 88" xmlns="http://www.w3.org/2000/svg">
                   <rect x="6" y="6" width="76" height="76" rx="18" fill="#F57C7C"/>
@@ -116,6 +131,10 @@
                 התשלום בוצע בהצלחה!
               {% elif "payment_failed" in tags %}
                 התשלום נכשל או בוטל
+              {% elif "review_saved" in tags %}
+                הביקורת פורסמה בהצלחה
+              {% elif "review_error" in tags or "error" in tags %}
+                לא הצלחנו לשמור את הביקורת
               {% else %}
                 הבקשה נקלטה בהצלחה!
               {% endif %}
@@ -219,6 +238,35 @@
 <script>
 (function () {
   var modal = document.getElementById('success-modal');
+  // ===== כפתור חזרה (ללא סקריפט נפרד) =====
+  (function backButtonSetup(){
+    var back = document.querySelector('.back-icon');
+    if (!back) return;
+
+    function sameOriginReferrer() {
+      try {
+        return document.referrer &&
+               new URL(document.referrer, location.href).origin === location.origin;
+      } catch (e) { return false; }
+    }
+
+    function goBackOrHome(e) {
+      var canGoBack = history.length > 1 && sameOriginReferrer();
+      if (canGoBack) {
+        if (e) e.preventDefault();
+        history.back();
+      } // אחרת — נותנים ל-href להוביל (לרוב: דף הבית)
+    }
+
+    back.addEventListener('click', goBackOrHome);
+    back.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        goBackOrHome();
+      }
+    });
+  })();
+
   if (!modal) return;
 
   var card = modal.querySelector('.success-modal__card');
