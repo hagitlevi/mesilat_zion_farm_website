@@ -31,6 +31,13 @@ from django.conf import settings
 from .models import MarketingConsent
 from django.conf import settings
 from .models import MarketingConsent
+from django.db.models import Max
+from django.utils import timezone
+from zoneinfo import ZoneInfo
+from django.http import JsonResponse
+from django.views.decorators.http import require_GET
+from django.db.models import Q
+
 VARIANT_TO_TYPE = {
     "day":     "רכיבה זוגית ביום",
     "sunrise": "רכיבה זוגית בזריחה",
@@ -985,7 +992,7 @@ def booking_form(request):
     selected_type    = request.GET.get('activity_type')         # קוד activity_type שנבחר (אם נבחר)
     qty_raw          = request.GET.get('participants')          # כמות משתתפים (אם נבחרה)
 
-    appointment = get_object_or_404(Appointment.objects.select_for_update(), id=appointment_id)
+    appointment = get_object_or_404(Appointment, id=appointment_id)
     activity    = get_object_or_404(Activity, id=activity_id)
 
     # ===================== HOLD CHECK (לשים כאן) =====================
@@ -995,17 +1002,17 @@ def booking_form(request):
     # אם אין טוקן בסשן – זה אומר שהמשתמש הגיע בלי HOLD (או סשן חדש)
     if not token:
         messages.error(request, "כדי להמשיך חייבים לבחור תור מחדש.")
-        return redirect("available_appointment", activity_id=activity.id)
+        return redirect(request.META.get("HTTP_REFERER", "home"))
 
     # אם אין hold_until או שהוא פג
     if (not appointment.hold_until) or (appointment.hold_until <= now):
-        messages.error(request, "השמירה על התור פגה (עברו 15 דקות). בבקשה לבחור תור מחדש.")
-        return redirect("available_appointment", activity_id=activity.id)
+        messages.error(request, "השמירה על התור פגה / ארעה שגיאה. בבקשה לבחור תור מחדש.")
+        return redirect(request.META.get("HTTP_REFERER", "home"))
 
     # אם התור מוחזק ע״י מישהו אחר (טוקן שונה)
     if str(appointment.hold_token) != str(token):
         messages.error(request, "מישהו אחר תפס את התור כרגע. בבקשה לבחור תור אחר.")
-        return redirect("available_appointment", activity_id=activity.id)
+        return redirect(request.META.get("HTTP_REFERER", "home"))
     # =================== END HOLD CHECK ===================
 
 
@@ -1630,6 +1637,7 @@ from django.db import transaction
 @require_POST
 @transaction.atomic
 def release_hold(request):
+    print("RELEASE_HOLD CALLED", timezone.now(), "session_token=", request.session.get("hold_token"))
     token = request.session.get("hold_token")
     if not token:
         return JsonResponse({"ok": True, "released": 0})
@@ -1644,12 +1652,7 @@ def release_hold(request):
 
     released = qs.update(hold_until=None, hold_token=None)
     return JsonResponse({"ok": True, "released": released})
-from django.db.models import Max
-from django.utils import timezone
-from zoneinfo import ZoneInfo
-from django.http import JsonResponse
-from django.views.decorators.http import require_GET
-from django.db.models import Q
+
 
 @require_GET
 def appointments_snapshot(request):
@@ -1680,3 +1683,35 @@ def appointments_snapshot(request):
         "stamp": stamp.isoformat() if stamp else None,
         "slots": slots
     })
+
+from django.views.decorators.http import require_POST
+from django.db import transaction
+from django.utils import timezone
+from datetime import timedelta
+from django.http import JsonResponse
+from django.shortcuts import get_object_or_404
+
+@require_POST
+def renew_hold(request):
+    appointment_id = request.POST.get("appointment_id")
+    if not appointment_id:
+        return JsonResponse({"ok": False, "msg": "missing appointment_id"}, status=400)
+
+    token = request.session.get("hold_token")
+    if not token:
+        return JsonResponse({"ok": False, "msg": "no session token"}, status=400)
+
+    now = timezone.now()
+    HOLD_MINUTES = 15
+
+    with transaction.atomic():
+        appt = get_object_or_404(Appointment.objects.select_for_update(), id=appointment_id)
+
+        # חייב להיות אותו טוקן (כלומר זה באמת אותה הזמנה)
+        if str(appt.hold_token) != str(token):
+            return JsonResponse({"ok": False, "msg": "token mismatch"}, status=409)
+
+        appt.hold_until = now + timedelta(minutes=HOLD_MINUTES)
+        appt.save(update_fields=["hold_until"])
+
+    return JsonResponse({"ok": True, "hold_until": appt.hold_until.isoformat()})

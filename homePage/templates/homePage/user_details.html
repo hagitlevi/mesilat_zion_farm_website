@@ -23,8 +23,8 @@
 
       {# אם יש יותר מסוג פעילות אחד (ולא רכיבה זוגית) – נציג בחירה; אחרת נעביר חבוי #}
       {% if type_options|length > 1 and activity.name != "רכיבה זוגית" %}
-        <select id="activity_type" name="activity_type" required onchange="this.form.requestSubmit()">
-          <option value="" disabled {% if not selected_type %}selected{% endif %} hidden>בחרו את צבע הסוס*</option>
+        <select id="activity_type" name="activity_type" required class="calc-auto-submit">
+            <option value="" disabled {% if not selected_type %}selected{% endif %} hidden>בחרו את צבע הסוס*</option>
           {% for opt in type_options %}
             <option value="{{ opt.code }}" {% if selected_type == opt.code %}selected{% endif %}>
               {{ opt.label }}
@@ -37,8 +37,8 @@
 
       {# אם הכמות לא קבועה – נציג בחירה; אחרת נעביר חבוי #}
       {% if activity.min_participants != activity.max_participants %}
-        <select id="participants" name="participants" required onchange="this.form.requestSubmit()" required>
-          <option value="" disabled {% if not selected_participants %}selected{% endif %} hidden>בחרו מספר רוכבים*</option>
+        <select id="participants" name="participants" required class="calc-auto-submit">
+            <option value="" disabled {% if not selected_participants %}selected{% endif %} hidden>בחרו מספר רוכבים*</option>
           {% for n in participants_range %}
             <option value="{{ n }}" {% if selected_participants == n %}selected{% endif %}>{{ n }}</option>
           {% endfor %}
@@ -49,7 +49,7 @@
 
       {# חדש: בחירת צבע היין — מוצג רק ברכיבה זוגית ביום #}
         {% if allow_wine %}
-          <select id="wine" name="wine" required onchange="this.form.requestSubmit()">
+          <select id="wine" name="wine" required class="calc-auto-submit">
             <option value="" disabled {% if not wine %}selected{% endif %} hidden>בחרו יין*</option>
             <option value="white" {% if wine == 'white' %}selected{% endif %}>יין לבן</option>
             <option value="red"   {% if wine == 'red' %}selected{% endif %}>יין אדום</option>
@@ -157,17 +157,85 @@
 <script>
 (function () {
   const releaseUrl = "{% url 'release_hold' %}";
-  const csrfToken = "{{ csrf_token }}";
+  const renewUrl   = "{% url 'renew_hold' %}";
 
+  function getCookie(name) {
+    const value = `; ${document.cookie}`;
+    const parts = value.split(`; ${name}=`);
+    if (parts.length === 2) return parts.pop().split(';').shift();
+  }
+  const csrfToken = getCookie("csrftoken");
+
+  // ✅ חידוש HOLD בכל טעינה של הדף (כולל אחרי Refresh/GET של calc-form)
+  const appointmentId = "{{ appointment.id }}";
+  if (csrfToken && appointmentId) {
+    const fd = new FormData();
+    fd.append("csrfmiddlewaretoken", csrfToken);
+    fd.append("appointment_id", appointmentId);
+
+    fetch(renewUrl, {
+      method: "POST",
+      body: fd,
+      credentials: "same-origin",
+      cache: "no-store",
+    }).catch(()=>{});
+  }
+
+  function getCookie(name) {
+    const value = `; ${document.cookie}`;
+    const parts = value.split(`; ${name}=`);
+    if (parts.length === 2) return parts.pop().split(';').shift();
+  }
+
+  // נשחרר HOLD רק אם באמת עוזבים את ה-flow (לינק החוצה / סגירת טאב / מעבר לאתר אחר)
+  // ולא כשיש submit של ה-GET (בחירת משתתפים/צבע/יין) שמרענן את אותו מסך.
+  let suppressRelease = false;
+
+  const calcForm = document.getElementById("calc-form");
+  if (calcForm) {
+
+      // ✅ חשוב: להדליק suppressRelease הכי מוקדם שאפשר (לפני change)
+      calcForm.querySelectorAll(".calc-auto-submit").forEach((el) => {
+        el.addEventListener("pointerdown", () => { suppressRelease = true; }, { capture: true });
+        el.addEventListener("keydown", (e) => {
+          if (e.key === "Enter") suppressRelease = true;
+        }, { capture: true });
+
+        el.addEventListener("change", () => {
+          suppressRelease = true;
+          calcForm.requestSubmit();
+        }, { capture: true });
+      });
+
+      // ✅ גם על submit עצמו, עם capture
+      calcForm.addEventListener("submit", () => {
+        suppressRelease = true;
+      }, { capture: true });
+    }
   function releaseHold() {
-    // sendBeacon הכי אמין ביציאה
+    if (suppressRelease) return;
+    if (!csrfToken) return;
+
     const data = new FormData();
     data.append("csrfmiddlewaretoken", csrfToken);
     navigator.sendBeacon(releaseUrl, data);
   }
 
-  window.addEventListener("pagehide", releaseHold);  // עובד גם במובייל
-  window.addEventListener("beforeunload", releaseHold);
+  // ✅ זיהוי רענון (F5/Ctrl+R). ברענון לא משחררים.
+  let isReload = false;
+  const nav = performance.getEntriesByType?.("navigation")?.[0];
+  if (nav && nav.type === "reload") isReload = true;
+
+  // fallback לדפדפנים ישנים
+  if (!nav && performance?.navigation) {
+    isReload = (performance.navigation.type === 1); // TYPE_RELOAD
+  }
+
+  // ✅ משחררים רק כשעוזבים באמת (Back/סגירה/מעבר לדף אחר), לא ברענון
+  window.addEventListener("pagehide", () => {
+    if (isReload) return;
+    releaseHold();
+  });
 })();
 
 (function(){

@@ -90,6 +90,10 @@ input::placeholder{
   -webkit-box-shadow: 0 0 0 1000px var(--main-white) inset !important;
 }
 
+/* רק הצ'קבוקס של הפרסומים (שיווק) — אותו פונט כמו במדיניות */
+.marketing-consent {
+  font-family: "Arial", sans-serif;
+}
 
 /* ===========================
    Select — התנהגות וצבע "placeholder"
@@ -295,3 +299,5 @@ input::placeholder{
 .selector-form:not(:has(select)) {
   display: none;
 }
+
+

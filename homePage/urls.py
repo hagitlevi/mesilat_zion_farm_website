@@ -33,4 +33,6 @@ urlpatterns = [
     path("appointments/release/", views.release_hold, name="release_hold"),
 
     path("appointments/snapshot/", views.appointments_snapshot, name="appointments_snapshot"),
+
+    path("appointments/renew/", views.renew_hold, name="renew_hold"),
 ]
