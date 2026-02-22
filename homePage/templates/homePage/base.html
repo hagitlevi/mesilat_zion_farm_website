@@ -101,54 +101,18 @@
     {% block scripts %}{% endblock %}
 
 
-{% if messages %}
-  <div id="success-modal" class="success-modal" dir="rtl" aria-hidden="true">
-    <div class="success-modal__backdrop" aria-hidden="true"></div>
-    <div class="success-modal__card" role="dialog" aria-modal="true" aria-labelledby="success-title" tabindex="-1">
+<div id="success-modal" class="success-modal" dir="rtl" aria-hidden="true" style="display:none;">
+  <div class="success-modal__backdrop" aria-hidden="true"></div>
 
-      {# לוקחים את ההודעה הראשונה #}
-      {% for m in messages %}
-        {% if forloop.first %}
-          {% with tags=m.tags|stringformat:"s" %}
-            <div class="success-modal__icon" aria-hidden="true">
-              {% if "payment_failed" in tags or "error" in tags or "review_error" in tags  %}
-                {# איקס אדום #}
-                <svg width="64" height="64" viewBox="0 0 88 88" xmlns="http://www.w3.org/2000/svg">
-                  <rect x="6" y="6" width="76" height="76" rx="18" fill="#F57C7C"/>
-                  <path d="M32 32 L56 56 M56 32 L32 56" stroke="#fff" stroke-width="8" stroke-linecap="round"/>
-                </svg>
-              {% else %}
-                {# וי ירוק #}
-                <svg width="64" height="64" viewBox="0 0 88 88" xmlns="http://www.w3.org/2000/svg">
-                  <rect x="6" y="6" width="76" height="76" rx="18" fill="#7ED28A"/>
-                  <path d="M30 44.5l9.5 9.5L58 35.5" fill="none" stroke="#fff" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
-                </svg>
-              {% endif %}
-            </div>
+  <div class="success-modal__card" role="dialog" aria-modal="true" aria-labelledby="success-title" tabindex="-1">
+    <div class="success-modal__icon" aria-hidden="true" id="modal-icon"></div>
 
-            <h2 id="success-title" class="success-modal__title">
-              {% if "payment_succeeded" in tags %}
-                התשלום בוצע בהצלחה!
-              {% elif "payment_failed" in tags %}
-                התשלום נכשל או בוטל
-              {% elif "review_saved" in tags %}
-                הביקורת פורסמה בהצלחה
-              {% elif "review_error" in tags or "error" in tags %}
-                לא הצלחנו לשמור את הביקורת
-              {% else %}
-                הבקשה נקלטה בהצלחה!
-              {% endif %}
-            </h2>
+    <h2 id="success-title" class="success-modal__title"></h2>
+    <p class="success-modal__subtitle" id="modal-text"></p>
 
-            <p class="success-modal__subtitle">{{ m }}</p>
-          {% endwith %}
-        {% endif %}
-      {% endfor %}
-
-      <button type="button" class="success-modal__ok">אישור</button>
-    </div>
+    <button type="button" class="success-modal__ok">אישור</button>
   </div>
-{% endif %}
+</div>
 
 
 {% if payment_popup_json %}
@@ -232,67 +196,65 @@
   </style>
 {% endif %}
 
-
-
-
 <script>
-(function () {
-  var modal = document.getElementById('success-modal');
-  // ===== כפתור חזרה (ללא סקריפט נפרד) =====
-  (function backButtonSetup(){
-    var back = document.querySelector('.back-icon');
-    if (!back) return;
+  window.showBaseModal = function({type="success", title="", text=""} = {}) {
+    const modal = document.getElementById('success-modal');
+    if (!modal) return;
 
-    function sameOriginReferrer() {
-      try {
-        return document.referrer &&
-               new URL(document.referrer, location.href).origin === location.origin;
-      } catch (e) { return false; }
-    }
+    const icon = document.getElementById('modal-icon');
+    const h = document.getElementById('success-title');
+    const p = document.getElementById('modal-text');
 
-    function goBackOrHome(e) {
-      var canGoBack = history.length > 1 && sameOriginReferrer();
-      if (canGoBack) {
-        if (e) e.preventDefault();
-        history.back();
-      } // אחרת — נותנים ל-href להוביל (לרוב: דף הבית)
-    }
+    // אייקון לפי type
+    icon.innerHTML = (type === "error")
+      ? `<svg width="64" height="64" viewBox="0 0 88 88" xmlns="http://www.w3.org/2000/svg">
+           <rect x="6" y="6" width="76" height="76" rx="18" fill="#F57C7C"/>
+           <path d="M32 32 L56 56 M56 32 L32 56" stroke="#fff" stroke-width="8" stroke-linecap="round"/>
+         </svg>`
+      : `<svg width="64" height="64" viewBox="0 0 88 88" xmlns="http://www.w3.org/2000/svg">
+           <rect x="6" y="6" width="76" height="76" rx="18" fill="#7ED28A"/>
+           <path d="M30 44.5l9.5 9.5L58 35.5" fill="none" stroke="#fff" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+         </svg>`;
 
-    back.addEventListener('click', goBackOrHome);
-    back.addEventListener('keydown', function (e) {
-      if (e.key === 'Enter' || e.key === ' ') {
-        e.preventDefault();
-        goBackOrHome();
-      }
+    h.textContent = title || (type === "error" ? "שגיאה" : "הצלחה");
+    p.textContent = text || "";
+
+    modal.style.display = "block";
+    modal.classList.add("open");
+    document.body.classList.add('modal-open');
+
+    const card = modal.querySelector('.success-modal__card');
+    setTimeout(() => card && card.focus(), 50);
+  };
+
+  (function () {
+    const modal = document.getElementById('success-modal');
+    if (!modal) return;
+    const okBtn = modal.querySelector('.success-modal__ok');
+    if (okBtn) okBtn.addEventListener('click', () => {
+      modal.classList.remove('open');
+      modal.style.display = "none";
+      document.body.classList.remove('modal-open');
     });
   })();
-
-  if (!modal) return;
-
-  var card = modal.querySelector('.success-modal__card');
-  var okBtn = modal.querySelector('.success-modal__ok');
-
-  // פתיחה + פוקוס + נעילת גלילה
-  document.body.classList.add('modal-open');
-  modal.classList.add('open');
-  setTimeout(function(){ card.focus(); }, 50);
-
-  // אין סגירה אוטומטית, ולא בלחיצה מחוץ לכרטיס/ESC
-  if (okBtn) okBtn.addEventListener('click', closeModal);
-  function closeModal() {
-    modal.classList.remove('open');
-    setTimeout(function(){
-      modal.remove();
-      document.body.classList.remove('modal-open');
-    }, 200);
-  }
-  window.addEventListener('keydown', function(e){
-    if (e.key === 'Enter') { e.preventDefault(); okBtn.click(); }
-    if (e.key === 'Escape') { e.preventDefault(); } // לא סוגרים עם ESC
-  }, true);
-  modal.querySelector('.success-modal__backdrop').addEventListener('click', function(e){ e.stopPropagation(); }, true);
-})();
 </script>
+
+{% if messages and not payment_popup_json %}
+  {% for m in messages %}
+    {% if forloop.first %}
+      <script>
+        document.addEventListener('DOMContentLoaded', function(){
+          const tags = "{{ m.tags|escapejs }}";
+          window.showBaseModal({
+            type: (tags.includes("error") || tags.includes("payment_failed") || tags.includes("review_error")) ? "error" : "success",
+            title: (tags.includes("payment_failed")) ? "התשלום נכשל" : "הודעה",
+            text: "{{ m|escapejs }}"
+          });
+        });
+      </script>
+    {% endif %}
+  {% endfor %}
+{% endif %}
 
 </body>
 </html>

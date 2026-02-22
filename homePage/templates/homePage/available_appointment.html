@@ -24,10 +24,13 @@
                   <ul class="slots">
                     {% for appt in appts %}
                       <li class="slot-item">
-                        <form method="GET" action="{% url 'booking_form' %}">
+                        <form method="POST" action="{% url 'hold_appointment' %}" class="hold-form">
+                          {% csrf_token %}
                           <input type="hidden" name="appointment_id" value="{{ appt.id }}">
                           <input type="hidden" name="activity_id" value="{{ activity.id }}">
                           <input type="hidden" name="duration_minutes" value="{{ duration }}">
+                          <input type="hidden" name="date" value="{{ selected_date|date:'Y-m-d' }}">
+                          <input type="hidden" name="variant" value="{{ request.GET.variant }}">
                           <button type="submit" class="slot-btn">
                             {{ appt.time|time:"H:i" }} – {{ appt.end_time|time:"H:i" }}
                           </button>

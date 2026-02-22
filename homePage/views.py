@@ -26,7 +26,11 @@ from datetime import date, datetime, timedelta, time as dtime
 import time as time_mod
 from homePage.services.ntfy_gateway import format_booking_sms, send_booking_email, normalize_phone_il
 from decimal import Decimal, ROUND_HALF_UP
-
+from .models import MarketingConsent  # ה-model הפשוט שלך
+from django.conf import settings
+from .models import MarketingConsent
+from django.conf import settings
+from .models import MarketingConsent
 VARIANT_TO_TYPE = {
     "day":     "רכיבה זוגית ביום",
     "sunrise": "רכיבה זוגית בזריחה",
@@ -288,6 +292,7 @@ def available_appointment_view(request, activity_id):
     base_qs = (
         Appointment.objects
         .filter(is_booked=False, is_break=False, date__range=(start_day, end_day))
+        .filter(Q(hold_until__isnull=True) | Q(hold_until__lte=now_aw))
         .order_by("date", "time")
         .distinct()
     )
@@ -943,8 +948,10 @@ def consent_status(request):
         "needs_consent": needs,
         "versions": {"terms": settings.TERMS_VERSION, "privacy": settings.PRIVACY_VERSION}
     })
-
+from django.db import transaction
+@transaction.atomic
 def booking_form(request):
+
     if request.GET.get("ajax") == "consent":
         phone = request.GET.get("phone", "")
         need = not _has_consent_by_phone(phone)
@@ -955,14 +962,52 @@ def booking_form(request):
                 "privacy": getattr(settings, "PRIVACY_VERSION", "1.0"),
             }
         })
+    elif request.GET.get("ajax") == "marketing_exists":
+        raw_p = request.GET.get("phone", "") or ""
+        phone = normalize_phone_il(raw_p)  # אותו נירמול כמו ב-pay_start
+        email = (request.GET.get("email") or "").strip().lower()
+
+        obj = MarketingConsent.objects.filter(subject_id=phone).first() if phone else None
+
+        # לוגיקה:
+        # אין רשומה לטלפון → להציג (true)
+        # יש רשומה בלי מייל → להציג (true) כדי להשלים מייל
+        # יש רשומה עם מייל → לא להציג (false)
+        show_checkbox = True
+        if obj and (obj.customer_email or "").strip():
+            show_checkbox = False
+
+        return JsonResponse({"show_checkbox": show_checkbox})
+
     appointment_id   = request.GET.get('appointment_id')
     activity_id      = request.GET.get('activity_id')
     duration_minutes = request.GET.get('duration_minutes')      # מחרוזת או None
     selected_type    = request.GET.get('activity_type')         # קוד activity_type שנבחר (אם נבחר)
     qty_raw          = request.GET.get('participants')          # כמות משתתפים (אם נבחרה)
 
-    appointment = get_object_or_404(Appointment, id=appointment_id)
+    appointment = get_object_or_404(Appointment.objects.select_for_update(), id=appointment_id)
     activity    = get_object_or_404(Activity, id=activity_id)
+
+    # ===================== HOLD CHECK (לשים כאן) =====================
+    now = timezone.now()
+    token = request.session.get("hold_token")  # אותו טוקן ששמרת כשעשית hold
+
+    # אם אין טוקן בסשן – זה אומר שהמשתמש הגיע בלי HOLD (או סשן חדש)
+    if not token:
+        messages.error(request, "כדי להמשיך חייבים לבחור תור מחדש.")
+        return redirect("available_appointment", activity_id=activity.id)
+
+    # אם אין hold_until או שהוא פג
+    if (not appointment.hold_until) or (appointment.hold_until <= now):
+        messages.error(request, "השמירה על התור פגה (עברו 15 דקות). בבקשה לבחור תור מחדש.")
+        return redirect("available_appointment", activity_id=activity.id)
+
+    # אם התור מוחזק ע״י מישהו אחר (טוקן שונה)
+    if str(appointment.hold_token) != str(token):
+        messages.error(request, "מישהו אחר תפס את התור כרגע. בבקשה לבחור תור אחר.")
+        return redirect("available_appointment", activity_id=activity.id)
+    # =================== END HOLD CHECK ===================
+
 
     # קביעה מאיזה וריאנט הגענו (רק לזוגית)
     variant, is_couple_day = None, False
@@ -1136,6 +1181,7 @@ def booking_form(request):
 def _abs(request, name, **kwargs):
     return request.build_absolute_uri(reverse(name, kwargs=kwargs if kwargs else None))
 
+
 # ——— 1) התחלת תשלום ———
 def pay_start(request):
     if request.method != "POST":
@@ -1178,6 +1224,38 @@ def pay_start(request):
     if activity.name != "טיול כרכרה":
         full_amount =  full_amount * int(participants)
     amount_agorot = int((Decimal(str(full_amount)) * 100).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
+
+    # אם המשתמש סימן וי – נשמור רשומת Marketing בסיסית
+    if request.POST.get("marketing_optin"):
+        MarketingConsent.objects.get_or_create(
+            subject_id=sid,  # הטלפון המנורמל שלך (0XXXXXXXXX)
+            defaults={
+                "version": getattr(settings, "MARKETING_VERSION", "1.0"),
+                "full_name": full_name,
+                "customer_email": (email or "").strip(),
+                "ip": request.META.get("REMOTE_ADDR"),
+                "user_agent": request.META.get("HTTP_USER_AGENT", ""),
+            }
+        )
+
+
+    # --- שמירת/עדכון שיווק מינימלית ---
+    if request.POST.get("marketing_optin"):
+        email_norm = (email or "").strip().lower()
+        obj, created = MarketingConsent.objects.get_or_create(
+            subject_id=sid,
+            defaults={
+                "version": getattr(settings, "MARKETING_VERSION", "1.0"),
+                "full_name": full_name,
+                "customer_email": email_norm,
+                "ip": request.META.get("REMOTE_ADDR"),
+                "user_agent": (request.META.get("HTTP_USER_AGENT", "") or "")[:255],
+            }
+        )
+        if not created and email_norm and not (obj.customer_email or "").strip():
+            obj.customer_email = email_norm
+            obj.save(update_fields=["customer_email"])
+
     payment = Payment.objects.create(
         provider="mock",
         amount_agorot=amount_agorot,
@@ -1464,3 +1542,141 @@ def mock_checkout(request, payment_id: int):
     return render(request, "homePage/mock_checkout.html",
                   {"payment": payment, "amount_nis": amount_nis})
 
+
+from uuid import uuid4
+from django.views.decorators.http import require_POST
+def _is_ajax(request):
+    return request.headers.get("x-requested-with") == "XMLHttpRequest"
+@require_POST
+@transaction.atomic
+def hold_appointment(request):
+    appt_id = int(request.POST.get("appointment_id"))
+    duration = int(request.POST.get("duration_minutes", "60"))
+    now = timezone.now()
+    hold_minutes = 15
+    token = request.session.get("hold_token")
+
+    if not token:
+        token = str(uuid4())
+        request.session["hold_token"] = token
+
+    activity_id = int(request.POST.get("activity_id"))
+    date_q = request.POST.get("date", "")
+    variant_q = request.POST.get("variant", "")
+
+    def ok_redirect(url):
+        if _is_ajax(request):
+            return JsonResponse({"ok": True, "redirect_url": url})
+        return redirect(url)
+
+    def err(msg):
+        if _is_ajax(request):
+            return JsonResponse({"ok": False, "message": msg}, status=409)
+        messages.error(request, msg)
+        base_url = reverse("available_appointment", kwargs={"activity_id": activity_id})
+        qs = urlencode({"date": date_q, "variant": variant_q})
+        return redirect(f"{base_url}?{qs}")
+
+    base = Appointment.objects.select_for_update().get(id=appt_id)
+
+    # ✅ אם מוחזק ע"י מישהו אחר ועדיין לא פג
+    if base.hold_until and base.hold_until > now and str(base.hold_token) != token:
+        return err("מישהו אחר כבר תפס את התור הזה. בבקשה לבחור שעה אחרת.")
+
+    if base.is_booked or base.is_break:
+        return err("מישהו אחר תפס את התור. בבקשה לבחור שעה אחרת.")
+
+    base_dt = datetime.combine(base.date, base.time)
+    slot_count = max(1, (duration + 14) // 15)
+    times_needed = [(base_dt + timedelta(minutes=15*i)).time() for i in range(slot_count)]
+
+    need_break = duration > 30
+    if need_break:
+        break_time = (base_dt + timedelta(minutes=15*slot_count)).time()
+        times_needed.append(break_time)
+
+    qs = (Appointment.objects.select_for_update()
+          .filter(date=base.date, time__in=times_needed, is_break=False))
+
+    chain = list(qs)
+    if len(chain) != len(times_needed):
+        return err("השעה הזו כבר לא זמינה למשך שבחרת. בבקשה לבחור שעה אחרת.")
+
+    for a in chain:
+        if a.is_booked or a.is_break:
+            return err("התור נתפס ממש עכשיו. בבקשה לבחור שעה אחרת.")
+        if a.hold_until and a.hold_until > now and str(a.hold_token) != token:
+            return err("מישהו אחר מחזיק את התור כרגע. בבקשה לבחור שעה אחרת.")
+
+    until = now + timedelta(minutes=hold_minutes)
+    for a in chain:
+        a.hold_token = token
+        a.hold_until = until
+        if not a.hold_created_at:
+            a.hold_created_at = now
+        a.save(update_fields=["hold_token", "hold_until", "hold_created_at", "updated_at"])
+
+    # הצלחה → מחזירים URL לדף הפרטים
+    qs = urlencode({
+        "appointment_id": appt_id,
+        "activity_id": activity_id,
+        "duration_minutes": duration,
+    })
+    return ok_redirect(f"{reverse('booking_form')}?{qs}")
+
+from django.views.decorators.http import require_POST
+from django.db import transaction
+
+@require_POST
+@transaction.atomic
+def release_hold(request):
+    token = request.session.get("hold_token")
+    if not token:
+        return JsonResponse({"ok": True, "released": 0})
+
+    now = timezone.now()
+
+    qs = Appointment.objects.select_for_update().filter(
+        hold_token=token,
+        is_booked=False,
+        hold_until__gt=now,
+    )
+
+    released = qs.update(hold_until=None, hold_token=None)
+    return JsonResponse({"ok": True, "released": released})
+from django.db.models import Max
+from django.utils import timezone
+from zoneinfo import ZoneInfo
+from django.http import JsonResponse
+from django.views.decorators.http import require_GET
+from django.db.models import Q
+
+@require_GET
+def appointments_snapshot(request):
+    activity_id = request.GET.get("activity_id")
+    date_str = request.GET.get("date")
+
+    now_aw = timezone.now().astimezone(ZoneInfo("Asia/Jerusalem"))
+
+    qs = Appointment.objects.filter(
+        is_booked=False,
+        is_break=False
+    ).filter(
+        Q(hold_until__isnull=True) | Q(hold_until__lte=now_aw)
+    )
+
+    if date_str:
+        qs = qs.filter(date=date_str)
+
+    # ✅ stamp אמיתי
+    stamp = qs.aggregate(max_updated=Max("updated_at"))["max_updated"]
+
+    slots = list(
+        qs.values("id", "date", "time")
+        .order_by("date", "time")
+    )
+
+    return JsonResponse({
+        "stamp": stamp.isoformat() if stamp else None,
+        "slots": slots
+    })

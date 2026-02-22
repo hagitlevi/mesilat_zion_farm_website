@@ -14,9 +14,7 @@ from homePage.services.ntfy_gateway import (
 from django.contrib import messages
 from django.shortcuts import redirect
 from zoneinfo import ZoneInfo
-from django.db import transaction
 from types import SimpleNamespace
-from django.db.models import Q
 from django.contrib.admin.helpers import ActionForm
 from urllib.parse import urlencode
 from datetime import datetime, date as ddate, time as dtime, timedelta
@@ -27,7 +25,6 @@ from decimal import Decimal , ROUND_HALF_UP
 from django.http import JsonResponse, HttpResponseBadRequest
 from django.shortcuts import get_object_or_404
 from django.core.exceptions import ValidationError
-from django.utils import timezone
 from django import forms
 from django.shortcuts import render
 from homePage.services.ntfy_gateway import send_sms_via_ntfy, normalize_phone_il
@@ -38,6 +35,17 @@ from datetime import date
 from django.db.models.functions import Coalesce
 from django.db.models import Count, Sum, Value, DecimalField
 from django.contrib.admin.widgets import AdminDateWidget, AdminTimeWidget, FilteredSelectMultiple
+from django.http import HttpResponse
+from django.utils.html import format_html
+from .models import MarketingConsent
+import csv
+from django.views.decorators.http import require_POST
+from django.utils.crypto import get_random_string
+from homePage.services.slot_hold import try_hold_chain, release_hold
+from django.db import transaction
+from django.utils import timezone
+import uuid
+from django.db.models import Q
 
 delete_selected.short_description = "מחיקה"
 
@@ -285,9 +293,14 @@ def find_free_start_times(chosen_date, minutes, activity_name, variant=None):
 
     act_qs = Activity.objects.filter(name__iexact=activity_name)
     activity = act_qs.first()
+
     base_qs = (
         Appointment.objects
-        .filter(is_booked=False, is_break=False, date=chosen_date)
+        .filter(is_break=False, date=chosen_date)
+        .filter(
+            Q(is_booked=False) &
+            (Q(hold_until__isnull=True) | Q(hold_until__lte=now_aw))
+        )
         .order_by("time")
         .distinct()
     )
@@ -1788,6 +1801,8 @@ class BookingAdminForm(forms.ModelForm):
 
 """)
 
+
+
 @admin.register(Booking)
 class BookingAdmin(admin.ModelAdmin):
     exclude = ("feedback_sms_sent_at", "feedback_token")
@@ -1799,6 +1814,54 @@ class BookingAdmin(admin.ModelAdmin):
     search_fields = ("customer_name", "customer_phone", "customer_email", "payment_ref")
     readonly_fields = ("total_price", "payment_method", "payment_ref", "status")
     inlines = []
+
+    @require_POST
+    def hold_api(self, request):
+        # מקבלים date,start_time,minutes (+variant/name אם תרצי)
+        date_s = (request.POST.get("date") or "").strip()
+        start_s = (request.POST.get("start_time") or "").strip()
+        minutes_s = (request.POST.get("minutes") or "").strip()
+
+        try:
+            d = datetime.fromisoformat(date_s).date()
+            t = datetime.strptime(start_s, "%H:%M").time()
+            minutes_real = int(minutes_s)
+        except Exception:
+            return JsonResponse({"ok": False, "reason": "bad_params"}, status=400)
+
+        start_dt = datetime.combine(d, t)
+
+        # שימי לב: אנחנו תופסים גם buffer אם minutes>30 כמו במערכת שלך
+        minutes_total = minutes_real + (15 if minutes_real > 30 else 0)
+
+        token = request.session.get("admin_hold_token")
+        if not token:
+            token = get_random_string(40)
+            request.session["admin_hold_token"] = token
+            request.session.modified = True
+
+        res = try_hold_chain(
+            token=token,
+            user=request.user,
+            date=d,
+            start_dt=start_dt,
+            minutes_total_for_hold=minutes_total,
+            include_buffer_if_gt30=True,
+            ttl_minutes=15,
+        )
+        if not res.ok:
+            return JsonResponse({"ok": False, "reason": res.reason}, status=409)
+
+        return JsonResponse({"ok": True, "token": token, "ttl": 15})
+
+    @require_POST
+    def release_hold_api(self, request):
+        token = request.session.get("admin_hold_token") or (request.POST.get("token") or "")
+        if token:
+            release_hold(token)
+        # לא חייבים למחוק מה-session, אבל עדיף:
+        request.session.pop("admin_hold_token", None)
+        return JsonResponse({"ok": True})
 
     def save_model(self, request, obj, form, change):
         if change and obj.pk:
@@ -1932,6 +1995,8 @@ class BookingAdmin(admin.ModelAdmin):
             # טופס הוויזארד + AJAX לזמני התחלה (אותו URL, עם ?ajax=times)
             path("book/", self.admin_site.admin_view(self.book_wizard), name="homePage_appointment_book"),
             path("pay/", self.admin_site.admin_view(admin_pay_stub), name="homePage_admin_pay_stub"),
+            path("hold/", self.admin_site.admin_view(self.hold_api), name="homePage_appointment_hold"),
+            path("hold/release/", self.admin_site.admin_view(self.release_hold_api), name="homePage_appointment_hold_release"),
         ]
         return extra + urls
 
@@ -1968,7 +2033,6 @@ class BookingAdmin(admin.ModelAdmin):
 
         # ---- AJAX: הצעת מחיר ----
         elif request.method == "GET" and request.GET.get("ajax") == "quote":
-            from django.db.models import Q
 
             name = (request.GET.get("name") or "").strip()
             minutes = int((request.GET.get("minutes") or "0").strip() or 0)
@@ -2029,6 +2093,66 @@ class BookingAdmin(admin.ModelAdmin):
                 "breakdown_display": breakdown,
             })
 
+        # ---- AJAX: HOLD זמני של תור ----
+        elif request.method == "GET" and request.GET.get("ajax") == "hold":
+
+
+            name = (request.GET.get("name") or "").strip()
+            minutes = int((request.GET.get("minutes") or "0").strip() or 0)
+            date_s = (request.GET.get("date") or "").strip()
+            start_s = (request.GET.get("start_time") or "").strip()
+
+            if not (name and minutes and date_s and start_s):
+                return JsonResponse({"ok": False, "msg": "חסרים נתונים."})
+
+            try:
+                d = datetime.fromisoformat(date_s).date()
+                t = datetime.strptime(start_s, "%H:%M").time()
+            except Exception:
+                return JsonResponse({"ok": False, "msg": "תאריך/שעה לא תקינים."})
+
+            start_dt = datetime.combine(d, t)
+            slot_count = max(1, (minutes + 14) // 15)
+            times_needed = [
+                (start_dt + timedelta(minutes=15 * i)).time()
+                for i in range(slot_count)
+            ]
+
+            now = timezone.now()
+            hold_token = str(uuid.uuid4())
+            hold_until = now + timedelta(minutes=10)  # נעילה ל־10 דקות
+
+            with transaction.atomic():
+
+                qs = Appointment.objects.select_for_update().filter(
+                    date=d,
+                    time__in=times_needed
+                )
+
+                # בדיקה אם אחד הסלוטים כבר תפוס או מוחזק
+                conflict = qs.filter(
+                    Q(is_booked=True) |
+                    (Q(hold_until__isnull=False) & Q(hold_until__gt=now))
+                ).exists()
+
+                if conflict:
+                    return JsonResponse({
+                        "ok": False,
+                        "msg": "התור נתפס הרגע. בחרי שעה אחרת."
+                    })
+
+                # נעילה זמנית
+                qs.update(
+                    hold_until=hold_until,
+                    hold_token=hold_token,
+                    hold_created_at=now
+                )
+
+            return JsonResponse({
+                "ok": True,
+                "token": hold_token
+            })
+
         # ---- GET רגיל: תצוגת הוויזארד ----
         elif request.method == "GET":
             all_names = distinct_activity_names()
@@ -2078,7 +2202,6 @@ class BookingAdmin(admin.ModelAdmin):
             )
 
         # ---- POST: יצירה אמיתית של הזמנה ----
-        from django.db.models import Q
 
         name = (request.POST.get("activity_name") or "").strip()
         minutes = int(request.POST.get("duration_minutes") or 0)
@@ -2201,6 +2324,37 @@ class BookingAdmin(admin.ModelAdmin):
         start_dt = datetime.combine(d, t)
         slot_count = max(1, (minutes + 14) // 15)
         times_needed = [(start_dt + timedelta(minutes=15 * i)).time() for i in range(slot_count)]
+
+        # חייב להיות hold_token מה-GET ajax=hold (ה-JS שם אותו בשדה hidden בשם hold_token)
+        hold_token = (request.POST.get("hold_token") or "").strip()
+        if not hold_token:
+            messages.error(request, "חסרים נתונים: צריך לבחור שעה ולהמתין לתפיסת התור (HOLD).")
+            return redirect(reverse("admin:homePage_appointment_book"))
+
+        with transaction.atomic():
+            now = timezone.now()
+
+            qs = Appointment.objects.select_for_update().filter(
+                date=d,
+                time__in=times_needed,
+            )
+
+            # חייבים שכל הסלוטים קיימים
+            if qs.count() != len(times_needed):
+                messages.error(request, "אין רצף סלוטים פנוי.")
+                return redirect(reverse("admin:homePage_appointment_book"))
+
+            # חייבים שכל הסלוטים מוחזקים ע"י אותו hold_token ועדיין לא פג תוקף
+            bad = qs.filter(
+                Q(is_booked=True) |
+                Q(hold_until__isnull=True) |
+                Q(hold_until__lte=now) |
+                ~Q(hold_token=hold_token)
+            ).exists()
+
+            if bad:
+                messages.error(request, "התור נתפס/פג תוקף. בחרי שעה אחרת ובצעי HOLD מחדש.")
+                return redirect(reverse("admin:homePage_appointment_book"))
 
         # מותר יין? (רק זוגית-יום ו-≥90 דק׳)
         allow_wine = (name == "רכיבה זוגית" and couple_variant == "day" and minutes >= 90)
@@ -2707,6 +2861,125 @@ class SlotGeneratorForm(forms.Form):
             if et <= st:
                 raise forms.ValidationError("שעת הסיום חייבת להיות אחרי שעת ההתחלה.")
         return cleaned
+
+
+
+@admin.register(MarketingConsent)
+class MarketingConsentAdmin(admin.ModelAdmin):
+    # עמודות שמופיעות ברשימה
+    list_display = (
+        "channel_badge",
+        "subject_id",
+        "email_display",
+        "full_name",
+        "version",
+        "accepted_at",
+        "ip",
+        "ua_short",
+    )
+
+    # סינונים בצד
+    list_filter = ("channel", "version", "accepted_at")
+
+    # חיפוש
+    search_fields = ("subject_id", "customer_email", "full_name", "ip", "user_agent")
+
+    # פירורי תאריך בחלק העליון
+    date_hierarchy = "accepted_at"
+
+    # שדות לקריאה בלבד בטופס
+    readonly_fields = ("accepted_at",)
+
+    # סדר ברירת מחדל
+    ordering = ("-accepted_at",)
+
+    # כמה שורות בעמוד
+    list_per_page = 50
+
+    # פעולות (Actions) לבחירה מרובות
+    actions = ("export_as_csv",)
+
+    # תצוגה ידידותית של הערוץ
+    def channel_badge(self, obj):
+        label = dict(MarketingConsent.CHANNEL_CHOICES).get(obj.channel, obj.channel)
+        color_map = {
+            "sms": "#1f7a1f",       # ירוק
+            "email": "#1f4b7a",     # כחול
+            "whatsapp": "#128C7E",  # ירוק-ווטסאפ
+        }
+        color = color_map.get(obj.channel, "#555")
+        return format_html(
+            '<span style="display:inline-block;padding:2px 8px;border-radius:12px;'
+            'color:#fff;font-size:12px;background:{}">{}</span>',
+            color, label
+        )
+    channel_badge.short_description = "ערוץ"
+
+    # קיצור של ה-User-Agent כדי שלא ישבור שורות
+    def ua_short(self, obj):
+        ua = (obj.user_agent or "").strip()
+        return (ua[:70] + "…") if len(ua) > 70 else ua
+    ua_short.short_description = "User-Agent"
+
+    # מייל כלינק קליקבילי (או מקף אם אין)
+    def email_display(self, obj):
+        e = (obj.customer_email or "").strip()
+        if not e:
+            return "—"
+        return format_html('<a href="mailto:{}">{}</a>', e, e)
+    email_display.short_description = "מייל"
+
+    # נרמול אוטומטי בעת שמירה ידנית מהאדמין
+    def save_model(self, request, obj, form, change):
+        # נרמול subject_id לפי הערוץ
+        if obj.channel == "sms":
+            obj.subject_id = normalize_phone_il(obj.subject_id or "")
+        elif obj.channel == "email":
+            # אם לא הוזן subject_id – נשתמש במייל
+            base = (obj.subject_id or obj.customer_email or "")
+            obj.subject_id = base.strip().lower()
+            # אם אין customer_email אבל יש subject_id – נשלים אותו
+            if not (obj.customer_email or "").strip():
+                obj.customer_email = obj.subject_id
+
+        # הקפדה על lowercase למייל
+        if obj.customer_email:
+            obj.customer_email = obj.customer_email.strip().lower()
+
+        super().save_model(request, obj, form, change)
+
+    # יצוא CSV (תואם אקסל – כולל BOM)
+    def export_as_csv(self, request, queryset):
+        filename = "marketing_consents.csv"
+        response = HttpResponse(content_type="text/csv; charset=utf-8")
+        response["Content-Disposition"] = f'attachment; filename="{filename}"'
+        # BOM ל-Excel
+        response.write("\ufeff")
+
+        writer = csv.writer(response)
+        writer.writerow([
+            "channel",
+            "subject_id",
+            "customer_email",
+            "full_name",
+            "version",
+            "accepted_at",
+            "ip",
+            "user_agent",
+        ])
+        for obj in queryset.iterator():
+            writer.writerow([
+                obj.channel,
+                obj.subject_id,
+                obj.customer_email or "",
+                obj.full_name or "",
+                obj.version or "",
+                obj.accepted_at.strftime("%Y-%m-%d %H:%M:%S") if obj.accepted_at else "",
+                obj.ip or "",
+                obj.user_agent or "",
+            ])
+        return response
+    export_as_csv.short_description = "ייצוא בחירה ל-CSV"
 
 
 # ---------- עזרי זמן/חלונות ----------

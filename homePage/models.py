@@ -5,13 +5,13 @@ from django.db.models.signals import pre_delete
 from django.dispatch import receiver
 from django.utils import timezone
 from django.contrib.auth.models import User
-from django.core.exceptions import ValidationError
 from datetime import datetime, time, timedelta
 from zoneinfo import ZoneInfo
 from django.db.models import Q
 from django.core.exceptions import ValidationError
 from datetime import date
 from convertdate import hebrew as hcal
+from django.conf import settings
 
 
 ACTIVITY_TYPES = [
@@ -332,6 +332,17 @@ class Appointment(models.Model):
         blank=True,
         related_name="appointments"
     )
+    hold_until = models.DateTimeField(null=True, blank=True, db_index=True)
+    hold_token = models.UUIDField(null=True, blank=True, db_index=True)
+    hold_created_at = models.DateTimeField(null=True, blank=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    hold_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True,
+        on_delete=models.SET_NULL, related_name="held_appointments"
+    )
+
+    def is_held_active(self):
+        return bool(self.hold_until and self.hold_until > timezone.now().astimezone(ZoneInfo("Asia/Jerusalem")))
 
     class Meta:
         verbose_name = "תור"
@@ -588,6 +599,29 @@ class TreatmentSession(models.Model):
             ("can_create_sessions", "Can create sessions from calendar"),
             ("change_details_only", "Can change details field only"),
         ]
+
+class MarketingConsent(models.Model):
+    CHANNEL_CHOICES = [
+        ("sms", "SMS / טלפון"),
+        ("email", "Email"),
+        ("whatsapp", "WhatsApp"),
+    ]
+
+    version     = models.CharField("גרסה", max_length=16)  # למשל "1.3"
+    channel     = models.CharField("ערוץ", max_length=16, choices=CHANNEL_CHOICES)
+    subject_id  = models.CharField("מזהה נושא", max_length=64, db_index=True)  # טלפון או מייל מנורמל
+    full_name   = models.CharField("שם מלא", max_length=120, blank=True)
+    customer_email = models.EmailField("מייל", blank=True)
+    accepted_at = models.DateTimeField("אושר ב-", auto_now_add=True)
+    ip          = models.GenericIPAddressField("IP", null=True, blank=True)
+    user_agent  = models.CharField("user agent", max_length=255, blank=True)
+
+    class Meta:
+        unique_together = ("channel", "subject_id", "version")  # כדי שלא יאשר פעמיים אותו דבר
+
+    def __str__(self):
+        return f"{self.get_channel_display()} – {self.subject_id} ({self.version})"
+
 
 # --- שחרור סלוטים כשמוחקים Booking ---
 def release_slots_for_booking(booking, using='default'):

@@ -48,7 +48,7 @@
       {% endif %}
 
       {# חדש: בחירת צבע היין — מוצג רק ברכיבה זוגית ביום #}
-        {% if show_selector  %}
+        {% if allow_wine %}
           <select id="wine" name="wine" required onchange="this.form.requestSubmit()">
             <option value="" disabled {% if not wine %}selected{% endif %} hidden>בחרו יין*</option>
             <option value="white" {% if wine == 'white' %}selected{% endif %}>יין לבן</option>
@@ -136,6 +136,8 @@
 
 
     <div id="consent-area" class="legal-consent"></div>
+    <div id="marketing-area" class="marketing-consent"></div>
+
 
     <!-- הודעת תשומת-לב לפני התשלום -->
     <div class="notice notice-warn" role="alert" aria-live="polite">
@@ -153,6 +155,21 @@
 
 {% block scripts %}
 <script>
+(function () {
+  const releaseUrl = "{% url 'release_hold' %}";
+  const csrfToken = "{{ csrf_token }}";
+
+  function releaseHold() {
+    // sendBeacon הכי אמין ביציאה
+    const data = new FormData();
+    data.append("csrfmiddlewaretoken", csrfToken);
+    navigator.sendBeacon(releaseUrl, data);
+  }
+
+  window.addEventListener("pagehide", releaseHold);  // עובד גם במובייל
+  window.addEventListener("beforeunload", releaseHold);
+})();
+
 (function(){
   const form = document.getElementById('booking-form');
   if (!form) return;
@@ -253,6 +270,56 @@
     }
   });
 })();
+/* === תוספת מינימלית: הצגה/הסרה של צ'קבוקס השיווק לפי DB === */
+(function(){
+  const form = document.getElementById('booking-form');
+  if (!form) return;
+  const area  = document.getElementById('marketing-area');
+  const phone = form.elements.phone;
+  const email = form.elements.email;
+
+  const rePhone = /^0(5\d{8}|[2-9]\d{7})$/;
+  const AJAX_URL = "{% url 'booking_form' %}?ajax=marketing_exists";
+
+  function normPhone(p){ let d=(p||"").replace(/\D/g,""); if(d.startsWith("972")) d="0"+d.slice(3); return d; }
+  function normEmail(e){ return (e||"").trim().toLowerCase(); }
+
+  function render(show){
+    if (!area) return;
+    area.innerHTML = show ? (
+      `<label class="checkbox">
+         <input type="checkbox" id="marketing_optin" name="marketing_optin">
+         מאשר/ת קבלת עדכונים ופרסומים ב־SMS ובמייל
+       </label>`
+    ) : "";
+  }
+
+  function check(){
+    const p = normPhone(phone?.value||"");
+    const e = normEmail(email?.value||"");
+    const okP = rePhone.test(p), okE = !!e && e.includes("@");
+
+    // אם אין עדיין מזהים תקינים — נציג צ'קבוקס (ברירת מחדל)
+    if (!okP && !okE){ render(true); return; }
+
+    const u = new URL(AJAX_URL, window.location.origin);
+    if (okP) u.searchParams.set("phone", p);
+    if (okE) u.searchParams.set("email", e);
+
+    fetch(u.toString(), {credentials:"same-origin"})
+      .then(r=>r.json())
+      .then(d=>render(!!(d && d.show_checkbox)))
+      .catch(()=>render(true));
+  }
+
+  // מאזינים קלים (לא נוגעים במאזינים הקיימים)
+  if (phone){ let t1=null; phone.addEventListener('input', ()=>{ clearTimeout(t1); t1=setTimeout(check,220); }); }
+  if (email){ let t2=null; email.addEventListener('input', ()=>{ clearTimeout(t2); t2=setTimeout(check,220); }); }
+
+  // בדיקה ראשונית
+  check();
+})();
+
 </script>
 {% endblock %}
 

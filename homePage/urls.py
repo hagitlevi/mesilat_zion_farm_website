@@ -28,6 +28,9 @@ urlpatterns = [
     path("pay/mock-checkout/<int:payment_id>/", views.mock_checkout, name="mock_checkout"),
     path("pay/webhook/", views.pay_webhook, name="pay_webhook"),  # לבדיקת הצלחה/כשל
 
+    path("appointments/hold/", views.hold_appointment, name="hold_appointment"),
 
+    path("appointments/release/", views.release_hold, name="release_hold"),
 
+    path("appointments/snapshot/", views.appointments_snapshot, name="appointments_snapshot"),
 ]

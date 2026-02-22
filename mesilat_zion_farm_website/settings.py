@@ -40,7 +40,7 @@ SECRET_KEY = 'django-insecure-*k0#_3ynwivpd15dq%9d4i)(i3ah+c@!pa9@$$651-0npmo0-k
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = ['127.0.0.1', 'localhost', '10.0.0.13', '192.168.0.98', '172.18.11.118'] #
+ALLOWED_HOSTS = ['127.0.0.1', 'localhost', '10.0.0.13', '192.168.0.98', '172.18.11.118', '10.200.206.155'] #
 
 # Application definition
 
@@ -150,6 +150,7 @@ PAYMENT_PROVIDER = 'mock'
 # ==== Policy Versions (for consent & UI logic) ====
 TERMS_VERSION   = "1.3"      # עדכני כשמשנים את תנאי השימוש
 PRIVACY_VERSION = "1.2"      # עדכני כשמשנים את מדיניות הפרטיות
+MARKETING_VERSION = "1.3"
 
 
 # Static files (CSS, JavaScript, Images)

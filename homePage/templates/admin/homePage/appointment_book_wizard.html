@@ -177,7 +177,7 @@
 
 
         <input type="hidden" id="duration_override" name="duration_override">
-
+        <input type="hidden" id="hold_token" name="hold_token">
 
         <!-- שעת התחלה -->
         <label for="start_time">שעת התחלה</label>
@@ -286,6 +286,7 @@
   const elDur    = $('duration_minutes');     // משכי פעילות "רגילים"
   const elCustomDur = $('custom_duration');   // משך ידני (15–300 דק׳)
   const elOverride  = $('duration_override'); // hidden: המשך שנשלח לשרת
+  const elHoldToken = $('hold_token');        // hidden: hold_token מהשרת
 
   const elModePreset = $('mode_preset');      // רדיו: לפי פעילות (ברירת מחדל)
   const elModeCustom = $('mode_custom');      // רדיו: ידני
@@ -510,10 +511,89 @@ function activeMode(){
     }
   }
 
+    // ----- HOLD -----
+    async function requestHold(){
+      if (!elHoldToken) return false;
+
+      // כל שינוי בבחירות צריך לאפס טוקן קודם
+      elHoldToken.value = '';
+      toggleSubmit(false);
+
+      const name    = elName.value || '';
+      const minutes = String(chosenMinutes() || '');
+      const date    = elDate.value || '';
+      const start   = elStart.value || '';
+      const variant = (name.trim() === 'רכיבה זוגית') ? (elVariant.value || 'day') : '';
+
+      if (!name || !minutes || !date || !start){
+        return false;
+      }
+
+      // helper: מחזיר את השעה ל-"בחרי…" (ולא משאיר שעה שנבחרה)
+      function resetStartToChoose(){
+        if (!elStart) return;
+
+        // ודאי שיש אופציה ראשונה "בחרי…"
+        const first = elStart.options[0];
+        if (!first || first.value !== ''){
+          const opt = document.createElement('option');
+          opt.value = '';
+          opt.textContent = 'בחרי…';
+          opt.disabled = true;
+          opt.selected = true;
+          elStart.insertBefore(opt, elStart.firstChild);
+        }
+
+        elStart.value = '';          // זה מחזיר לבחירה הראשונה
+        elStart.selectedIndex = 0;   // ליתר ביטחון
+        clearHoldLocal();
+        updateSummary();
+        loadQuote();
+      }
+
+      try{
+        const url = `${AJAX_URL}?ajax=hold&name=${encodeURIComponent(name)}&minutes=${encodeURIComponent(minutes)}&date=${encodeURIComponent(date)}&start_time=${encodeURIComponent(start)}&variant=${encodeURIComponent(variant)}`;
+        const res = await fetch(url, {credentials:'same-origin'});
+        const data = await res.json();
+
+        if (data && data.ok && data.token){
+          elHoldToken.value = data.token;
+          toggleSubmit(true);
+          return true;
+        }
+
+        // אם השרת אומר תפוס/נכשל:
+        elHoldToken.value = '';
+        toggleSubmit(false);
+
+        // ✅ כאן בדיוק מה שביקשת:
+        // לא להשאיר את השעה מסומנת – חוזרים ל"בחרי…"
+        resetStartToChoose();
+
+        alert(data && data.msg ? data.msg : 'התור נתפס הרגע. בחרי שעה אחרת.');
+        return false;
+
+      }catch(e){
+        elHoldToken.value = '';
+        toggleSubmit(false);
+
+        // גם בשגיאת תקשורת – עדיף לא להשאיר שעה נעולה "כאילו"
+        resetStartToChoose();
+
+        alert('שגיאת תקשורת בזמן תפיסת התור. נסי שוב.');
+        return false;
+      }
+    }
+  function clearHoldLocal(){
+    if (elHoldToken) elHoldToken.value = '';
+  }
+
   // ----- זמני התחלה -----
   async function loadTimes(){
     elStart.innerHTML = '';
     elHelp.textContent = '';
+    clearHoldLocal();
+    toggleSubmit(false);
 
     const name    = elName.value || '';
     const minutes = String(chosenMinutes() || '');
@@ -629,10 +709,19 @@ function activeMode(){
     loadQuote();
   });
 
-  // שעה
-  elStart && elStart.addEventListener('change', ()=>{
+  // שעה -> כאן עושים HOLD בפועל
+  elStart && elStart.addEventListener('change', async ()=>{
     updateSummary();
     loadQuote();
+
+    // אם עדיין לא בחרו שעה אמיתית
+    if (!elStart.value){
+      clearHoldLocal();
+      toggleSubmit(false);
+      return;
+    }
+
+    await requestHold();
   });
 
   // וריאנט זוגית
@@ -673,6 +762,11 @@ function activeMode(){
     if (!elName.value || !mChosen || !elDate.value || !elStart.value){
       e.preventDefault();
       alert('חסרים נתונים: פעילות/אורך/תאריך/שעה');
+      return;
+    }
+    if (!elHoldToken || !elHoldToken.value){
+      e.preventDefault();
+      alert('צריך לבחור שעה ולהמתין לתפיסת התור (HOLD).');
       return;
     }
     if (elOverride) elOverride.value = String(mChosen);
