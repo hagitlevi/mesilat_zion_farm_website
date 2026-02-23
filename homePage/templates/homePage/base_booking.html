@@ -250,7 +250,7 @@
                     // ✅ משתמשים בתאריך שבאמת נבחר כרגע
                     snapUrl.searchParams.set("date", currentDateIso);
 
-                    // ✅ אם את רוצה שהשינויים יהיו רלוונטיים גם לוריאנט:
+                    // שהשינויים יהיו רלוונטיים גם לוריאנט:
                     if (hasVariants) snapUrl.searchParams.set("variant", currentVariant);
 
                     const res = await fetch(snapUrl.toString(), { cache: "no-store" });
@@ -264,7 +264,7 @@
                     if (data.stamp !== lastStamp) {
                       lastStamp = data.stamp;
 
-                      // ✅ לא משנים מבנה, פשוט טוענים מחדש את ה-HTML של התורים כמו שאת כבר עושה
+                      // לא משנים מבנה, פשוט טוענים מחדש את ה-HTML של התורים כמו שאת כבר עושה
                       loadForDate(currentDateIso, false);
                     }
                   } catch (e) {

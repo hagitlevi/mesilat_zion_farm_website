@@ -47,7 +47,11 @@
             </div>
 
         {% if request.path != home_url %}
-        <a href="{{ home_url }}" class="back-icon" aria-label="חזרה" title="חזרה">
+        <a href="{{ home_url }}"
+           class="back-icon"
+           aria-label="חזרה"
+           title="חזרה"
+           onclick="if (history.length > 1) { history.back(); } else { window.location.href='{{ home_url }}'; } return false;">
           <svg xmlns="http://www.w3.org/2000/svg"
                class="icon-chevron"
                viewBox="0 0 24 24"

@@ -1,42 +1,28 @@
-from homePage.models import ActivityRule, BusinessHours, Season, Activity, Appointment, Booking, Payment
+from homePage.models import ActivityRule, BusinessHours, Season, Activity, Appointment, Booking, Payment, SiteReview, CancellationRequest, TermsConsent, MarketingConsent
 from .forms import SiteReviewForm, CancelRequestForm
-from .models import SiteReview, CancellationRequest
-from django.http import Http404
-from django.views.decorators.http import require_http_methods
-from django.db.models import Q, Avg
+from django.http import Http404, HttpResponseBadRequest, JsonResponse
+from django.views.decorators.http import require_http_methods, require_POST, require_GET
+from django.db.models import Q, Avg, Max
 from django.core.paginator import Paginator
 from zoneinfo import ZoneInfo
 from .utils import group_consecutive_hours
 import json
-from django.views.decorators.http import require_GET
-from .models import TermsConsent
 import secrets
 from homePage.utils import assign_unique_ref
-from django.conf import settings
-from django.shortcuts import render, get_object_or_404
+from django.shortcuts import render, redirect, get_object_or_404
 from django.urls import reverse
-from django.http import HttpResponseBadRequest, JsonResponse
 from django.views.decorators.csrf import csrf_exempt
-from django.utils import timezone
 from urllib.parse import urlencode, urlsplit, urlunsplit, parse_qsl
 from django.db import transaction
-from django.shortcuts import redirect
 from django.contrib import messages
-from datetime import date, datetime, timedelta, time as dtime
+from datetime import date, datetime, time as dtime, timedelta
 import time as time_mod
 from homePage.services.ntfy_gateway import format_booking_sms, send_booking_email, normalize_phone_il
 from decimal import Decimal, ROUND_HALF_UP
-from .models import MarketingConsent  # ה-model הפשוט שלך
 from django.conf import settings
-from .models import MarketingConsent
-from django.conf import settings
-from .models import MarketingConsent
-from django.db.models import Max
+from uuid import uuid4
 from django.utils import timezone
-from zoneinfo import ZoneInfo
-from django.http import JsonResponse
-from django.views.decorators.http import require_GET
-from django.db.models import Q
+
 
 VARIANT_TO_TYPE = {
     "day":     "רכיבה זוגית ביום",
@@ -53,6 +39,7 @@ VARIANT_TO_TARGET_ACTIVITY_NAME = {
 
 
 def home(request):
+    print("DEBUG: home view called")  # הדפסה לוגית לבדיקה
     hours_rows = build_business_hours_rows()         # שלך, מחזיר ראשון..שבת
     hours_rows = group_consecutive_hours(hours_rows) # קיבוץ רצפים זהים
     popup_payload = request.session.pop('payment_popup', None)  # קריאה חד-פעמית
@@ -70,10 +57,12 @@ def home(request):
     })
 
 def riding_lessons_view(request):
+    print("DEBUG: riding_lessons_view called")  # הדפסה לוגית לבדיקה
     activity = get_object_or_404(Activity, name="שיעורי רכיבה/ טיפולית")
     return render(request, 'homePage/riding_lessons.html', {'activity': activity})
 
 def night_riding_view(request):
+    print("DEBUG: night_riding_view called")  # הדפסה לוגית לבדיקה
     is_winter_now = ((timezone.localtime().dst() or timedelta(0)) == timedelta(0))
     if is_winter_now:
         raise Http404("‌رכיבת לילה אינה פעילה בחורף")
@@ -82,10 +71,12 @@ def night_riding_view(request):
     return render(request, "homePage/night_riding.html", {"activity": activity})
 
 def sunrise_riding_view(request):
+    print("DEBUG: sunrise_riding_view called")  # הדפסה לוגית לבדיקה
     activity = get_object_or_404(Activity, name="רכיבה בזריחה")
     return render(request, 'homePage/sunrise_riding.html', {'activity': activity})
 
 def couple_riding_view(request):
+    print("DEBUG: couple_riding_view called")  # הדפסה לוגית לבדיקה
     qs = Activity.objects.filter(name="רכיבה זוגית").order_by('id')
     activity = qs.first()
     if not activity:
@@ -93,6 +84,7 @@ def couple_riding_view(request):
     return render(request, 'homePage/couple_riding.html', {'activity': activity})
 
 def group_riding_view(request):
+    print("DEBUG: group_riding_view called")  # הדפסה לוגית לבדיקה
     qs = Activity.objects.filter(name="רכיבת שטח").order_by('id')
     activity = qs.first()
     if not activity:
@@ -100,6 +92,7 @@ def group_riding_view(request):
     return render(request, 'homePage/group_riding.html', {'activity': activity})
 
 def carriage_trip_view(request):
+    print("DEBUG: carriage_trip_view called")  # הדפסה לוגית לבדיקה
     qs = Activity.objects.filter(name="טיול כרכרה").order_by('id')
     activity = qs.first()  # תחזירי אחת – הראשונה
     if not activity:
@@ -107,6 +100,7 @@ def carriage_trip_view(request):
     return render(request, 'homePage/carriage_trip.html', {'activity': activity})
 
 def photographs_view(request):
+    print("DEBUG: photographs_view called")  # הדפסה לוגית לבדיקה
     qs = Activity.objects.filter(name="צילומים").order_by('id')
     activity = qs.first()  # תחזירי אחת – הראשונה
     if not activity:
@@ -114,10 +108,12 @@ def photographs_view(request):
     return render(request, 'homePage/photographs.html', {'activity': activity})
 
 def children_riding_view(request):
+    print("DEBUG: children_riding_view called")  # הדפסה לוגית לבדיקה
     activity = get_object_or_404(Activity, name="רכיבת ילדים")
     return render(request, 'homePage/children_riding.html', {'activity': activity})
 
 def gallery_view(request):
+    print("DEBUG: gallery_view called")  # הדפסה לוגית לבדיקה
     return render(request, 'homePage/gallery.html')
 
 def _strict_window(activity, base_date):
@@ -126,6 +122,7 @@ def _strict_window(activity, base_date):
     אם אין חלון קשיח – מחזיר (None, None).
     הערה: 'רכיבת לילה' חוצה חצות → end הוא ביום הבא ב-00:00.
     """
+    print("DEBUG: _strict_window called for activity:", getattr(activity, "name", None), "and date:", base_date)  # הדפסה לוגית לבדיקה
     name = getattr(activity, "name", "")
     if name == "רכיבת לילה":
         start_dt = datetime.combine(base_date, dtime(20, 0))           # 20:00
@@ -143,6 +140,7 @@ def detect_season(d=None):
     - אם d=None → מחליטה לפי עכשיו
     - אם d הוא date → מחליטה לפי 12:00 באותו יום (נמנע מנפילה על רגע המעבר)
     """
+    print("DEBUG: detect_season called with date:", d)  # הדפסה לוגית לבדיקה
     tz = ZoneInfo("Asia/Jerusalem")
     if d is None:
         local = timezone.localtime()
@@ -162,6 +160,7 @@ def get_rules_for(activity, d):
       win_end_dt:   סוף חלון (datetime) אם מוגדר
     סדר עדיפויות: ActivityRule (ספציפי לפעילות) → BusinessHours (כללי) → בלי כללים.
     """
+    print("DEBUG: get_rules_for called for activity:", getattr(activity, "name", None), "and date:", d)  # הדפסה לוגית לבדיקה
     weekday = d.weekday()  # Monday=0 ... Sunday=6
 
     # === שינוי קטן: קובע עונה לפי מעבר השעון בישראל (DST) ===
@@ -209,6 +208,7 @@ def _durations_for_variant(variant: str):
     """
     משכים לטאב (יום/זריחה/לילה) מתוך 'רכיבה זוגית', עם פולבקים חכמים למקרה של כתיב/רווחים.
     """
+    print("DEBUG: _durations_for_variant called with variant:", variant)  # הדפסה לוגית לבדיקה
     def distinct_minutes(qs):
         return sorted(set(qs.values_list("duration_minutes", flat=True)))
 
@@ -243,6 +243,7 @@ def _durations_for_variant(variant: str):
 
 def build_business_hours_rows(season=None):
     """מחזיר רשימה מוכנה לתצוגה: [{label, closed, start, end}, ...] לפי ה-BusinessHours מהאדמין."""
+    print("DEBUG: build_business_hours_rows called with season:", season)  # הדפסה לוגית לבדיקה
     if season is None:
         # קובע עונה לפי שינוי השעון בישראל (Asia/Jerusalem) בזמן המקומי הנוכחי
         now_local = timezone.localtime()
@@ -274,6 +275,7 @@ def build_business_hours_rows(season=None):
     return rows
 
 def available_appointment_view(request, activity_id):
+    print("DEBUG: available_appointment_view called with activity_id:", activity_id)  # הדפסה לוגית לבדיקה
     activity = get_object_or_404(Activity, id=activity_id)
     variant = (request.GET.get("variant") or "").lower()
 
@@ -323,6 +325,16 @@ def available_appointment_view(request, activity_id):
         activity.name == "רכיבת לילה"
         or (activity.name == "רכיבה זוגית" and variant == "night")
     )
+
+    #  חסימה קבועה: רכיבת לילה לא פעילה בחורף (גם לזוגית-לילה)
+    if is_night:
+        if selected_date:
+            if detect_season(selected_date) == Season.WINTER:
+                base_qs = base_qs.none()
+        else:
+            # תצוגת טווח (שבוע) – אם עכשיו חורף, אין בכלל תורי לילה
+            if detect_season() == Season.WINTER:
+                base_qs = base_qs.none()
 
     if now_aw.hour >= 16:
         # זריחה: לחסום היום + מחר
@@ -469,6 +481,7 @@ def available_appointment_view(request, activity_id):
 
 @csrf_exempt
 def confirm_booking(request):
+    print("DEBUG: confirm_booking called with method:", request.method)  # הדפסה לוגית לבדיקה
     if request.method != "POST":
         return HttpResponseBadRequest("Invalid method")
 
@@ -534,6 +547,7 @@ def _capture_trailing_quarter_slot_as_break(base_appt, slot_count, field_names, 
     - מסמן: is_booked=True, is_paid=False, is_break=True (+ us_break=True אם יש)
     - מקשר פעילות אם יש activity או activities.
     """
+    print("DEBUG: _capture_trailing_quarter_slot_as_break called with base_appt id:", getattr(base_appt, "id", None), "slot_count:", slot_count, "field_names:", field_names)  # הדפסה לוגית לבדיקה
     extra_start_dt = datetime.combine(base_appt.date, base_appt.time) + timedelta(minutes=15 * slot_count)
     extra_time = extra_start_dt.time()
 
@@ -579,13 +593,13 @@ def _capture_trailing_quarter_slot_as_break(base_appt, slot_count, field_names, 
 
     return extra
 
-
 def _capture_slots_and_break(appt, duration_minutes, booking, activity=None, payment_ref=None):
     """
     תופסת רצף סלוטים של 15 דק' לפי משך, ומוסיפה הפסקה של 15 דק' אם צריך.
     מסמנת את הסלוטים כ-is_booked=True, is_paid=True (לא להפסקה), is_break=False.
     מחזירה (times_captured, extra_break) כאשר extra_break הוא ה-Appointment של ההפסקה אם נתפס.
     """
+    print("DEBUG: _capture_slots_and_break called with appt id:", getattr(appt, "id", None), "duration_minutes:", duration_minutes, "booking id:", getattr(booking, 'id', None), "activity id:", getattr(activity, 'id', None))  # הדפסה לוגית לבדיקה
     if duration_minutes is None:
         duration_minutes = 60
 
@@ -672,6 +686,7 @@ def mock_payment_success(request):
     מצפה: appointment_id, duration_minutes, (אופציונלי) participants, total_price, activity_id, payment_method, payment_ref,
            (אופציונלי) customer_name / customer_phone / customer_email (ל-Booking).
     """
+    print("DEBUG: mock_payment_success called with method:", request.method)  # הדפסה לוגית לבדיקה
     data = request.GET if request.method == "GET" else request.POST
 
     def _to_int(v, default=None, min_value=None):
@@ -815,6 +830,7 @@ def mock_payment_success(request):
 
 @require_http_methods(["GET", "POST"])
 def site_reviews(request):
+    print("DEBUG: site_reviews called with method:", request.method)  # הדפסה לוגית לבדיקה
     focus_rating_error = False  # <- דגל לגלילה
 
     if request.method == "POST":
@@ -847,19 +863,22 @@ def site_reviews(request):
         "focus_rating_error": focus_rating_error,  # <- לדף
     })
 
-
 def _client_ip(request):
+    print("DEBUG: _client_ip called")  # הדפסה לוגית לבדיקה
     xff = request.META.get("HTTP_X_FORWARDED_FOR")
     return xff.split(",")[0].strip() if xff else request.META.get("REMOTE_ADDR")
 
 def _find_booking_by_payment_ref(payment_ref: str):
+    print("DEBUG: _find_booking_by_payment_ref called with payment_ref:", payment_ref)  # הדפסה לוגית לבדיקה
     ref = (payment_ref or "").strip()
     if not ref:
         return None
     # חיפוש לא-תלוי-רישיות בשדה payment_ref
     return Booking.objects.filter(payment_ref__iexact=ref).order_by("-id").first()
+
 @require_http_methods(["GET", "POST"])
 def cancel_request_view(request):
+    print("DEBUG: cancel_request_view called with method:", request.method)  # הדפסה לוגית לבדיקה
     initial = {}
 
     # פרה־פייל לפי booking_id (כמו שהיה)
@@ -918,6 +937,7 @@ def cancel_request_view(request):
     return render(request, "homePage/cancel_request.html", {"form": form})
 
 def _has_consent_by_phone(phone: str) -> bool:
+    print("DEBUG: _has_consent_by_phone called with phone:", phone)  # הדפסה לוגית לבדיקה
     sid = normalize_phone_il(phone)
     if not sid:
         return False
@@ -929,6 +949,7 @@ def _has_consent_by_phone(phone: str) -> bool:
     )
 
 def _save_consent_by_phone(request, phone: str, full_name: str = ""):
+    print("DEBUG: _save_consent_by_phone called with phone:", phone, "full_name:", full_name)  # הדפסה לוגית לבדיקה
     sid = normalize_phone_il(phone)
     if not sid:
         return
@@ -949,15 +970,17 @@ def _save_consent_by_phone(request, phone: str, full_name: str = ""):
 @require_GET
 def consent_status(request):
     """API: מחזיר אם צריך צ'קבוקס בהתאם לטלפון ולגרסאות הנוכחיות (בלי קוקיז)"""
+    print("DEBUG: consent_status called with method:", request.method)  # הדפסה לוגית לבדיקה
     phone = request.GET.get("phone") or ""
     needs = not _has_consent_by_phone(phone)
     return JsonResponse({
         "needs_consent": needs,
         "versions": {"terms": settings.TERMS_VERSION, "privacy": settings.PRIVACY_VERSION}
     })
-from django.db import transaction
+
 @transaction.atomic
 def booking_form(request):
+    print("DEBUG: booking_form called with method:", request.method)  # הדפסה לוגית לבדיקה
 
     if request.GET.get("ajax") == "consent":
         phone = request.GET.get("phone", "")
@@ -1029,6 +1052,7 @@ def booking_form(request):
             variant = "night"
         else:
             is_couple_day = True
+            variant = "day"
 
     # חסימת הזמנה ישירה לרכיבת לילה בחורף (גם אם הגיעו עם URL ידני)
     try:
@@ -1158,7 +1182,6 @@ def booking_form(request):
 
     # 7) טווח לבחירת כמות לתבנית
     participants_range = range(activity.min_participants, activity.max_participants + 1)
-    print(wine)
     show_selector = (
         (len(type_options) > 1 and activity.name != "רכיבה זוגית") or
         (activity.min_participants != activity.max_participants) or
@@ -1186,11 +1209,13 @@ def booking_form(request):
 
 # ——— עזר ———
 def _abs(request, name, **kwargs):
+    print("DEBUG: _abs called with name:", name, "kwargs:", kwargs)  # הדפסה לוגית לבדיקה
     return request.build_absolute_uri(reverse(name, kwargs=kwargs if kwargs else None))
-
 
 # ——— 1) התחלת תשלום ———
 def pay_start(request):
+    print("DEBUG: pay_start called with method:", request.method)  # הדפסה לוגית לבדיקה
+
     if request.method != "POST":
         return HttpResponseBadRequest("Invalid method")
 
@@ -1281,6 +1306,7 @@ def pay_start(request):
 # ——— 2) חזרה מהסליקה — מחליטים על הודעה, ומפנים לדף הבית ———
 
 def pay_return(request):
+    print("DEBUG: pay_return called with method:", request.method)  # הדפסה לוגית לבדיקה
 
     # נשלוף וננקה את ה-id מהסשן כדי לא להציג שוב הודעות בשגגה
     pid = request.GET.get("payment_id") or request.session.pop("last_payment_id", None)
@@ -1322,6 +1348,7 @@ def _pick_booking_status(booking_model, *candidates):
     מחזיר סטטוס ראשון מתוך candidates שקיים בבחירות של המודל (אם יש choices),
     אחרת מחזיר את הראשון.
     """
+    print("DEBUG: _pick_booking_status called with candidates:", candidates)  # הדפסה לוגית לבדיקה
     try:
         choices = {c[0] for c in booking_model._meta.get_field("status").choices or []}
     except Exception:
@@ -1332,12 +1359,13 @@ def _pick_booking_status(booking_model, *candidates):
     return candidates[0]
 
 def _append_qs(url, **params):
+    print("DEBUG: _append_qs called with url:", url, "params:", params)  # הדפסה לוגית לבדיקה
     s, n, p, q, f = urlsplit(url)
     data = dict(parse_qsl(q))
     data.update({k: v for k, v in params.items() if v is not None})
     return urlunsplit((s, n, p, urlencode(data), f))
-# ——— 3) Webhook — כאן קובעים סטטוס סופי, יוצרים Booking, ושולחים מייל+SMS ———
 
+# ——— 3) Webhook — כאן קובעים סטטוס סופי, יוצרים Booking, ושולחים מייל+SMS ———
 @csrf_exempt
 def pay_webhook(request):
     """
@@ -1346,6 +1374,7 @@ def pay_webhook(request):
     מעדכן את ה-Payment לסטטוס סופי, מפעיל לוגיקה לאחר הצלחה,
     ובמוק מחזיר redirect ל-`next` (אם קיים) במקום JSON.
     """
+    print("DEBUG: pay_webhook called with method:", request.method)  # הדפסה לוגית לבדיקה
     if request.method != "POST":
         return HttpResponseBadRequest("Invalid method")
 
@@ -1430,8 +1459,8 @@ def pay_webhook(request):
         return redirect(next_url)
     return JsonResponse({"ok": True, "status": payment.status, "charge_id": payment.charge_id})
 
-
 def _resolve_activity_for_booking(payment: Payment, appt: Appointment | None):
+    print("DEBUG: _resolve_activity_for_booking called with payment_id:", payment.id, "appt_id:", getattr(appt, 'id', None))  # הדפסה לוגית לבדיקה
     # 1) הכי טוב: מהתור (אם קיים ועליו FK לפעילות)
     if appt is not None:
         a = getattr(appt, "activity", None)
@@ -1457,6 +1486,7 @@ def _finalize_booking_after_payment(payment: Payment):
     סוגרת תור, מוצאת/יוצרת Booking, מקשרת אותו ל-Payment, ותופסת את כל הסלוטים לפי המשך.
     אידמפוטנטית ככל האפשר.
     """
+    print("DEBUG: _finalize_booking_after_payment called with payment_id:", payment.id)  # הדפסה לוגית לבדיקה
     with transaction.atomic():
         appt = None
         if getattr(payment, "appointment_id", None):
@@ -1544,19 +1574,20 @@ def _finalize_booking_after_payment(payment: Payment):
 
 # ——— 4) דפי Mock — בדיקות ———
 def mock_checkout(request, payment_id: int):
+    print("DEBUG: mock_checkout called with payment_id:", payment_id)  # הדפסה לוגית לבדיקה
     payment = get_object_or_404(Payment, id=payment_id)
     amount_nis = payment.amount_agorot / 100.0
     return render(request, "homePage/mock_checkout.html",
                   {"payment": payment, "amount_nis": amount_nis})
 
-
-from uuid import uuid4
-from django.views.decorators.http import require_POST
 def _is_ajax(request):
+    print("DEBUG: _is_ajax called with headers:", request.headers)  # הדפסה לוגית לבדיקה
     return request.headers.get("x-requested-with") == "XMLHttpRequest"
+
 @require_POST
 @transaction.atomic
 def hold_appointment(request):
+    print("DEBUG: hold_appointment called at", timezone.now())    # הדפסה לוגית לבדיקה
     appt_id = int(request.POST.get("appointment_id"))
     duration = int(request.POST.get("duration_minutes", "60"))
     now = timezone.now()
@@ -1631,13 +1662,10 @@ def hold_appointment(request):
     })
     return ok_redirect(f"{reverse('booking_form')}?{qs}")
 
-from django.views.decorators.http import require_POST
-from django.db import transaction
-
 @require_POST
 @transaction.atomic
 def release_hold(request):
-    print("RELEASE_HOLD CALLED", timezone.now(), "session_token=", request.session.get("hold_token"))
+    print("DEBUG: release_hold called at", timezone.now())  # הדפסה לוגית לבדיקה
     token = request.session.get("hold_token")
     if not token:
         return JsonResponse({"ok": True, "released": 0})
@@ -1653,9 +1681,9 @@ def release_hold(request):
     released = qs.update(hold_until=None, hold_token=None)
     return JsonResponse({"ok": True, "released": released})
 
-
 @require_GET
 def appointments_snapshot(request):
+    print("DEBUG: appointments_snapshot called with method:", request.method)  # הדפסה לוגית לבדיקה
     activity_id = request.GET.get("activity_id")
     date_str = request.GET.get("date")
 
@@ -1684,15 +1712,9 @@ def appointments_snapshot(request):
         "slots": slots
     })
 
-from django.views.decorators.http import require_POST
-from django.db import transaction
-from django.utils import timezone
-from datetime import timedelta
-from django.http import JsonResponse
-from django.shortcuts import get_object_or_404
-
 @require_POST
 def renew_hold(request):
+    print("DEBUG: renew_hold called at", timezone.now())  # הדפסה לוגית לבדיקה
     appointment_id = request.POST.get("appointment_id")
     if not appointment_id:
         return JsonResponse({"ok": False, "msg": "missing appointment_id"}, status=400)
