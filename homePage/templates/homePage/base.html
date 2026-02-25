@@ -46,12 +46,13 @@
 
             </div>
 
-        {% if request.path != home_url %}
         <a href="{{ home_url }}"
-           class="back-icon"
+           class="back-icon {% if request.path == home_url %}back-placeholder{% endif %}"
            aria-label="חזרה"
            title="חזרה"
-           onclick="if (history.length > 1) { history.back(); } else { window.location.href='{{ home_url }}'; } return false;">
+           {% if request.path != home_url %}
+           onclick="if (history.length > 1) { history.back(); } else { window.location.href='{{ home_url }}'; } return false;"
+           {% endif %}>
           <svg xmlns="http://www.w3.org/2000/svg"
                class="icon-chevron"
                viewBox="0 0 24 24"
@@ -64,7 +65,6 @@
                   stroke-linejoin="round"></path>
           </svg>
         </a>
-        {% endif %}
 
 
         </div>
