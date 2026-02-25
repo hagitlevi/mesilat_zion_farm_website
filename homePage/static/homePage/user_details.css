@@ -15,7 +15,7 @@ html, body { min-height: 100dvh;  }
   direction: rtl;
   text-align: right;
   width: 100%;
-  max-width: 760px;
+  max-width: 1000px;
   margin: 0 auto;
   background: #ffffff;
   border: 1px solid var(--main-border);
@@ -232,7 +232,7 @@ input::placeholder{
   display: grid;
   grid-template-columns: 1fr 1fr;   /* סוג פעילות | מספר רוכבים */
   gap: 12px;
-  max-width: 760px;
+  max-width: 1000px;
   margin: 0 auto 12px;              /* מיושָר למרכז ומתחתיו רווח קטן */
 }
 @media (max-width: 720px){
@@ -262,7 +262,7 @@ input::placeholder{
    שורות המחיר (מחיר לאדם / סיכום)
    =========================== */
 .details .price-row{
-  max-width: 760px;
+  max-width: 1000px;
   margin: 8px auto;                 /* מיושָר למרכז כמו הטפסים */
   display: flex; align-items: center; gap: 8px;
   padding: 10px 12px;
@@ -301,3 +301,71 @@ input::placeholder{
 }
 
 
+/* ===========================
+שורת התאריך שנבחר
+=========================== */
+
+/* עוטף שממרכז את הכל */
+.chosen-slot-wrap{
+  display:flex;
+  justify-content:center;
+  margin: 18px 0;
+}
+
+/* הכרטיס הלבן עצמו - לא 100% רוחב */
+.chosen-slot{
+  display:flex;
+  flex-direction:column;
+  align-items:center;        /* הכל באמצע */
+  gap:10px;
+  padding: 14px 18px;
+  background:#fff;
+  border-radius: 18px;
+  border:1px solid #784a06;
+  box-shadow: 0 6px 18px rgba(0,0,0,0.08);
+  width: 100%;
+  max-width: 1000px;
+  margin: 0 auto 30px auto;
+}
+
+/* כותרת באמצע */
+.chosen-slot__title{
+  text-align:center;
+  font-weight:800;
+}
+
+/* שורה של הכדורים באמצע */
+.chosen-slot__row{
+  display:flex;
+  justify-content:center;
+  gap:12px;
+  flex-wrap:wrap;
+}
+
+/* הכדורים עצמם */
+.chosen-slot__pill{
+  display:inline-flex;
+  align-items:center;
+  gap:8px;
+  padding: 8px 12px;
+  border-radius: 999px;
+  background: #f5f3ee;
+  font-weight:700;
+}
+
+/* כדי שהשעה תיראה נכון עם מספרים */
+.chosen-slot__time{
+  direction:ltr;
+  unicode-bidi:isolate;
+}
+
+.activity-highlight {
+    font-size: 1.2rem;
+    font-weight: 500;
+}
+
+.activity-highlight span {
+    color: #8b5e3c;
+    font-weight: 700;
+    font-size: 1.5rem;
+}

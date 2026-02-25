@@ -14,6 +14,19 @@
 
 <section class="details">
 
+<div class="chosen-slot-wrap">
+  <div class="chosen-slot">
+    <h3 class="activity-highlight">
+        הפעילות שבחרתם:
+        <span>{{ activity.name }}</span>
+    </h3>
+      <div class="chosen-slot__row">
+      <span class="chosen-slot__pill chosen-slot__time">09:00–09:30 🕒</span>
+      <span class="chosen-slot__pill chosen-slot__date">26/02/2026 📅</span>
+    </div>
+  </div>
+</div>
+
 {# --- טופס GET קטן: יוצג רק אם צריך לבחור סוג/כמות --- #}
 {% if type_options|length > 1 and activity.name != "רכיבה זוגית"  or activity.min_participants != activity.max_participants or is_couple_day %}
     <form id="calc-form" method="get" action="{% url 'booking_form' %}" class="selector-form" novalidate>

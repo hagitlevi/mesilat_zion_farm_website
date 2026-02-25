@@ -1188,6 +1188,21 @@ def booking_form(request):
         allow_wine
     )
 
+    # זמן התחלה
+    start_dt = datetime.combine(appointment.date, appointment.time)
+
+    # משך בדקות
+    try:
+        minutes_int = int(duration_minutes or 0)
+    except (TypeError, ValueError):
+        minutes_int = 0
+
+    # זמן סוף
+    end_dt = start_dt + timedelta(minutes=minutes_int) if minutes_int else None
+
+    start_time_str = appointment.time.strftime("%H:%M") if appointment.time else ""
+    end_time_str = end_dt.strftime("%H:%M") if end_dt else ""
+
     # 8) החזרת הקשר לטמפלט
     return render(request, 'homePage/user_details.html', {
         'show_selector': show_selector,
@@ -1205,6 +1220,9 @@ def booking_form(request):
         'total_price': total_price,               # Decimal או None
         'wine': wine,
         'is_couple_day': is_couple_day,
+        'start_time': start_time_str,
+        'end_time': end_time_str,
+        'appt_date': appointment.date,
     })
 
 # ——— עזר ———
