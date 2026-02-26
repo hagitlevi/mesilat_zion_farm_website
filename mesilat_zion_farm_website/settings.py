@@ -41,9 +41,7 @@ SECRET_KEY = os.environ.get("SECRET_KEY", "dev-secret-key")
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = os.environ.get("DEBUG", "True") == "True"
 
-ALLOWED_HOSTS = ['127.0.0.1', 'localhost', '10.0.0.9', '192.168.0.98', '172.18.11.118', '10.200.206.155'] #
-
-# Application definition
+ALLOWED_HOSTS = os.environ.get("ALLOWED_HOSTS", "").split(",")
 
 INSTALLED_APPS = [
     'django.contrib.admin',
