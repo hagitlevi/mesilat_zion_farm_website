@@ -101,7 +101,15 @@ WSGI_APPLICATION = 'mesilat_zion_farm_website.wsgi.application'
 
 # Database
 # https://docs.djangoproject.com/en/5.2/ref/settings/#databases
-
+"""
+הבסיס נתונים הקודם של הפיתוח
+DATABASES = {
+    "default": {
+        "ENGINE": "django.db.backends.sqlite3",
+        "NAME": BASE_DIR / "db.sqlite3",
+    }
+}
+"""
 
 DATABASES = {
     "default": dj_database_url.config(
@@ -110,6 +118,7 @@ DATABASES = {
         ssl_require=True,
     )
 }
+
 
 
 
