@@ -27,7 +27,7 @@ from django.shortcuts import get_object_or_404
 from django.core.exceptions import ValidationError
 from django import forms
 from django.shortcuts import render
-from homePage.services.ntfy_gateway import send_sms_via_ntfy, normalize_phone_il
+from homePage.services.ntfy_gateway import send_sms_via_ntfy, normalize_phone_il, send_booking_deleted_email
 from django.conf import settings
 import re
 from django.utils.safestring import mark_safe
@@ -1801,8 +1801,6 @@ class BookingAdminForm(forms.ModelForm):
 
 """)
 
-
-
 @admin.register(Booking)
 class BookingAdmin(admin.ModelAdmin):
     exclude = ("feedback_sms_sent_at", "feedback_token")
@@ -1814,6 +1812,9 @@ class BookingAdmin(admin.ModelAdmin):
     search_fields = ("customer_name", "customer_phone", "customer_email", "payment_ref")
     readonly_fields = ("total_price", "payment_method", "payment_ref", "status")
     inlines = []
+
+    def has_delete_permission(self, request, obj=None):
+        return False
 
     @require_POST
     def hold_api(self, request):
@@ -1889,6 +1890,15 @@ class BookingAdmin(admin.ModelAdmin):
                         pass
 
         super().save_model(request, obj, form, change)
+
+    def delete_model(self, request, obj):
+        send_booking_deleted_email(obj)
+        super().delete_model(request, obj)
+
+    def delete_queryset(self, request, queryset):
+        for obj in queryset:
+            send_booking_deleted_email(obj)
+        super().delete_queryset(request, queryset)
 
     def _move_booking(self, booking, new_start_dt):
         """
@@ -2632,6 +2642,90 @@ class CancellationRequestAdmin(admin.ModelAdmin):
         "booking__payment_ref",  # חיפוש לפי מספר ההזמנה ב-Booking
         "appointment__id",
     )
+    actions = ("approve_refund_and_cancel",)
+
+    #  מבטלים מחיקה של בקשות ביטול (שלא ייעלמו תיעודים)
+    def has_delete_permission(self, request, obj=None):
+        return False
+
+    def release_booking_slots(self, booking):
+        """
+        משחרר את כל ה-Appointments ששייכים להזמנה:
+        - booking=NULL
+        - is_booked=False
+        - is_break=False
+        - is_paid=False
+        - payment_reference=""
+        - מנקה M2M activities אם קיים
+        """
+        from .models import Appointment
+
+        with transaction.atomic():
+            qs = Appointment.objects.select_for_update().filter(booking=booking)
+            for a in qs:
+                a.booking = None
+                a.is_booked = False
+                a.is_break = False
+                a.is_paid = False
+                a.payment_reference = ""
+                # אם יש FK activity ורוצים לנקות אותו:
+                try:
+                    a.activity = None
+                    upd = ["booking", "is_booked", "is_break", "is_paid", "payment_reference", "activity"]
+                except Exception:
+                    upd = ["booking", "is_booked", "is_break", "is_paid", "payment_reference"]
+
+                a.save(update_fields=upd)
+
+                if hasattr(a, "activities"):
+                    a.activities.clear()
+
+
+    @admin.action(description="בצע החזר + בטל הזמנה (שחרור סלוטים + מייל)")
+    def approve_refund_and_cancel(self, request, queryset):
+        done = 0
+        for cr in queryset.select_related("booking"):
+            booking = cr.booking
+
+            if not booking and cr.order_id:
+                booking = Booking.objects.filter(payment_ref__iexact=cr.order_id.strip()).first()
+                if booking:
+                    cr.booking = booking
+
+            if not booking:
+                self.message_user(request, f"בקשה #{cr.id}: לא נמצאה הזמנה לשיוך.", level=messages.ERROR)
+                continue
+
+            try:
+                with transaction.atomic():
+                    # 1) שחרור סלוטים
+                    self.release_booking_slots(booking)
+
+                    # 2) עדכון הזמנה (לא למחוק!)
+                    now = timezone.now()
+                    note = f"\n[{now:%d.%m.%Y %H:%M}] בוטל + בוצע החזר כספי (טופל דרך בקשת ביטול #{cr.id})."
+                    booking.details = (booking.details or "") + note  # אם אצלך זה notes, החליפי לשם השדה
+                    booking.status = "refunded"  # או "cancelled" לפי מה שיש אצלך
+                    booking.save(update_fields=["details", "status"])
+
+                    # 3) עדכון בקשת ביטול
+                    cr.status = "approved"
+                    cr.handled_at = now
+                    cr.handled_by = request.user
+                    cr.save()
+
+                # 4) שליחת מייל ללקוח (אחרי ה-commit)
+                try:
+                    send_booking_deleted_email(booking)  # את יכולה לשנות שם לפונקציה "cancelled/refunded"
+                except Exception:
+                    pass
+
+                done += 1
+
+            except Exception as e:
+                self.message_user(request, f"שגיאה בבקשה #{cr.id}: {e}", level=messages.ERROR)
+
+        self.message_user(request, f"טופלו {done} בקשות.", level=messages.SUCCESS)
 
 
     def save_model(self, request, obj, form, change):

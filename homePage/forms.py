@@ -46,10 +46,10 @@ class CancelRequestForm(forms.ModelForm):
             "booking", "appointment",
         ]
         widgets = {
-            "full_name": forms.TextInput(attrs={"placeholder": "*שם מלא"}),
+            "full_name": forms.TextInput(attrs={"placeholder": "*שם מלא שנרשם בעת הרכישה"}),
             "phone": forms.TextInput(attrs={"placeholder": "*טלפון", "inputmode": "tel"}),
             "email": forms.EmailInput(attrs={"placeholder": "אימייל"}),
-            "order_id": forms.TextInput(attrs={"placeholder": "*מס׳ הזמנה"}),
+            "order_id": forms.TextInput(attrs={"placeholder": "*מס׳ הזמנה (כפי שמופיע באישור ההזמנה לדוגמה: MZ-12345678) "}),
             "start_dt": forms.DateTimeInput(attrs={"type": "datetime-local", "dir": "rtl"}),
             "reason": forms.Textarea(attrs={"rows": 3, "placeholder": "סיבת הביטול"}),
             "booking": forms.HiddenInput(),

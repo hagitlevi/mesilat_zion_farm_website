@@ -9,13 +9,12 @@
 {% block content %}
 <section class="details" dir="rtl">
   <h1>טופס בקשת ביטול הזמנה וקבלת החזר כספי</h1>
-  <p>שם מלא וטלפון שנרשמו בעת הרכישה</p>
 
   <form method="post" id="cancel-form">
     {% csrf_token %}
     {{ form.honeypot }}
     <div class="form-grid">
-      <label>*שם מלא {{ form.full_name }}</label>
+      <label>*שם מלא שנרשם בעת הרכישה {{ form.full_name }}</label>
       {% for err in form.full_name.errors %}
       {% endfor %}
 
@@ -23,7 +22,7 @@
       {% for err in form.phone.errors %}
       {% endfor %}
 
-      <label>מס׳ הזמנה (כפי שמופיע באישור ההזמנה)* {{ form.order_id }}</label>
+      <label>מס׳ הזמנה (כפי שמופיע באישור ההזמנה לדוגמה: MZ-12345678)* {{ form.order_id }}</label>
       {% for err in form.order_id.errors %}
       {% endfor %}
 

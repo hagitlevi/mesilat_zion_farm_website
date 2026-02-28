@@ -88,6 +88,14 @@
       #consent-wrap{ white-space:normal; } /* במובייל כן נאפשר ירידת שורה */
     }
 
+    .mz-policy{
+      list-style: none;
+      padding: 0;
+      margin: 10px 0 18px;
+      color: #d60000;
+      font-weight: 600;
+      line-height: 1.8;
+    }
 </style>
 {% endblock %}
 
@@ -95,6 +103,13 @@
 <div class="mz-wizard">
   <div class="mz-card">
     <div class="mz-title">קביעת הזמנה</div>
+    <h2 class="mz-hello">מדיניות ביטולים</h2>
+
+    <ul class="mz-policy">
+      <li>ביטול עד 48 שעות לפני המועד — יתקבל החזר של 80% מהתשלום</li>
+      <li>ביטול בין 24–48 שעות לפני המועד — יתקבל החזר של 50% מהתשלום</li>
+      <li>ביטול בתוך 24 שעות לפני המועד או אי־הגעה — לא יתקבל החזר, והתשלום המלא ייגבה</li>
+    </ul>
 
     <form id="mz-form" method="post" action="{{ ajax_times_url }}">
       {% csrf_token %}

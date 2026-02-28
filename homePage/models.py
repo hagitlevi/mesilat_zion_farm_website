@@ -370,7 +370,7 @@ class SiteReview(models.Model):                               # מודל תגו�
 
 class CancellationRequest(models.Model):
     CHANNELS = [("web", "אתר"), ("phone", "טלפון"), ("whatsapp", "וואטסאפ")]
-    STATUSES = [("pending", "ממתין"), ("approved", "אושר"), ("rejected", "נדחה"), ("refunded", "זוכה")]
+    STATUSES = [("pending", "ממתין"), ("approved", "ממתין להחזר"), ("rejected", "נדחה"), ("refunded", "זוכה")]
 
     full_name  = models.CharField("שם מלא", max_length=120)
     phone      = models.CharField("טלפון", max_length=20)

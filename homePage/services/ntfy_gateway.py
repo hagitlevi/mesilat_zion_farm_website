@@ -11,7 +11,9 @@ from decimal import InvalidOperation
 from django.db import IntegrityError
 import smtplib
 from django.core.mail import BadHeaderError
-
+from django.core.mail import send_mail
+from django.db import transaction
+from zoneinfo import ZoneInfo
 
 ##-----------------------------------פונקציות עזר------------------------------
 
@@ -540,6 +542,41 @@ def send_booking_email(payment, booking):
   sent = email.send(fail_silently=True)
   return sent >= 1
 
+
+def send_booking_deleted_email(booking):
+  email = (getattr(booking, "customer_email", "") or "").strip()
+  if not email:
+    return
+
+  ref = (getattr(booking, "payment_ref", "") or f"#{booking.id}").strip()
+  dt = getattr(booking, "start_dt", None)
+  when = ""
+  if dt:
+    # אם dt נאיבי → נניח שזה זמן ישראל
+    if timezone.is_naive(dt):
+      dt = timezone.make_aware(dt, ZoneInfo("Asia/Jerusalem"))
+    # ואם הוא כבר aware → נהפוך לזמן ישראל
+    dt = timezone.localtime(dt, ZoneInfo("Asia/Jerusalem"))
+    when = dt.strftime("%d.%m.%Y %H:%M")
+
+  subject = f"ביטול הזמנה – חוות מסילת ציון · {ref}"
+  body = (
+      f"שלום {getattr(booking, 'customer_name', '') or 'לקוח/ה'}\n\n"
+      + (f"הזמנתך בחוות מסילת ציון ב- {when}\n"
+         "בוטלה וההחזר הכספי יכנס לחשבונך בימים הקרובים.\n\n"
+         if when else
+         "הזמנתך בחוות מסילת ציון בוטלה וההחזר הכספי יכנס לחשבונך בימים הקרובים.\n\n")
+      + "לשאלות ניתן ליצור קשר.\n"
+        "הודעה זו אוטומטית – אין להשיב."
+  )
+
+  transaction.on_commit(lambda: send_mail(
+    subject=subject,
+    message=body,
+    from_email=getattr(settings, "DEFAULT_FROM_EMAIL", None),
+    recipient_list=[email],
+    fail_silently=True,
+  ))
 
 #----------------------------------------------------------------------#
 
