@@ -214,3 +214,49 @@ body.modal-open { overflow: hidden; }
   opacity: 0 !important;
   pointer-events: none !important;
 }
+
+@media (max-width: 768px) {
+  .read-more-overlay {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 80px;
+    background: linear-gradient(to bottom, transparent, #faf7ed 85%);
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+    padding-bottom: 8px;
+    cursor: pointer;
+  }
+
+  .read-more-overlay span {
+    color: #000;
+    font-weight: bold;
+    font-size: 0.95rem;
+  }
+}
+
+@media (min-width: 769px) {
+  .read-more-overlay { display: none !important; }
+}
+
+@media (max-width: 768px) {
+  .about-wrapper {
+    max-height: 240px;
+    overflow: hidden;
+    transition: max-height 0.5s ease;
+    position: relative;
+  }
+
+  .about-wrapper.expanded {
+    max-height: 1000px;
+  }
+
+  /* הסר את אלה לגמרי - הם גורמים לבעיה */
+  .about {
+    max-height: none !important;
+    overflow: visible !important;
+    margin-top: 20px;
+  }
+}

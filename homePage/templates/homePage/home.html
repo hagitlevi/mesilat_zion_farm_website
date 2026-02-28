@@ -11,32 +11,38 @@
 {% block content %}
     <div class="container">
         <h1 class="sr-only">חוות סוסים מסילת ציון - רכיבה על סוסים בהרי ירושלים</h1>
-        <section class="about">
-          <div class="frame-text">קצת עלינו</div>
+        <div class="about-wrapper">
+            <section class="about">
+              <div class="frame-text">קצת עלינו</div>
 
-          <p>
-            חוות מסילת ציון בלב הרי ירושלים, מקום שבו הזמן עוצר והחיבור לטבע מתעורר לחיים.
-            החווה שלנו הוקמה מתוך אהבה אמיתית לאדמה, לסוסים ולאנשים – והיא מציעה חוויה אישית, אותנטית ומרגיעה לכל מבקר.
-          </p>
+              <p>
+                חוות מסילת ציון בלב הרי ירושלים, מקום שבו הזמן עוצר והחיבור לטבע מתעורר לחיים.
+                החווה שלנו הוקמה מתוך אהבה אמיתית לאדמה, לסוסים ולאנשים – והיא מציעה חוויה אישית, אותנטית ומרגיעה לכל מבקר.
+              </p>
 
-          <ul class="about-list fancy-ink checkmarks">
-              <li>רכיבה זוגית רומנטית עם נופים מדהימים</li>
-              <li>רכיבת לילה לאור ירח</li>
-              <li>רכיבה בזריחה עם נוף עוצר נשימה</li>
-              <li>רכיבת שטח מלאת אנרגיה</li>
-              <li>רכיבה לילדים</li>
-              <li>צילומים עם הסוסים וחיות נוספות</li>
-              <li>שיעורי רכיבה מקצועיים למתחילים ומתקדמים</li>
-              <li>רכיבה טיפולית</li>
-              <li>טיול בכרכרה לאווירה כפרית של פעם</li>
-          </ul>
+              <ul class="about-list fancy-ink checkmarks">
+                  <li>רכיבה זוגית רומנטית עם נופים מדהימים</li>
+                  <li>רכיבת לילה לאור ירח</li>
+                  <li>רכיבה בזריחה עם נוף עוצר נשימה</li>
+                  <li>רכיבת שטח מלאת אנרגיה</li>
+                  <li>רכיבה לילדים</li>
+                  <li>צילומים עם הסוסים וחיות נוספות</li>
+                  <li>שיעורי רכיבה מקצועיים למתחילים ומתקדמים</li>
+                  <li>רכיבה טיפולית</li>
+                  <li>טיול בכרכרה לאווירה כפרית של פעם</li>
+              </ul>
 
 
-          <p>
-            החווה שלנו היא יותר ממקום – היא חוויה. מקום לחיבור בין אדם לסוס, בין משפחה לטבע.
-            נשמח לארח אתכם באהבה, ולהפוך כל ביקור לחוויה בלתי נשכחת.
-          </p>
-        </section>
+              <p>
+                החווה שלנו היא יותר ממקום – היא חוויה
+                נשמח לארח אתכם באהבה, ולהפוך כל ביקור לחוויה בלתי נשכחת
+              </p>
+
+            </section>
+            <div class="read-more-overlay" id="read-more-overlay">
+               <span>קרא עוד ▼</span>
+            </div>
+        </div>
 
         <section class="activities">
             <h2>לפרטים והזמנת תורים:</h2>
@@ -183,6 +189,13 @@
 
 {% block scripts %}
 <script>
+    const overlay = document.getElementById('read-more-overlay');
+    if (overlay) {
+      overlay.addEventListener('click', function() {
+        document.querySelector('.about-wrapper').classList.add('expanded');
+        overlay.style.display = 'none';
+      });
+    }
     const images = [
         "{% static 'homePage/images/p1.jpg' %}",
         "{% static 'homePage/images/p2.jpg' %}",

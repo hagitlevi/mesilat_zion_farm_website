@@ -16,6 +16,7 @@ section {
 }
 
 .about {
+    background-color: var(--main-background);
     display: inline-block;
     position: relative;
     border: 2px solid var(--main-color);
@@ -40,9 +41,9 @@ section {
     }
 
 h2 {
+    margin: 40px 20px 20px;
     color: var(--main-color);
     font-size: 1.8em;
-    margin: 20px;
     padding: 0;
 }
 
@@ -480,3 +481,48 @@ ul.about-list.checkmarks li::marker{
   white-space:nowrap;
   border:0;
 }
+
+@media (max-width: 768px) {
+  .about {
+    max-height: 220px;
+    overflow: hidden;
+    transition: max-height 0.5s ease;
+    margin-top: 20px;
+  }
+
+  .about.expanded {
+    max-height: 1000px;
+  }
+
+  .about.expanded .read-more-overlay {
+    display: none;
+  }
+
+  .read-more-overlay {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 80px;
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+    padding-bottom: 8px;
+    cursor: pointer;
+    border-radius: 0 0 4px 4px;
+    background: linear-gradient(to bottom, transparent, #faf7ed 85%);
+
+  }
+
+  .read-more-overlay span {
+    color: #000;
+    font-weight: bold;
+    font-family: Arial, sans-serif;
+    font-size: 0.95rem;
+  }
+}
+
+@media (min-width: 769px) {
+  .read-more-overlay { display: none !important; }
+}
+
