@@ -1,6 +1,10 @@
 {% extends "homePage/base.html" %}
 {% load static %}
-{% block title %}{% block specific_title %}{% endblock %}{% endblock %}
+<h1>
+{% block title %}{% block specific_title %}
+</h1>
+
+{% endblock %}{% endblock %}
 
 {% block extra_css %}
 <link rel="stylesheet" href="{% static 'homePage/base_booking.css' %}">

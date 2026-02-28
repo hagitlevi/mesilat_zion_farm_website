@@ -197,7 +197,7 @@ body.modal-open { overflow: hidden; }
   color: var(--brown);
   display:inline-flex; align-items:center; justify-content:center;
   width:40px; height:40px; border-radius:12px;
-  background:#f5f5f5; text-decoration:none;
+  background:transparent; text-decoration:none;
 }
 .back-icon .icon-chevron{ width:22px; height:22px; display:block; } /* אפשר להגדיל/להקטין */
 .back-icon:hover{ filter: brightness(0.95); }
