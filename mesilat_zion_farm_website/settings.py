@@ -16,7 +16,7 @@ from dotenv import load_dotenv
 import dj_database_url
 
 
-FEEDBACK_URL = os.getenv("FEEDBACK_URL", "http://127.0.0.1:8000/site-reviews")
+FEEDBACK_URL = os.getenv("FEEDBACK_URL", "https://mesilat-zion-farm-website.onrender.com/reviews/")
 SEND_SMS = os.getenv("SEND_SMS", "False") == "True"
 NTFY_URL = os.getenv("NTFY_URL", "https://ntfy.sh").rstrip("/")
 NTFY_TOPIC = os.getenv("NTFY_TOPIC", "")

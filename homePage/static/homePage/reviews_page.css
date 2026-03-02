@@ -359,3 +359,9 @@ textarea{
 body > header{ position: fixed !important; inset: 0 0 auto 0; z-index: 5000; }
 
 .review-form { scroll-margin-top: 80px; } /* גובה ההדר הדביק שלך */
+
+.no-reviews {
+    margin-top: 60px;
+    text-align: center;
+    font-size: 18px;
+}

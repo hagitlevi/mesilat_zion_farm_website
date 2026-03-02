@@ -10,13 +10,13 @@
 
 {% block content %}
     <div class="container">
-        <h1 class="sr-only">חוות סוסים מסילת ציון - רכיבה על סוסים בהרי ירושלים</h1>
+        <h1 class="sr-only">חוות סוסים מסילת ציון - רכיבה על סוסים במסילת ציון</h1>
         <div class="about-wrapper">
             <section class="about">
               <div class="frame-text">קצת עלינו</div>
 
               <p>
-                חוות מסילת ציון בלב הרי ירושלים, מקום שבו הזמן עוצר והחיבור לטבע מתעורר לחיים.
+                חוות מסילת ציון צמוד לשער הגיא ובית שמש, מקום שבו הזמן עוצר והחיבור לטבע מתעורר לחיים.
                 החווה שלנו הוקמה מתוך אהבה אמיתית לאדמה, לסוסים ולאנשים – והיא מציעה חוויה אישית, אותנטית ומרגיעה לכל מבקר.
               </p>
 
@@ -27,8 +27,8 @@
                   <li>רכיבת שטח מלאת אנרגיה</li>
                   <li>רכיבה לילדים</li>
                   <li>צילומים עם הסוסים וחיות נוספות</li>
-                  <li>שיעורי רכיבה מקצועיים למתחילים ומתקדמים</li>
-                  <li>רכיבה טיפולית</li>
+                  <li style="display:none;">שיעורי רכיבה מקצועיים למתחילים ומתקדמים</li>
+                  <li style="display:none;">רכיבה טיפולית</li>
                   <li>טיול בכרכרה לאווירה כפרית של פעם</li>
               </ul>
 
@@ -98,7 +98,7 @@
                         <span class="title-text">צילומים</span>
                     </div>
                 </li>
-                <li>
+                <li style="display:none;">
                     <div class="activity-button" >
                         <a href="{% url 'riding_lessons' %}" class="details-link"> <h4> לפרטים והזמנות</h4></a>
                         <img src="{% static 'homePage/images/riding-lessons.jpg' %}" alt="שיעורי רכיבה">
@@ -169,8 +169,14 @@
       <strong>שעות הפעילות:</strong>
       {% for row in hours_rows %}
         <li>
-          <strong>{{ row.label }}:</strong>
-          {% if row.closed %}
+        <strong>
+          {% if row.label == "שבת" %}
+            שבתות וחגים
+          {% else %}
+            {{ row.label }}
+          {% endif %}:
+        </strong>
+            {% if row.closed %}
             סגור
           {% else %}
             <span class="time-range" dir="ltr">
