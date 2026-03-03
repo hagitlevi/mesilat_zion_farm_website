@@ -168,6 +168,8 @@ def send_sms_via_ntfy(phone: str, text: str, timeout: int = 5) -> bool:
     שולח הודעה ל-ntfy כך שהמאקרו שלך יקבל:
     {not_title} = מספר הטלפון, {notification} = טקסט ההודעה.
     """
+    if not getattr(settings, "SEND_SMS", False):
+        return False
     topic = getattr(settings, "NTFY_TOPIC", "")
     base  = getattr(settings, "NTFY_URL", "https://ntfy.sh").rstrip("/")
     prio  = str(getattr(settings, "NTFY_PRIORITY", 5))
@@ -542,7 +544,6 @@ def send_booking_email(payment, booking):
   sent = email.send(fail_silently=True)
   return sent >= 1
 
-
 def send_booking_deleted_email(booking):
   email = (getattr(booking, "customer_email", "") or "").strip()
   if not email:
@@ -587,6 +588,7 @@ def notify_time_change_booking(_request, booking, _old_start_dt, _old_end_dt) ->
   - מייל (טקסט בלבד)
   - SMS דרך ntfy (אם SEND_SMS=True)
   """
+
   d = getattr(booking, "start_dt", None)
   e = getattr(booking, "end_dt", None)
   if d and e:
@@ -610,6 +612,7 @@ def notify_time_change(_request, session, _old_date, _old_start, _old_end) -> bo
   """
   שולח מייל (טקסט בלבד) + SMS על שינוי שעה.
   """
+
   d = getattr(session, "date", None)
   st = getattr(session, "start_time", None)
   et = getattr(session, "end_time", None)

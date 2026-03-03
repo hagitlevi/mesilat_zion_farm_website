@@ -230,6 +230,20 @@ def _build_grid(days, timeslots, appt_map):
 
             # כותרת/מידע להצגה
             title = "הפסקה" if is_break else (appt.activity.name if appt.activity else "")
+            # --- תיוג לרכיבה זוגית לפי activity_type כדי להבדיל ביומן ---
+            if (not is_break) and appt.activity and (appt.activity.name == "רכיבה זוגית"):
+                t = (appt.activity.activity_type or "").strip().lower()
+
+                if ("picnic" in t) or ("פיקניק" in t):
+                    tag = "פיקניק"
+                elif ("night" in t) or ("לילה" in t):
+                    tag = "לילה"
+                elif ("sunrise" in t) or ("זריחה" in t):
+                    tag = "זריחה"
+                else:
+                    tag = "יום"
+
+                title = f"רכיבה זוגית — {tag}"
             meta = ""
             if not is_break and appt.booking_id:
                 b = appt.booking
@@ -342,6 +356,7 @@ def find_free_start_times(chosen_date, minutes, activity_name, variant=None):
 
     appts_list = list(appts_qs)
     free_set = {a.time for a in appts_list}
+    allowed_set = free_set
 
     if rules_activity:
         # get_rules_for אמור להחזיר: (_, cutoff_min, win_start_dt, win_end_dt)
@@ -384,7 +399,7 @@ def find_free_start_times(chosen_date, minutes, activity_name, variant=None):
                     break
             else:
                 # סלוטי ההמשך — מספיק שיהיו פנויים ביום
-                if t not in base_free_set:
+                if t not in allowed_set:
                     ok = False
                     break
         if not ok:
@@ -401,7 +416,7 @@ def find_free_start_times(chosen_date, minutes, activity_name, variant=None):
             buffer_end_dt = buffer_start_dt + timedelta(minutes=15)
             if apply_window and win_end_dt and buffer_end_dt > win_end_dt:
                 continue
-            if buffer_start_dt.time() not in base_free_set:
+            if buffer_start_dt.time() not in allowed_set:
                 continue
 
         start_times.append(appt.time.strftime("%H:%M"))
@@ -2062,6 +2077,8 @@ class BookingAdmin(admin.ModelAdmin):
                     & ~Q(activity_type__icontains="זריחה")
                     & ~Q(activity_type__icontains="שקיעה")
                     & ~Q(activity_type__icontains="sunset")
+                    & ~Q(activity_type__icontains="picnic")
+                    & ~Q(activity_type__icontains="פיקניק")
                 )
 
             if name == "רכיבה זוגית":
@@ -2087,13 +2104,15 @@ class BookingAdmin(admin.ModelAdmin):
             unit = Decimal(act.price).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
 
             # כמו ב-POST: בזוגית/כרכרה המחיר הוא פר-הזמנה (לא כפול משתתפים)
-            if act.name in ("טיול כרכרה", "רכיבה זוגית"):
+            if act.name == "טיול כרכרה":
                 total = unit
-                breakdown = ""  # אין טעם להציג 2×
+                breakdown = ""
             else:
                 total = (unit * Decimal(participants)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
                 breakdown = f"{participants}×{_fmt_ils(unit)}"
 
+            t = (act.activity_type or "").strip().lower() if act else ""
+            allow_wine = ("picnic" in t)
             return JsonResponse({
                 "ok": True,
                 "unit": str(unit),
@@ -2101,6 +2120,7 @@ class BookingAdmin(admin.ModelAdmin):
                 "total": str(total),
                 "total_display": _fmt_ils(total),
                 "breakdown_display": breakdown,
+                "allow_wine": allow_wine,
             })
 
         # ---- AJAX: HOLD זמני של תור ----
@@ -2172,16 +2192,24 @@ class BookingAdmin(admin.ModelAdmin):
 
             # בנייה חסינה של אורכי "רכיבה זוגית" לפי activity_type בפועל
             couple_qs = Activity.objects.filter(name="רכיבה זוגית").values("duration_minutes", "activity_type")
-            couple_day, couple_night, couple_sunrise = set(), set(), set()
+            couple_day, couple_night, couple_sunrise, couple_picnic = set(), set(), set(), set()
+
             for row in couple_qs:
                 m = int(row["duration_minutes"] or 0)
                 t = (row["activity_type"] or "").strip().lower()
+
                 if not m:
                     continue
+
                 if ("night" in t) or ("לילה" in t):
                     couple_night.add(m)
+
                 elif ("sunrise" in t) or ("זריחה" in t) or ("שקיעה" in t) or ("sunset" in t):
                     couple_sunrise.add(m)
+
+                elif ("picnic" in t) or ("פיקניק" in t):
+                    couple_picnic.add(m)
+
                 else:
                     couple_day.add(m)
 
@@ -2193,6 +2221,7 @@ class BookingAdmin(admin.ModelAdmin):
                 "day": sorted(couple_day),
                 "night": sorted(couple_night),
                 "sunrise": sorted(couple_sunrise),
+                "picnic": sorted(couple_picnic),
             }
 
             ctx = {
@@ -2214,6 +2243,7 @@ class BookingAdmin(admin.ModelAdmin):
         # ---- POST: יצירה אמיתית של הזמנה ----
 
         name = (request.POST.get("activity_name") or "").strip()
+        activity_id = (request.POST.get("activity_id") or "").strip()
         minutes = int(request.POST.get("duration_minutes") or 0)
         date_str = (request.POST.get("date") or "").strip()
         start_str = (request.POST.get("start_time") or "").strip()
@@ -2291,21 +2321,28 @@ class BookingAdmin(admin.ModelAdmin):
                 & ~Q(activity_type__icontains="זריחה")
                 & ~Q(activity_type__icontains="שקיעה")
                 & ~Q(activity_type__icontains="sunset")
+                & ~Q(activity_type__icontains="picnic")
+                & ~Q(activity_type__icontains="פיקניק")
             )
 
         if name == "רכיבה זוגית":
             base_qs = Activity.objects.filter(name="רכיבה זוגית")
             if couple_variant == "night":
-                base_qs = base_qs.filter(Q(activity_type__icontains="night") | Q(activity_type__icontains="לילה"))
+              base_qs = base_qs.filter(Q(activity_type__icontains="night") | Q(activity_type__icontains="לילה"))
+
             elif couple_variant in ("sunrise", "sunset"):
-                base_qs = base_qs.filter(
-                    Q(activity_type__icontains="sunrise")
-                    | Q(activity_type__icontains="זריחה")
-                    | Q(activity_type__icontains="שקיעה")
-                    | Q(activity_type__icontains="sunset")
-                )
+              base_qs = base_qs.filter(
+                Q(activity_type__icontains="sunrise")
+                | Q(activity_type__icontains="זריחה")
+                | Q(activity_type__icontains="שקיעה")
+                | Q(activity_type__icontains="sunset")
+              )
+
+            elif couple_variant == "picnic":
+              base_qs = base_qs.filter(Q(activity_type__icontains="picnic") | Q(activity_type__icontains="פיקניק"))
+
             else:  # day
-                base_qs = base_qs.filter(_qs_for_couple_day())
+              base_qs = base_qs.filter(_qs_for_couple_day())
 
             # נסה התאמה מלאה (שם+משך), ואם אין — קח פעילות בסיסית לאותו variant
             activity = (
@@ -2366,8 +2403,9 @@ class BookingAdmin(admin.ModelAdmin):
                 messages.error(request, "התור נתפס/פג תוקף. בחרי שעה אחרת ובצעי HOLD מחדש.")
                 return redirect(reverse("admin:homePage_appointment_book"))
 
-        # מותר יין? (רק זוגית-יום ו-≥90 דק׳)
-        allow_wine = (name == "רכיבה זוגית" and couple_variant == "day" and minutes >= 90)
+        t = (activity.activity_type or "").strip().lower()
+        allow_wine = ("picnic" in t)
+
         if not allow_wine:
             wine = ""
 
@@ -2376,7 +2414,7 @@ class BookingAdmin(admin.ModelAdmin):
 
         # טקסט פרטים (כמו שהיה)
         details_txt = ""
-        if name == "רכיבה זוגית" and wine:
+        if allow_wine and wine:
             details_txt = "יין: " + {"white": "יין לבן", "red": "יין אדום", "none": "בלי יין"}.get(wine, "")
         if name == "צילומים" and horse_color:
             color_map = {"white": "סוס לבן", "brown": "סוס חום"}

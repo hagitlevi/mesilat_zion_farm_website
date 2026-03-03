@@ -22,6 +22,7 @@ ACTIVITY_TYPES = [
     ('couple', 'רכיבה זוגית ביום'),
     ('couple_sunrise', 'רכיבה זוגית בזריחה'),
     ('couple_night', 'רכיבה זוגית בלילה'),
+    ('couple_picnic', "רכיבה זוגית פיקניק"),
     ('none', 'ללא סוג'),
 ]
 

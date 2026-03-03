@@ -131,6 +131,7 @@
         <div class="field" id="couple_variant_wrap" style="display:none">
           <select id="couple_variant" name="couple_variant">
             <option value="day" selected>יום</option>
+            <option value="picnic">פיקניק</option>
             <option value="night">לילה</option>
             <option value="sunrise">זריחה</option>
           </select>
@@ -322,9 +323,6 @@
   const elPhotoColorLbl  = $('photo_color_label');
   const elPhotoColorWrap = $('photo_color_wrap');
 
-  const wrapPreset = document.getElementById('dur_preset_wrap');
-  const wrapCustom = document.getElementById('dur_custom_wrap');
-
   const elParticipants    = document.getElementById('participants');
   const elParticipantsLbl = document.getElementById('participants_label');
   const elParticipantsWrap= document.getElementById('participants_wrap');
@@ -371,11 +369,6 @@ function syncParticipantsField(){
   function activeMode(){
     return (elModeCustom && elModeCustom.checked) ? 'custom' : 'preset';
   }
-
-  // מצב נבחר: 'preset' או 'custom'
-function activeMode(){
-  return (elModeCustom && elModeCustom.checked) ? 'custom' : 'preset';
-}
 
     // ← הוספה: משך שנבחר בפועל לפי מצב
     function chosenMinutes(){
@@ -435,13 +428,17 @@ function activeMode(){
 
   // יין: רק בזוגית-יום ולפחות 90 דק׳
   function updateCoupleExtras(){
-    const isCouple = (elName.value.trim() === 'רכיבה זוגית');
-    const v = isCouple && elVariant ? (elVariant.value || 'day') : 'day';
-    const mChosen = chosenMinutes();
-    const showWine = isCouple && v === 'day' && mChosen >= 90;
-    elWineLbl.style.display  = showWine ? '' : 'none';
-    elWineWrap.style.display = showWine ? '' : 'none';
-  }
+  const isCouple = (elName.value.trim() === 'רכיבה זוגית');
+  const v = isCouple && elVariant ? (elVariant.value || 'day') : '';
+
+  const showWine = isCouple && v === 'picnic';
+
+  elWineLbl.style.display  = showWine ? '' : 'none';
+  elWineWrap.style.display = showWine ? '' : 'none';
+
+  // אם מסתירים – נאפס בחזרה ל"בלי"
+  if (!showWine && elWine) elWine.value = 'none';
+}
 
   // ----- משכים -----
   function fillDurations(){
@@ -664,7 +661,7 @@ function activeMode(){
     const chips = [];
     if (elName.value) chips.push(`פעילות: ${elName.value}`);
     if (elName.value.trim() === 'רכיבה זוגית' && elVariant && elVariant.value){
-      const map = {day:'יום', night:'לילה', sunrise:'זריחה'};
+      const map = {day:'יום', night:'לילה', sunrise:'זריחה', picnic:'פיקניק'};
       chips.push(`סוג: ${map[elVariant.value] || elVariant.value}`);
     }
     const m = chosenMinutes();

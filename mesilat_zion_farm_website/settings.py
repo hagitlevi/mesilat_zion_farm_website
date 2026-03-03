@@ -15,7 +15,8 @@ import os
 from dotenv import load_dotenv
 import dj_database_url
 
-
+BASE_DIR = Path(__file__).resolve().parent.parent
+load_dotenv(BASE_DIR / ".env")
 FEEDBACK_URL = os.getenv("FEEDBACK_URL", "https://mesilat-zion-farm-website.onrender.com/reviews/")
 SEND_SMS = os.getenv("SEND_SMS", "False") == "True"
 NTFY_URL = os.getenv("NTFY_URL", "https://ntfy.sh").rstrip("/")
@@ -34,10 +35,6 @@ LOGGING = {
     "loggers": {"django": {"handlers": ["console"], "level": "INFO", "propagate": False}},
 }
 
-# Build paths inside the project like this: BASE_DIR / 'subdir'.
-BASE_DIR = Path(__file__).resolve().parent.parent
-
-load_dotenv(BASE_DIR / ".env")
 
 STATIC_ROOT = BASE_DIR / "staticfiles"
 

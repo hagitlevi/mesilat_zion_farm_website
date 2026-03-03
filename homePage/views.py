@@ -25,13 +25,15 @@ from django.utils import timezone
 
 
 VARIANT_TO_TYPE = {
-    "day":     "רכיבה זוגית ביום",
-    "sunrise": "רכיבה זוגית בזריחה",
-    "night":   "רכיבה זוגית בלילה",
+    "day":     "couple",
+    "sunrise": "couple_sunrise",
+    "night":   "couple_night",
+    "picnic":  "couple_picnic",
 }
 
 VARIANT_TO_TARGET_ACTIVITY_NAME = {
     "day":     None,
+    "picnic":  None,
     "sunrise": "רכיבה בזריחה",
     "night":   "רכיבת לילה",
 }
@@ -77,8 +79,14 @@ def sunrise_riding_view(request):
 
 def couple_riding_view(request):
     print("DEBUG: couple_riding_view called")  # הדפסה לוגית לבדיקה
-    qs = Activity.objects.filter(name="רכיבה זוגית").order_by('id')
-    activity = qs.first()
+    activity = (
+        Activity.objects
+        .filter(name="רכיבה זוגית", activity_type="couple")  # יום רגיל כברירת מחדל
+        .first()
+    )
+
+    if not activity:
+        activity = Activity.objects.filter(name="רכיבה זוגית").order_by("id").first()
     if not activity:
         raise Http404("לא נמצאה פעילות 'רכיבה זוגית'")
     return render(request, 'homePage/couple_riding.html', {'activity': activity})
@@ -222,6 +230,19 @@ def _durations_for_variant(variant: str):
         mins = distinct_minutes(qs)
         return mins or [30, 45, 60, 90, 120]
 
+    if variant == "picnic":
+        qs = Activity.objects.filter(
+            name="רכיבה זוגית",
+            activity_type__iexact=VARIANT_TO_TYPE["picnic"]
+        )
+        mins = distinct_minutes(qs)
+        if mins:
+            return mins
+
+        # fallback חכם אם כתבו קצת אחרת
+        qs = Activity.objects.filter(name="רכיבה זוגית", activity_type__icontains="פיקניק")
+        mins = distinct_minutes(qs)
+        return mins or [120]
 
     if variant == "sunrise":
         qs = Activity.objects.filter(name="רכיבה זוגית", activity_type__iexact=VARIANT_TO_TYPE["sunrise"])
@@ -362,11 +383,11 @@ def available_appointment_view(request, activity_id):
                 base_qs = base_qs.exclude(date=today)
 
     # --- משכים + מקור סלוטים לפי הטאב ---
-    if activity.name == "רכיבה זוגית" and variant in ("day", "sunrise", "night"):
+    if activity.name == "רכיבה זוגית" and variant in ("day", "sunrise", "night", "picnic"):
         durations = _durations_for_variant(variant)
         target_activity_name = VARIANT_TO_TARGET_ACTIVITY_NAME[variant]
 
-        if variant == "day":
+        if variant in ("day", "picnic"):
             appts_qs = base_qs.filter(activities__isnull=True)
             rules_activity = activity
             apply_window, apply_cutoff = True, False
@@ -982,6 +1003,7 @@ def consent_status(request):
 def booking_form(request):
     print("DEBUG: booking_form called with method:", request.method)  # הדפסה לוגית לבדיקה
 
+    variant_q = (request.GET.get("variant") or "").lower()
     if request.GET.get("ajax") == "consent":
         phone = request.GET.get("phone", "")
         need = not _has_consent_by_phone(phone)
@@ -1040,19 +1062,21 @@ def booking_form(request):
 
 
     # קביעה מאיזה וריאנט הגענו (רק לזוגית)
-    variant, is_couple_day = None, False
+    variant = variant_q
+    is_couple_day = False
     if activity.name == "רכיבה זוגית":
-        appt_names = set()
-        if hasattr(appointment, "activities"):
-            appt_names = set(appointment.activities.values_list("name", flat=True))
+        if not variant:
+            appt_names = set()
+            if hasattr(appointment, "activities"):
+                appt_names = set(appointment.activities.values_list("name", flat=True))
 
-        if "רכיבה בזריחה" in appt_names:
-            variant = "sunrise"
-        elif "רכיבת לילה" in appt_names:
-            variant = "night"
-        else:
-            is_couple_day = True
-            variant = "day"
+            if "רכיבה בזריחה" in appt_names:
+                variant = "sunrise"
+            elif "רכיבת לילה" in appt_names:
+                variant = "night"
+            else:
+                is_couple_day = True
+                variant = "day"
 
     # חסימת הזמנה ישירה לרכיבת לילה בחורף (גם אם הגיעו עם URL ידני)
     try:
@@ -1070,7 +1094,9 @@ def booking_form(request):
         minutes = int(duration_minutes or 0)
     except (TypeError, ValueError):
         minutes = 0
-    allow_wine = bool(is_couple_day and minutes >= 90)
+    # יין תמיד רק בפיקניק (בלי קשר לאורך)
+    is_couple_picnic = (activity.name == "רכיבה זוגית" and variant == "picnic")
+    allow_wine = is_couple_picnic
 
     qs = Activity.objects.filter(name=activity.name)
     try:
@@ -1081,15 +1107,29 @@ def booking_form(request):
 
     # צמצום ספציפי לזוגית:
     if activity.name == "רכיבה זוגית":
-        if variant == "day":
+        if variant in VARIANT_TO_TYPE:
+            qs = qs.filter(activity_type__iexact=VARIANT_TO_TYPE[variant])
+
+        elif variant == "day":
             qs = (qs.exclude(activity_type__icontains="couple_sunrise")
-                  .exclude(activity_type__icontains="couple_night"))
+                  .exclude(activity_type__icontains="couple_night")
+                  .exclude(activity_type__icontains="couple_picnic"))
         elif variant == "sunrise":
             qs = qs.filter(activity_type__icontains="couple_sunrise")
         elif variant == "night":
             qs = qs.filter(activity_type__icontains="couple_night")
 
+    is_couple_day = (activity.name == "רכיבה זוגית" and variant == "day")
+    # === בחירת Activity מדויקת להזמנה ===
+    chosen_activity = None
 
+    try:
+        chosen_activity = qs.get()
+    except Activity.MultipleObjectsReturned:
+        print("⚠️ MULTIPLE ACTIVITIES MATCH:", list(qs.values("id", "activity_type", "duration_minutes")))
+        chosen_activity = qs.order_by("id").first()
+    except Activity.DoesNotExist:
+        print("❌ NO ACTIVITY MATCH")
     # 2) וריאציות רלוונטיות להצגה ולחישוב (בלי כפילות price)
     variants = list(
         qs.values('activity_type', 'price').order_by('activity_type')
@@ -1114,20 +1154,16 @@ def booking_form(request):
     unit_price = None
     price_min = price_max = None
 
-    # קודם כל מנסים לקחת מחיר ישירות מ"רכיבה זוגית" לפי ה-activity_type המדויק
-    if activity.name == "רכיבה זוגית" and variant in ("day", "sunrise", "night") and duration_minutes:
+    # מחיר יחידה – לזוגית לפי הסינון שכבר עשינו ל-qs (כולל picnic)
+    if activity.name == "רכיבה זוגית" and variant in ("day", "sunrise", "night", "picnic") and duration_minutes:
         try:
             d = int(duration_minutes)
-            vt = VARIANT_TO_TYPE[variant]  # "רכיבה זוגית ביום"/"בזריחה"/"בלילה"
-            unit_price = (Activity.objects
-                          .filter(name="רכיבה זוגית",
-                                  activity_type__iexact=vt,
-                                  duration_minutes=d)
+            unit_price = (qs.filter(duration_minutes=d)
                           .exclude(price__isnull=True)
-                          .values_list('price', flat=True)
+                          .values_list("price", flat=True)
                           .first())
         except (TypeError, ValueError):
-            pass
+            unit_price = None
 
     # אם המשתמש בחר activity_type מפורש – נכבד אותו (עדיין מתוך qs המסונן)
     if unit_price is None and selected_type:
@@ -1197,6 +1233,7 @@ def booking_form(request):
     except (TypeError, ValueError):
         minutes_int = 0
 
+
     # זמן סוף
     end_dt = start_dt + timedelta(minutes=minutes_int) if minutes_int else None
 
@@ -1205,6 +1242,7 @@ def booking_form(request):
 
     # 8) החזרת הקשר לטמפלט
     return render(request, 'homePage/user_details.html', {
+        'chosen_activity_id': chosen_activity.id if chosen_activity else activity.id,
         'show_selector': show_selector,
         'allow_wine': allow_wine,
         'appointment': appointment,
@@ -1223,6 +1261,7 @@ def booking_form(request):
         'start_time': start_time_str,
         'end_time': end_time_str,
         'appt_date': appointment.date,
+        'variant': variant,
     })
 
 # ——— עזר ———
@@ -1526,13 +1565,14 @@ def _finalize_booking_after_payment(payment: Payment):
                     pass
 
         if not booking:
+
             activity = _resolve_activity_for_booking(payment, appt)
+
             if appt is not None:
                 start_dt = getattr(appt, "start_dt", None) or datetime.combine(appt.date, appt.time)
             else:
                 raise ValueError("Payment בלי appointment_id: אי אפשר לייצר Booking בלי זמנים.")
 
-            # ❗ חשוב: השתמשי במה שהלקוח בחר — payment.duration_minutes
             minutes = (getattr(payment, "duration_minutes", None)
                        or getattr(appt, "duration_minutes", None)
                        or getattr(activity, "duration_minutes", None)
@@ -1677,6 +1717,7 @@ def hold_appointment(request):
         "appointment_id": appt_id,
         "activity_id": activity_id,
         "duration_minutes": duration,
+        "variant": variant_q
     })
     return ok_redirect(f"{reverse('booking_form')}?{qs}")
 

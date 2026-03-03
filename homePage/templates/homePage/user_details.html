@@ -28,11 +28,13 @@
 </div>
 
 {# --- טופס GET קטן: יוצג רק אם צריך לבחור סוג/כמות --- #}
-{% if type_options|length > 1 and activity.name != "רכיבה זוגית"  or activity.min_participants != activity.max_participants or is_couple_day %}
+{% if type_options|length > 1 and activity.name != "רכיבה זוגית"  or activity.min_participants != activity.max_participants or allow_wine %}
     <form id="calc-form" method="get" action="{% url 'booking_form' %}" class="selector-form" novalidate>
       <input type="hidden" name="appointment_id"   value="{{ appointment.id }}">
-      <input type="hidden" name="activity_id"      value="{{ activity.id }}">
+      <input type="hidden" name="activity_id" value="{{ chosen_activity_id|default:activity.id }}">
       <input type="hidden" name="duration_minutes" value="{{ duration }}">
+      <input type="hidden" name="variant" value="{{ variant }}">
+
 
       {# אם יש יותר מסוג פעילות אחד (ולא רכיבה זוגית) – נציג בחירה; אחרת נעביר חבוי #}
       {% if type_options|length > 1 and activity.name != "רכיבה זוגית" %}
@@ -109,8 +111,9 @@
   <form method="POST" action="{% url 'pay_start' %}" id="booking-form">
     {% csrf_token %}
     <input type="hidden" name="appointment_id"   value="{{ appointment.id }}">
-    <input type="hidden" name="activity_id"      value="{{ activity.id }}">
+    <input type="hidden" name="activity_id" value="{{ chosen_activity_id|default:activity.id }}">
     <input type="hidden" name="duration_minutes" value="{{ duration }}">
+    <input type="hidden" name="variant" value="{{ variant }}">
 
     {# מעבירים הלאה את הבחירות מה-GET #}
     <input type="hidden" name="participants"  value="{{ selected_participants|default_if_none:'' }}">
