@@ -21,8 +21,13 @@
         <span>{{ activity.name }}</span>
     </h3>
       <div class="chosen-slot__row">
-      <span class="chosen-slot__pill chosen-slot__time">09:00–09:30 🕒</span>
-      <span class="chosen-slot__pill chosen-slot__date">26/02/2026 📅</span>
+      <span class="chosen-slot__pill chosen-slot__time">
+         {{ start_time }}{% if end_time %}–{{ end_time }}{% endif %} 🕒
+      </span>
+
+      <span class="chosen-slot__pill chosen-slot__date">
+         {{ appt_date|date:"d/m/Y" }} 📅
+      </span>
     </div>
   </div>
 </div>
@@ -38,7 +43,7 @@
 
       {# אם יש יותר מסוג פעילות אחד (ולא רכיבה זוגית) – נציג בחירה; אחרת נעביר חבוי #}
       {% if type_options|length > 1 and activity.name != "רכיבה זוגית" %}
-        <select id="activity_type" name="activity_type" required class="calc-auto-submit">
+        <select id="activity_type" name="activity_type" required>
             <option value="" disabled {% if not selected_type %}selected{% endif %} hidden>בחרו את צבע הסוס*</option>
           {% for opt in type_options %}
             <option value="{{ opt.code }}" {% if selected_type == opt.code %}selected{% endif %}>
@@ -52,7 +57,7 @@
 
       {# אם הכמות לא קבועה – נציג בחירה; אחרת נעביר חבוי #}
       {% if activity.min_participants != activity.max_participants %}
-        <select id="participants" name="participants" required class="calc-auto-submit">
+        <select id="participants" name="participants" required>
             <option value="" disabled {% if not selected_participants %}selected{% endif %} hidden>בחרו מספר רוכבים*</option>
           {% for n in participants_range %}
             <option value="{{ n }}" {% if selected_participants == n %}selected{% endif %}>{{ n }}</option>
@@ -64,7 +69,7 @@
 
       {# חדש: בחירת צבע היין — מוצג רק ברכיבה זוגית ביום #}
         {% if allow_wine %}
-          <select id="wine" name="wine" required class="calc-auto-submit">
+          <select id="wine" name="wine" required>
             <option value="" disabled {% if not wine %}selected{% endif %} hidden>בחרו יין*</option>
             <option value="white" {% if wine == 'white' %}selected{% endif %}>יין לבן</option>
             <option value="red"   {% if wine == 'red' %}selected{% endif %}>יין אדום</option>
@@ -83,21 +88,21 @@
         {% if activity.name != "צילומים" and activity.name != "רכיבת ילדים" and activity.name != "טיול כרכרה" and activity.name != "רכיבה זוגית" %}
         <div class="price-row">
           <span class="label">מחיר לאדם:</span>
-          <span class="sum">{{ unit_price|floatformat:"-2" }} ₪</span>
+          <span class="sum" id="unit-price">{{ unit_price|floatformat:"-2" }} ₪</span>
         </div>
         {% endif %}
 
         {% if activity.name == "טיול כרכרה" or activity.name == "רכיבה זוגית" and total_price %}
           <div class="price-row">
             <span class="label">סה"כ לתשלום:</span>
-            <span class="sum">{{ total_price|floatformat:"-2" }} ₪</span>
+            <span class="sum" id="total-price">{{ total_price|floatformat:"-2" }} ₪</span>
           </div>
         {% elif selected_participants and total_price %}
           <div class="price-row">
             <span class="label">סה"כ לתשלום:</span>
             <span class="expr">{{ unit_price|floatformat:"-2" }}×{{ selected_participants }}</span>
             <span class="eq">=</span>
-            <span class="sum">{{ total_price|floatformat:"-2" }} ₪</span>
+            <span class="sum" id="total-price">{{ total_price|floatformat:"-2" }} ₪</span>
           </div>
         {% endif %}
   {% elif activity.name != "רכיבה זוגית" %}
@@ -209,21 +214,6 @@
 
   const calcForm = document.getElementById("calc-form");
   if (calcForm) {
-
-      // ✅ חשוב: להדליק suppressRelease הכי מוקדם שאפשר (לפני change)
-      calcForm.querySelectorAll(".calc-auto-submit").forEach((el) => {
-        el.addEventListener("pointerdown", () => { suppressRelease = true; }, { capture: true });
-        el.addEventListener("keydown", (e) => {
-          if (e.key === "Enter") suppressRelease = true;
-        }, { capture: true });
-
-        el.addEventListener("change", () => {
-          suppressRelease = true;
-          calcForm.requestSubmit();
-        }, { capture: true });
-      });
-
-      // ✅ גם על submit עצמו, עם capture
       calcForm.addEventListener("submit", () => {
         suppressRelease = true;
       }, { capture: true });
@@ -403,7 +393,96 @@
   // בדיקה ראשונית
   check();
 })();
+(function(){
+  const bookingForm = document.getElementById("booking-form");
+  const calcForm = document.getElementById("calc-form");
+  if (!bookingForm) return;
 
+  // URL של אותו view עם ajax=price
+  const PRICE_URL = "{% url 'booking_form' %}?ajax=price";
+
+  function getVal(selector){
+    return bookingForm.querySelector(selector)?.value || "";
+  }
+
+  function setHidden(name, value){
+    let inp = bookingForm.querySelector(`input[name="${name}"]`);
+    if (!inp){
+      inp = document.createElement("input");
+      inp.type = "hidden";
+      inp.name = name;
+      bookingForm.appendChild(inp);
+    }
+    inp.value = value ?? "";
+  }
+
+  function buildUrl(){
+    const u = new URL(PRICE_URL, window.location.origin);
+
+    // פרמטרים שחייבים לחישוב מחיר
+    u.searchParams.set("appointment_id", getVal('input[name="appointment_id"]'));
+    u.searchParams.set("activity_id",    getVal('input[name="activity_id"]'));
+    u.searchParams.set("duration_minutes", getVal('input[name="duration_minutes"]'));
+    u.searchParams.set("variant", getVal('input[name="variant"]'));
+
+    // ערכים מה-select אם קיימים, אחרת מה-hidden הקיים
+    const typeEl = document.getElementById("activity_type");
+    const partEl = document.getElementById("participants");
+    const wineEl = document.getElementById("wine");
+
+    u.searchParams.set("activity_type",
+      typeEl ? (typeEl.value || "") : (getVal('input[name="activity_type"]'))
+    );
+    u.searchParams.set("participants",
+      partEl ? (partEl.value || "") : (getVal('input[name="participants"]'))
+    );
+    u.searchParams.set("wine",
+      wineEl ? (wineEl.value || "") : (getVal('input[name="wine"]'))
+    );
+
+    return u.toString();
+  }
+
+  async function refreshPrice(){
+    try{
+      const r = await fetch(buildUrl(), {credentials:"same-origin"});
+      const data = await r.json();
+      if (!data || !data.ok) return;
+
+      // לעדכן hidden כדי שהשרת יקבל את הערכים הנכונים בתשלום
+      setHidden("unit_price", data.unit_price ?? "");
+      setHidden("total_price", data.total_price ?? "");
+      if (data.selected_participants !== undefined && data.selected_participants !== null) {
+        setHidden("participants", String(data.selected_participants));
+      }
+
+      // לעדכן UI
+      const unitSpan  = document.getElementById("unit-price");
+      const totalSpan = document.getElementById("total-price");
+
+      if (unitSpan && data.unit_price !== null) {
+        unitSpan.textContent = Number(data.unit_price).toFixed(2) + " ₪";
+      }
+      if (totalSpan && data.total_price !== null) {
+        totalSpan.textContent = Number(data.total_price).toFixed(2) + " ₪";
+      }
+    }catch(e){}
+  }
+
+  // לא מאפשרים ל-calc-form לרענן דף
+  if (calcForm){
+    calcForm.addEventListener("submit", (e)=>e.preventDefault());
+  }
+
+  // על שינוי select → רק AJAX
+  ["activity_type","participants","wine"].forEach(id=>{
+    const el = document.getElementById(id);
+    if (el) el.addEventListener("change", refreshPrice);
+  });
+
+  // ריצה ראשונה אם כבר יש ערכים
+  refreshPrice();
+})();
 </script>
 {% endblock %}
 

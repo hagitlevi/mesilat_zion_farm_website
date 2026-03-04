@@ -1014,6 +1014,70 @@ def booking_form(request):
                 "privacy": getattr(settings, "PRIVACY_VERSION", "1.0"),
             }
         })
+    elif request.GET.get("ajax") == "price":
+        appointment_id = request.GET.get("appointment_id")
+        activity_id = request.GET.get("activity_id")
+        duration_minutes = request.GET.get("duration_minutes")
+        selected_type = request.GET.get("activity_type")
+        qty_raw = request.GET.get("participants")
+        variant_q = (request.GET.get("variant") or "").lower()
+
+        appointment = get_object_or_404(Appointment, id=appointment_id)
+        activity = get_object_or_404(Activity, id=activity_id)
+
+        # --- אותה לוגיקה בדיוק כמו אצלך בהמשך (רק בקיצור) ---
+        variant = variant_q
+        if activity.name == "רכיבה זוגית" and not variant:
+            variant = "day"
+
+        allow_wine = (activity.name == "רכיבה זוגית" and variant == "picnic")
+
+        qs = Activity.objects.filter(name=activity.name)
+        try:
+            if duration_minutes:
+                qs = qs.filter(duration_minutes=int(duration_minutes))
+        except (TypeError, ValueError):
+            pass
+
+        if activity.name == "רכיבה זוגית" and variant in VARIANT_TO_TYPE:
+            qs = qs.filter(activity_type__iexact=VARIANT_TO_TYPE[variant])
+
+        # type_options (כמו אצלך)
+        variants = list(qs.values('activity_type', 'price').order_by('activity_type'))
+        choices_map = dict(Activity._meta.get_field('activity_type').choices)
+        type_options = [{
+            "code": v["activity_type"],
+            "label": choices_map.get(v["activity_type"], v["activity_type"]),
+            "unit_price": v["price"],
+        } for v in variants]
+
+        # משתתפים
+        if activity.min_participants == activity.max_participants:
+            selected_participants = activity.min_participants
+        else:
+            selected_participants = int(qty_raw) if (qty_raw and qty_raw.isdigit()) else None
+
+        # unit_price
+        unit_price = None
+        if selected_type:
+            unit_price = next(
+                (v["price"] for v in variants if v["activity_type"] == selected_type and v["price"] is not None), None)
+
+        # total_price
+        total_price = None
+        if unit_price is not None:
+            if activity.name != "טיול כרכרה" and selected_participants:
+                total_price = unit_price * selected_participants
+            else:
+                total_price = unit_price
+
+        return JsonResponse({
+            "ok": True,
+            "unit_price": str(unit_price) if unit_price is not None else None,
+            "total_price": str(total_price) if total_price is not None else None,
+            "selected_participants": selected_participants,
+            "allow_wine": allow_wine,
+        })
     elif request.GET.get("ajax") == "marketing_exists":
         raw_p = request.GET.get("phone", "") or ""
         phone = normalize_phone_il(raw_p)  # אותו נירמול כמו ב-pay_start
@@ -1570,6 +1634,8 @@ def _finalize_booking_after_payment(payment: Payment):
 
             if appt is not None:
                 start_dt = getattr(appt, "start_dt", None) or datetime.combine(appt.date, appt.time)
+                if timezone.is_naive(start_dt):
+                    start_dt = timezone.make_aware(start_dt)
             else:
                 raise ValueError("Payment בלי appointment_id: אי אפשר לייצר Booking בלי זמנים.")
 
