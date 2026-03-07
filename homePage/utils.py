@@ -206,3 +206,36 @@ def generate_appointments(days_ahead=7):
             _create_quarter_slots(current_date, start_t, end_t, act_name)
 
     print("✅ תורים נוצרו בהצלחה")
+
+
+def release_and_delete_all_bookings():
+    """
+    עוברת על כל ההזמנות, משחררת את הסלוטים שלהן ומוחקת אותן.
+    מבוססת על release_booking_slots מ-CancellationRequestAdmin.
+    """
+    bookings = Booking.objects.all()
+    total = bookings.count()
+    print(f"נמצאו {total} הזמנות למחיקה...")
+
+    for booking in bookings:
+        with transaction.atomic():
+            qs = Appointment.objects.select_for_update().filter(booking=booking)
+            for a in qs:
+                a.booking = None
+                a.is_booked = False
+                a.is_break = False
+                a.is_paid = False
+                a.payment_reference = ""
+                try:
+                    a.activity = None
+                    upd = ["booking", "is_booked", "is_break", "is_paid", "payment_reference", "activity"]
+                except Exception:
+                    upd = ["booking", "is_booked", "is_break", "is_paid", "payment_reference"]
+                a.save(update_fields=upd)
+                if hasattr(a, "activities"):
+                    a.activities.clear()
+
+            booking.delete()
+            print(f"  ✓ הזמנה #{booking.id} נמחקה")
+
+    print(f"סיום — {total} הזמנות נמחקו.")
