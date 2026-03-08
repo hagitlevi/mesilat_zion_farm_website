@@ -84,33 +84,68 @@
 {% endif %}
 
   {# ==== תצוגת מחיר: שורה של "מחיר לאדם" ותחתיה סיכום (אם נבחרה כמות) ==== #}
-  {% if unit_price %}
-        {% if activity.name != "צילומים" and activity.name != "רכיבת ילדים" and activity.name != "טיול כרכרה" and activity.name != "רכיבה זוגית" %}
-        <div class="price-row">
+    {% if unit_price %}
+      {% if activity.name != "צילומים" and activity.name != "רכיבת ילדים" and activity.name != "טיול כרכרה" and activity.name != "רכיבה זוגית" %}
+        <div class="price-row" id="unit-price-row">
           <span class="label">מחיר לאדם:</span>
           <span class="sum" id="unit-price">{{ unit_price|floatformat:"-2" }} ₪</span>
         </div>
-        {% endif %}
+      {% else %}
+        <div class="price-row" id="unit-price-row" style="display:none;">
+          <span class="label">מחיר לאדם:</span>
+          <span class="sum" id="unit-price"></span>
+        </div>
+      {% endif %}
 
-        {% if activity.name == "טיול כרכרה" or activity.name == "רכיבה זוגית" and total_price %}
-          <div class="price-row">
+      {% if total_price %}
+        {% if activity.name == "טיול כרכרה" or activity.name == "רכיבה זוגית" or activity.name == "צילומים" %}
+            <div class="price-row" id="total-price-row">
+              <span class="label">סה"כ לתשלום:</span>
+              <span class="sum" id="total-price">{{ total_price|floatformat:"-2" }} ₪</span>
+            </div>
+
+          {% elif selected_participants %}
+            <div class="price-row" id="total-price-row">
+              <span class="label">סה"כ לתשלום:</span>
+              <span class="expr" id="total-expr">{{ unit_price|floatformat:"-2" }}×{{ selected_participants }}</span>
+              <span class="eq">=</span>
+              <span class="sum" id="total-price">{{ total_price|floatformat:"-2" }} ₪</span>
+            </div>
+
+          {% else %}
+            <div class="price-row" id="total-price-row" style="display:none;">
+              <span class="label">סה"כ לתשלום:</span>
+              <span class="expr" id="total-expr"></span>
+              <span class="eq">=</span>
+              <span class="sum" id="total-price"></span>
+            </div>
+          {% endif %}
+        {% else %}
+          <div class="price-row" id="total-price-row" style="display:none;">
             <span class="label">סה"כ לתשלום:</span>
-            <span class="sum" id="total-price">{{ total_price|floatformat:"-2" }} ₪</span>
-          </div>
-        {% elif selected_participants and total_price %}
-          <div class="price-row">
-            <span class="label">סה"כ לתשלום:</span>
-            <span class="expr">{{ unit_price|floatformat:"-2" }}×{{ selected_participants }}</span>
+            <span class="expr" id="total-expr"></span>
             <span class="eq">=</span>
-            <span class="sum" id="total-price">{{ total_price|floatformat:"-2" }} ₪</span>
+            <span class="sum" id="total-price"></span>
           </div>
         {% endif %}
-  {% elif activity.name != "רכיבה זוגית" %}
-    <div class="price-row">
-      <span class="label">המחיר תלוי בצבע הסוס שתבחרו</span>
-    </div>
-  {% endif %}
 
+    {% elif activity.name != "רכיבה זוגית" %}
+      <div class="price-row" id="price-placeholder">
+        <span class="label">המחיר תלוי בצבע הסוס שתבחרו</span>
+      </div>
+
+      <div class="price-row" id="unit-price-row" style="display:none;">
+        <span class="label">מחיר לאדם:</span>
+        <span class="sum" id="unit-price"></span>
+      </div>
+
+      <div class="price-row" id="total-price-row" style="display:none;">
+        <span class="label">סה"כ לתשלום:</span>
+        <span class="expr" id="total-expr"></span>
+        <span class="eq">=</span>
+        <span class="sum" id="total-price"></span>
+      </div>
+    {% endif %}
 
   {# ==== טופס POST לפרטים ותשלום ==== #}
   <form method="POST" action="{% url 'pay_start' %}" id="booking-form">
@@ -452,20 +487,91 @@
       // לעדכן hidden כדי שהשרת יקבל את הערכים הנכונים בתשלום
       setHidden("unit_price", data.unit_price ?? "");
       setHidden("total_price", data.total_price ?? "");
+      const typeEl = document.getElementById("activity_type");
+      const wineEl = document.getElementById("wine");
+      const partEl = document.getElementById("participants");
+
+      if (typeEl) setHidden("activity_type", typeEl.value || "");
+      if (wineEl) setHidden("wine", wineEl.value || "");
+      if (partEl) setHidden("participants", partEl.value || "");
       if (data.selected_participants !== undefined && data.selected_participants !== null) {
         setHidden("participants", String(data.selected_participants));
       }
 
-      // לעדכן UI
-      const unitSpan  = document.getElementById("unit-price");
-      const totalSpan = document.getElementById("total-price");
+      const unitSpan    = document.getElementById("unit-price");
+        const totalSpan   = document.getElementById("total-price");
+        const totalExpr   = document.getElementById("total-expr");
+        const unitRow     = document.getElementById("unit-price-row");
+        const totalRow    = document.getElementById("total-price-row");
+        const placeholder = document.getElementById("price-placeholder");
 
-      if (unitSpan && data.unit_price !== null) {
-        unitSpan.textContent = Number(data.unit_price).toFixed(2) + " ₪";
-      }
-      if (totalSpan && data.total_price !== null) {
-        totalSpan.textContent = Number(data.total_price).toFixed(2) + " ₪";
-      }
+        const currentActivityName = "{{ activity.name|escapejs }}";
+        const participantsEl = document.getElementById("participants");
+        const selectedParticipants = participantsEl ? participantsEl.value : "";
+
+        if (data.unit_price !== null && data.unit_price !== undefined && unitSpan) {
+          unitSpan.textContent = Number(data.unit_price).toFixed(2) + " ₪";
+        }
+
+        if (data.total_price !== null && data.total_price !== undefined && totalSpan) {
+          totalSpan.textContent = Number(data.total_price).toFixed(2) + " ₪";
+        }
+
+        // placeholder — להציג רק כשאין בכלל מחיר יחידה
+        if (placeholder) {
+          placeholder.style.display =
+            (data.unit_price !== null && data.unit_price !== undefined) ? "none" : "";
+        }
+
+        // מחיר לאדם — לא מוצג בפעילויות מסוימות
+        const hideUnitForActivities = ["צילומים", "רכיבת ילדים", "טיול כרכרה", "רכיבה זוגית"];
+        if (unitRow) {
+          unitRow.style.display =
+            (!hideUnitForActivities.includes(currentActivityName) &&
+             data.unit_price !== null &&
+             data.unit_price !== undefined)
+              ? ""
+              : "none";
+        }
+
+        // סה"כ — רק לפי הלוגיקה שאת רוצה
+        let shouldShowTotal = false;
+
+        if (
+          currentActivityName === "טיול כרכרה" ||
+          currentActivityName === "רכיבה זוגית" ||
+          currentActivityName === "צילומים"
+        ) {
+          shouldShowTotal =
+            data.total_price !== null && data.total_price !== undefined;
+        } else {
+          shouldShowTotal =
+            !!selectedParticipants &&
+            data.total_price !== null &&
+            data.total_price !== undefined;
+        }
+
+        if (totalRow) {
+          totalRow.style.display = shouldShowTotal ? "" : "none";
+        }
+
+        // ביטוי הכפל מוצג רק כשיש מספר משתתפים ורק בפעילויות רגילות
+        if (totalExpr) {
+          if (
+            currentActivityName !== "טיול כרכרה" &&
+            currentActivityName !== "רכיבה זוגית" &&
+            selectedParticipants &&
+            data.unit_price !== null &&
+            data.unit_price !== undefined
+          ) {
+            totalExpr.textContent = Number(data.unit_price).toFixed(2) + "×" + selectedParticipants;
+            totalExpr.style.display = "";
+          } else {
+            totalExpr.textContent = "";
+            totalExpr.style.display = "none";
+          }
+}
+
     }catch(e){}
   }
 

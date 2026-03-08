@@ -1408,7 +1408,14 @@ def pay_start(request):
         if not created and email_norm and not (obj.customer_email or "").strip():
             obj.customer_email = email_norm
             obj.save(update_fields=["customer_email"])
+    activity_type = (request.POST.get("activity_type") or "").strip().lower()
+    wine = (request.POST.get("wine") or "").strip().lower()
 
+    request.session["pending_booking_extra"] = {
+        "activity_type": activity_type,
+        "wine": wine,
+    }
+    request.session.modified = True
     payment = Payment.objects.create(
         provider="mock",
         amount_agorot=amount_agorot,
@@ -1521,7 +1528,7 @@ def pay_webhook(request):
     elif payment.status not in FINALS:
         if new_status == "succeeded":
             # 1) יצירת/איתור Booking
-            booking = _finalize_booking_after_payment(payment)
+            booking = _finalize_booking_after_payment(request, payment)
 
             # 2) הקצאת מזהה עסקה ייחודי בפורמט MZ-XXXXXXXX לשני הצדדים (Booking & Payment)
             ref = assign_unique_ref(booking, payment, digits=8)
@@ -1602,7 +1609,7 @@ def _resolve_activity_for_booking(payment: Payment, appt: Appointment | None):
 
     raise ValueError("אין דרך לקבוע Activity להזמנה (Appointment בלי פעילות ו-Payment.activity_id ריק).")
 
-def _finalize_booking_after_payment(payment: Payment):
+def _finalize_booking_after_payment(request, payment):
     """
     סוגרת תור, מוצאת/יוצרת Booking, מקשרת אותו ל-Payment, ותופסת את כל הסלוטים לפי המשך.
     אידמפוטנטית ככל האפשר.
@@ -1647,6 +1654,30 @@ def _finalize_booking_after_payment(payment: Payment):
 
             total_price = (Decimal(payment.amount_agorot) / Decimal("100")) if getattr(payment, "amount_agorot", None) is not None else None
 
+            extra = request.session.get("pending_booking_extra", {}) or {}
+
+            activity_type = (extra.get("activity_type") or "").strip().lower()
+            wine = (extra.get("wine") or "").strip().lower()
+
+            details_parts = []
+
+            if activity.name == "צילומים" and activity_type:
+                color_map = {
+                    "white": "סוס לבן",
+                    "brown": "סוס חום",
+                }
+                details_parts.append(f"צבע סוס: {color_map.get(activity_type, activity_type)}")
+
+            if wine in {"white", "red", "none"}:
+                wine_map = {
+                    "white": "יין לבן",
+                    "red": "יין אדום",
+                    "none": "בלי יין",
+                }
+                details_parts.append(f"יין: {wine_map[wine]}")
+
+            details_txt = " | ".join(details_parts)
+
             booking = Booking.objects.create(
                 activity=activity,
                 start_dt=start_dt,
@@ -1657,7 +1688,10 @@ def _finalize_booking_after_payment(payment: Payment):
                 customer_email=getattr(payment, "email", ""),
                 status="confirmed",
                 total_price=total_price,
+                details=details_txt,
             )
+            request.session.pop("pending_booking_extra", None)
+            request.session.modified = True
 
             if hasattr(payment, "booking_id"):
                 payment.booking = booking
