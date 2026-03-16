@@ -88,7 +88,7 @@
       {% if activity.name != "צילומים" and activity.name != "רכיבת ילדים" and activity.name != "טיול כרכרה" and activity.name != "רכיבה זוגית" %}
         <div class="price-row" id="unit-price-row">
           <span class="label">מחיר לאדם:</span>
-          <span class="sum" id="unit-price">{{ unit_price|floatformat:"-2" }} ₪</span>
+          <span class="sum" id="unit-price">{{ unit_price|floatformat:"2" }} ₪</span>
         </div>
       {% else %}
         <div class="price-row" id="unit-price-row" style="display:none;">
@@ -101,30 +101,30 @@
         {% if activity.name == "טיול כרכרה" or activity.name == "רכיבה זוגית" or activity.name == "צילומים" %}
             <div class="price-row" id="total-price-row">
               <span class="label">סה"כ לתשלום:</span>
-              <span class="sum" id="total-price">{{ total_price|floatformat:"-2" }} ₪</span>
+              <span class="sum" id="total-price">{{ total_price|floatformat:"2" }} ₪</span>
             </div>
 
           {% elif selected_participants %}
             <div class="price-row" id="total-price-row">
               <span class="label">סה"כ לתשלום:</span>
-              <span class="expr" id="total-expr">{{ unit_price|floatformat:"-2" }}×{{ selected_participants }}</span>
-              <span class="eq">=</span>
-              <span class="sum" id="total-price">{{ total_price|floatformat:"-2" }} ₪</span>
+              <span class="expr" id="total-expr" style="display:none;">{{ unit_price|floatformat:"2" }}×{{ selected_participants }}</span>
+              <span class="eq" style="display:none;">=</span>
+              <span class="sum" id="total-price">{{ total_price|floatformat:"2" }} ₪</span>
             </div>
 
           {% else %}
             <div class="price-row" id="total-price-row" style="display:none;">
               <span class="label">סה"כ לתשלום:</span>
-              <span class="expr" id="total-expr"></span>
-              <span class="eq">=</span>
+              <span class="expr" id="total-expr" style="display:none;"></span>
+              <span class="eq" style="display:none;">=</span>
               <span class="sum" id="total-price"></span>
             </div>
           {% endif %}
         {% else %}
           <div class="price-row" id="total-price-row" style="display:none;">
             <span class="label">סה"כ לתשלום:</span>
-            <span class="expr" id="total-expr"></span>
-            <span class="eq">=</span>
+            <span class="expr" id="total-expr" style="display:none;"></span>
+            <span class="eq" style="display:none;">=</span>
             <span class="sum" id="total-price"></span>
           </div>
         {% endif %}
@@ -141,8 +141,8 @@
 
       <div class="price-row" id="total-price-row" style="display:none;">
         <span class="label">סה"כ לתשלום:</span>
-        <span class="expr" id="total-expr"></span>
-        <span class="eq">=</span>
+        <span class="expr" id="total-expr" style="display:none;"></span>
+        <span class="eq" style="display:none;">=</span>
         <span class="sum" id="total-price"></span>
       </div>
     {% endif %}
@@ -540,7 +540,9 @@
         if (
           currentActivityName === "טיול כרכרה" ||
           currentActivityName === "רכיבה זוגית" ||
-          currentActivityName === "צילומים"
+          currentActivityName === "צילומים" ||
+          currentActivityName === "רכיבת ילדים"
+
         ) {
           shouldShowTotal =
             data.total_price !== null && data.total_price !== undefined;
@@ -560,6 +562,7 @@
           if (
             currentActivityName !== "טיול כרכרה" &&
             currentActivityName !== "רכיבה זוגית" &&
+            currentActivityName !== "רכיבת ילדים" &&
             selectedParticipants &&
             data.unit_price !== null &&
             data.unit_price !== undefined
@@ -571,6 +574,10 @@
             totalExpr.style.display = "none";
           }
 }
+        const eqSpan = totalExpr?.nextElementSibling;
+        if (totalExpr && eqSpan) {
+            eqSpan.style.display = totalExpr.style.display === "none" ? "none" : "";
+        }
 
     }catch(e){}
   }
