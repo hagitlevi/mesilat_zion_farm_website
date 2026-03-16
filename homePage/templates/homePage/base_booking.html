@@ -91,271 +91,384 @@
         {% if activity.name == "רכיבה זוגית" %}
           <div class="variant-strip" id="variant-strip"></div>
         {% endif %}
-        <div id="appointments-container">
-        <p>טוען תורים...</p>
+        <div id="appointments-container" class="appointments-container">
+          <div id="appointments-loader" class="appointments-loader show">
+            <div class="spinner"></div>
+            <p>טוען תורים...</p>
+          </div>
+
+          <div id="appointments-content"></div>
         </div>
     {% endif %}
+    <div id="hold-loader" class="hold-loader" hidden>
+      <div class="spinner"></div>
+      <p>רק רגע...</p>
+    </div>
 {% endblock %}
 
 {% block scripts %}
     <script>
-        {% if activity.name != "שיעורי רכיבה/ טיפולית" %}
-            document.addEventListener("DOMContentLoaded", function () {
-              const activityId   = "{{ activity.id }}";
-              const strip        = document.getElementById("date-strip");
-              const variantStrip = document.getElementById("variant-strip");
-              const container    = document.getElementById("appointments-container");
+    {% if activity.name != "שיעורי רכיבה/ טיפולית" %}
+        document.addEventListener("DOMContentLoaded", function () {
+          const loader       = document.getElementById("appointments-loader");
+          const content      = document.getElementById("appointments-content");
+          const activityId   = "{{ activity.id }}";
+          const strip        = document.getElementById("date-strip");
+          const variantStrip = document.getElementById("variant-strip");
+          const container    = document.getElementById("appointments-container");
 
-              // אלמנטים לבוחר התאריך המעוצב
-              const dateInput    = document.getElementById("date-picker");
-              const dateTrigger  = document.getElementById("date-trigger");
-              const dateText     = document.querySelector("#date-trigger .date-text");
+          // אלמנטים לבוחר התאריך המעוצב
+          const dateInput    = document.getElementById("date-picker");
+          const dateTrigger  = document.getElementById("date-trigger");
+          const dateText     = document.querySelector("#date-trigger .date-text");
 
-              /* === הגדרות טווח תאריך ===
-                 שנה/י לפי צורך:
-                 MONTHS_AHEAD = כמה חודשים קדימה
-                 MONTHS_BACK  = כמה חודשים אחורה (לרוב 0)
-              */
-              const MONTHS_AHEAD = 2;
-              const MONTHS_BACK  = 0;
+          /* === הגדרות טווח תאריך ===
+             שנה/י לפי צורך:
+             MONTHS_AHEAD = כמה חודשים קדימה
+             MONTHS_BACK  = כמה חודשים אחורה (לרוב 0)
+          */
+          const MONTHS_AHEAD = 2;
+          const MONTHS_BACK  = 0;
 
-              // עזר: לפורמט YYYY-MM-DD בלי בעיות אזור זמן
-              const toIsoLocal = (d) => {
-                const y = d.getFullYear();
-                const m = String(d.getMonth()+1).padStart(2,'0');
-                const day = String(d.getDate()).padStart(2,'0');
-                return `${y}-${m}-${day}`;
-              };
-              // עזר: פורמט תווית יפה לעברית (ד› | 25/08)
-              const fmtHeb = (iso) => {
-                const [y,m,d] = iso.split('-').map(n => parseInt(n,10));
-                const dt = new Date(y, m-1, d);
-                const weekday = dt.toLocaleDateString('he-IL', { weekday: 'short' });
-                const dayMonth = dt.toLocaleDateString('he-IL', { day:'2-digit', month:'2-digit' });
-                return `${weekday} | ${dayMonth}`;
-              };
-              const setTriggerLabel = (iso) => { if (dateText) dateText.textContent = fmtHeb(iso); };
+          // עזר: לפורמט YYYY-MM-DD בלי בעיות אזור זמן
+          const toIsoLocal = (d) => {
+            const y = d.getFullYear();
+            const m = String(d.getMonth()+1).padStart(2,'0');
+            const day = String(d.getDate()).padStart(2,'0');
+            return `${y}-${m}-${day}`;
+          };
 
-                // מתחילים ממחר אם עכשיו אחרי 19:30
-              const now = new Date();
-              const startDate = new Date(now);
-
-              const cutoff = new Date(now);
-              cutoff.setHours(19, 30, 0, 0); // 19:30
-
-              if (now >= cutoff) {
-                 startDate.setDate(startDate.getDate() + 1);
-              }
-
-
-
-              // בונים 6 ימים קדימה (ללא שבת) לצ'יפים המהירים
-              const days = [];
-              let d = new Date(startDate);
-              while (days.length < 6) {
-                if (d.getDay() !== 6) {
-                  days.push({
-                    iso: toIsoLocal(d),
-                    label: `${d.toLocaleDateString('he-IL',{weekday:'short'})} | ${d.toLocaleDateString('he-IL',{day:'2-digit',month:'2-digit'})}`
-                  });
-                }
-                d.setDate(d.getDate() + 1);
-              }
-
-              // וריאנטים רק לרכיבה זוגית
-              const hasVariants = !!variantStrip;
-              const VARIANTS = [
-                { key: 'day',     label: 'רכיבה ביום'   },
-                { key: 'picnic',  label: 'פיקניק'       },
-                { key: 'sunrise', label: 'רכיבה בזריחה' },
-                { key: 'night',   label: 'רכיבה בלילה'  },
-              ];
-              let currentVariant = 'day';
-              let currentDateIso = days[0]?.iso || toIsoLocal(startDate);
-
-              // בניית צ'יפים לימים
-              const buildDayChip = (dayObj, isActive=false) => {
-                const btn = document.createElement("button");
-                btn.className = "date-chip" + (isActive ? " active" : "");
-                btn.textContent = dayObj.label;
-                btn.dataset.date = dayObj.iso;
-                btn.addEventListener("click", () => {
-                  document.querySelectorAll(".date-chip").forEach(b => b.classList.remove("active"));
-                  btn.classList.add("active");
-                  currentDateIso = dayObj.iso;
-                  if (dateInput) dateInput.value = currentDateIso;  // סנכרון עם ה-input
-                  if (dateText) dateText.textContent = "בחרו תאריך לבחירתכם";     // מחזיר את הטקסט לכפתור
-                  dateTrigger?.classList.remove("selected","has-date","is-open"); // מוריד עיצוב "נבחר"
-
-                  loadForDate(currentDateIso, true);
-                });
-                return btn;
-              };
-              if (strip) days.forEach((obj, idx) => strip.appendChild(buildDayChip(obj, idx===0)));
-
-              // בניית וריאנטים אם צריך
-              if (hasVariants) {
-                VARIANTS.forEach((v, idx) => {
-                  const b = document.createElement("button");
-                  b.className = "variant-chip" + (idx === 0 ? " active" : "");
-                  b.textContent = v.label;
-                  b.dataset.key = v.key;
-                  b.addEventListener("click", () => {
-                    document.querySelectorAll(".variant-chip").forEach(x => x.classList.remove("active"));
-                    b.classList.add("active");
-                    currentVariant = v.key;
-                    loadForDate(currentDateIso, true);
-                  });
-                  variantStrip.appendChild(b);
-                });
-              }
-
-              // קונפיגורציית תאריך: min/max לפי חודשים
-              if (dateInput) {
-                const min = new Date(startDate);  min.setMonth(min.getMonth() - MONTHS_BACK);
-                const max = new Date(startDate);  max.setMonth(max.getMonth() + MONTHS_AHEAD);
-
-                dateInput.min   = toIsoLocal(min);
-                dateInput.max   = toIsoLocal(max);
-
-
-                // פתיחת הבוחר כשנלחץ הכפתור המעוצב
-                if (dateTrigger) {
-                  dateTrigger.addEventListener("click", () => {
-                    if (dateInput.showPicker) dateInput.showPicker(); // כרום/כרומיום
-                    else dateInput.click();                           // דפדפנים אחרים
-                  });
-                }
-
-                // שינוי תאריך → טען תורים + עדכן תוויות
-                dateInput.addEventListener("change", () => {
-                  if (!dateInput.value) return;
-                  currentDateIso = dateInput.value;
-                  setTriggerLabel(currentDateIso);
-
-                  // סמן chip תואם אם יש
-                  document.querySelectorAll(".date-chip").forEach(b => {
-                    b.classList.toggle("active", b.dataset.date === currentDateIso);
-                  });
-
-                  loadForDate(currentDateIso, true);
-                });
-              }
-
-              // טעינה ראשונית
-              loadForDate(currentDateIso, false);
-
-              let lastStamp = null;
-
-              async function poll() {
-                  console.log("POLL RUN", new Date().toLocaleTimeString());
-                  try {
-                    const snapUrl = new URL("{% url 'appointments_snapshot' %}", window.location.origin);
-
-                    // ✅ משתמשים בתאריך שבאמת נבחר כרגע
-                    snapUrl.searchParams.set("date", currentDateIso);
-
-                    // שהשינויים יהיו רלוונטיים גם לוריאנט:
-                    if (hasVariants) snapUrl.searchParams.set("variant", currentVariant);
-
-                    const res = await fetch(snapUrl.toString(), { cache: "no-store" });
-                    const data = await res.json();
-
-                    if (lastStamp === null) {
-                      lastStamp = data.stamp;
-                      return;
-                    }
-
-                    if (data.stamp !== lastStamp) {
-                      lastStamp = data.stamp;
-
-                      // לא משנים מבנה, פשוט טוענים מחדש את ה-HTML של התורים כמו שאת כבר עושה
-                      loadForDate(currentDateIso, false);
-                    }
-                  } catch (e) {
-                    console.log("Polling error", e);
-                  }
-                }
-
-                // כל 5 שניות
-              setInterval(poll, 5000);
-
-              function loadForDate(iso, shouldScroll=false) {
-                container.innerHTML = "<p>טוען תורים...</p>";
-                const baseUrl = `{% url 'available_appointment' 0 %}`.replace('/0/', `/${activityId}/`);
-                const url = hasVariants ? `${baseUrl}?date=${iso}&variant=${currentVariant}` : `${baseUrl}?date=${iso}`;
-
-                fetch(url)
-                  .then(r => r.text())
-                  .then(html => {
-                    container.innerHTML = html;
-                    if (shouldScroll && strip) {
-                      strip.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                    }
-                  })
-                  .catch(err => {
-                    console.error(err);
-                    container.innerHTML = "<p>שגיאה בטעינת התורים.</p>";
-                  });
-              }
-            });
-        {% endif %}
-        (function(){
-          function getCookie(name) {
-            const value = `; ${document.cookie}`;
-            const parts = value.split(`; ${name}=`);
-            if (parts.length === 2) return parts.pop().split(';').shift();
+          function showLoader() {
+              loader?.classList.add("show");
+              content?.classList.add("loading");
           }
 
-          document.addEventListener("submit", async function(e){
-            const form = e.target;
-            if (!form.classList.contains("hold-form")) return;
+          function hideLoader() {
+              loader?.classList.remove("show");
+              content?.classList.remove("loading");
+          }
+          // עזר: פורמט תווית יפה לעברית (ד› | 25/08)
+          const fmtHeb = (iso) => {
+            const [y,m,d] = iso.split('-').map(n => parseInt(n,10));
+            const dt = new Date(y, m-1, d);
+            const weekday = dt.toLocaleDateString('he-IL', { weekday: 'short' });
+            const dayMonth = dt.toLocaleDateString('he-IL', { day:'2-digit', month:'2-digit' });
+            return `${weekday} | ${dayMonth}`;
+          };
+          const setTriggerLabel = (iso) => { if (dateText) dateText.textContent = fmtHeb(iso); };
 
-            e.preventDefault();
+            // מתחילים ממחר אם עכשיו אחרי 19:30
+          const now = new Date();
+          const startDate = new Date(now);
 
-            const url = form.action;
-            const formData = new FormData(form);
+          const cutoff = new Date(now);
+          cutoff.setHours(19, 30, 0, 0); // 19:30
 
-            try {
-              const resp = await fetch(url, {
-                method: "POST",
-                headers: {
-                  "X-Requested-With": "XMLHttpRequest",
-                  "X-CSRFToken": getCookie("csrftoken"),
-                },
-                body: formData,
-              });
+          if (now >= cutoff) {
+             startDate.setDate(startDate.getDate() + 1);
+          }
 
-              const data = await resp.json().catch(() => null);
 
-              if (!resp.ok) {
-                const msg = (data && data.message) ? data.message : "משהו השתבש. נסי שוב.";
-                window.showBaseModal({
-                  type: "error",
-                  title: "התור לא נתפס",
-                  text: msg
-                });
-                return;
-              }
 
-              if (data && data.ok && data.redirect_url) {
-                window.location.href = data.redirect_url; // הצלחה → עוברים לדף הפרטים
-              } else {
-                window.showBaseModal({
-                  type: "error",
-                  title: "שגיאה",
-                  text: "לא התקבלה תשובה תקינה מהשרת."
-                });
-              }
-
-            } catch (err) {
-              window.showBaseModal({
-                type: "error",
-                title: "שגיאת רשת",
-                text: "לא הצלחנו לתקשר עם השרת. נסי שוב."
+          // בונים 6 ימים קדימה (ללא שבת) לצ'יפים המהירים
+          const days = [];
+          let d = new Date(startDate);
+          while (days.length < 6) {
+            if (d.getDay() !== 6) {
+              days.push({
+                iso: toIsoLocal(d),
+                label: `${d.toLocaleDateString('he-IL',{weekday:'short'})} | ${d.toLocaleDateString('he-IL',{day:'2-digit',month:'2-digit'})}`
               });
             }
+            d.setDate(d.getDate() + 1);
+          }
+
+          // וריאנטים רק לרכיבה זוגית
+          const hasVariants = !!variantStrip;
+          const VARIANTS = [
+            { key: 'day',     label: 'רכיבה ביום'   },
+            { key: 'picnic',  label: 'פיקניק'       },
+            { key: 'sunrise', label: 'רכיבה בזריחה' },
+            { key: 'night',   label: 'רכיבה בלילה'  },
+          ];
+          let currentVariant = 'day';
+          let currentDateIso = days[0]?.iso || toIsoLocal(startDate);
+
+          // בניית צ'יפים לימים
+          const buildDayChip = (dayObj, isActive=false) => {
+            const btn = document.createElement("button");
+            btn.className = "date-chip" + (isActive ? " active" : "");
+            btn.textContent = dayObj.label;
+            btn.dataset.date = dayObj.iso;
+            btn.addEventListener("click", () => {
+              document.querySelectorAll(".date-chip").forEach(b => b.classList.remove("active"));
+              btn.classList.add("active");
+              currentDateIso = dayObj.iso;
+              if (dateInput) dateInput.value = currentDateIso;  // סנכרון עם ה-input
+              if (dateText) dateText.textContent = "בחרו תאריך לבחירתכם";     // מחזיר את הטקסט לכפתור
+              dateTrigger?.classList.remove("selected","has-date","is-open"); // מוריד עיצוב "נבחר"
+
+              loadForDate(currentDateIso, true);
+            });
+            return btn;
+          };
+          if (strip) days.forEach((obj, idx) => strip.appendChild(buildDayChip(obj, idx===0)));
+
+          // בניית וריאנטים אם צריך
+          if (hasVariants) {
+            VARIANTS.forEach((v, idx) => {
+              const b = document.createElement("button");
+              b.className = "variant-chip" + (idx === 0 ? " active" : "");
+              b.textContent = v.label;
+              b.dataset.key = v.key;
+              b.addEventListener("click", () => {
+                document.querySelectorAll(".variant-chip").forEach(x => x.classList.remove("active"));
+                b.classList.add("active");
+                currentVariant = v.key;
+                loadForDate(currentDateIso, true);
+              });
+              variantStrip.appendChild(b);
+            });
+          }
+
+          // קונפיגורציית תאריך: min/max לפי חודשים
+          if (dateInput) {
+            const min = new Date(startDate);  min.setMonth(min.getMonth() - MONTHS_BACK);
+            const max = new Date(startDate);  max.setMonth(max.getMonth() + MONTHS_AHEAD);
+
+            dateInput.min   = toIsoLocal(min);
+            dateInput.max   = toIsoLocal(max);
+
+
+            // פתיחת הבוחר כשנלחץ הכפתור המעוצב
+            if (dateTrigger) {
+              dateTrigger.addEventListener("click", () => {
+                if (dateInput.showPicker) dateInput.showPicker(); // כרום/כרומיום
+                else dateInput.click();                           // דפדפנים אחרים
+              });
+            }
+
+            // שינוי תאריך → טען תורים + עדכן תוויות
+            dateInput.addEventListener("change", () => {
+              if (!dateInput.value) return;
+              currentDateIso = dateInput.value;
+              setTriggerLabel(currentDateIso);
+
+              // סמן chip תואם אם יש
+              document.querySelectorAll(".date-chip").forEach(b => {
+                b.classList.toggle("active", b.dataset.date === currentDateIso);
+              });
+
+              loadForDate(currentDateIso, true);
+            });
+          }
+
+          // טעינה ראשונית
+          loadForDate(currentDateIso, false);
+
+          let lastStamp = null;
+
+          async function poll() {
+              console.log("POLL RUN", new Date().toLocaleTimeString());
+              try {
+                const snapUrl = new URL("{% url 'appointments_snapshot' %}", window.location.origin);
+
+                // משתמשים בתאריך שבאמת נבחר כרגע
+                snapUrl.searchParams.set("date", currentDateIso);
+
+                // שהשינויים יהיו רלוונטיים גם לוריאנט:
+                if (hasVariants) snapUrl.searchParams.set("variant", currentVariant);
+
+                const res = await fetch(snapUrl.toString(), { cache: "no-store" });
+                const data = await res.json();
+
+                if (lastStamp === null) {
+                  lastStamp = data.stamp;
+                  return;
+                }
+
+                if (data.stamp !== lastStamp) {
+                  lastStamp = data.stamp;
+
+                  // לא משנים מבנה, פשוט טוענים מחדש את ה-HTML של התורים כמו שאת כבר עושה
+                  loadForDate(currentDateIso, false);
+                }
+              } catch (e) {
+                console.log("Polling error", e);
+              }
+            }
+
+            // כל 5 שניות
+          setInterval(poll, 5000);
+
+            function loadForDate(iso, shouldScroll=false) {
+              showLoader();
+
+              const baseUrl = `{% url 'available_appointment' 0 %}`.replace('/0/', `/${activityId}/`);
+              const url = hasVariants ? `${baseUrl}?date=${iso}&variant=${currentVariant}` : `${baseUrl}?date=${iso}`;
+
+              fetch(url)
+                .then(r => r.text())
+                .then(html => {
+                  content.innerHTML = html;
+                  hideLoader();
+
+                  if (shouldScroll && strip) {
+                    strip.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                  }
+                })
+                .catch(err => {
+                  console.error(err);
+                  content.innerHTML = "<p>שגיאה בטעינת התורים.</p>";
+                  hideLoader();
+                });
+            }            });
+    {% endif %}
+    (function () {
+      function getCookie(name) {
+        const value = `; ${document.cookie}`;
+        const parts = value.split(`; ${name}=`);
+        if (parts.length === 2) return parts.pop().split(';').shift();
+      }
+
+      const holdLoader = document.getElementById("hold-loader");
+      const HOLD_TIMEOUT_MS = 12000;
+
+      function showHoldLoader() {
+        if (holdLoader) {
+          holdLoader.hidden = false;
+        }
+      }
+
+      function hideHoldLoader() {
+        if (holdLoader) {
+          holdLoader.hidden = true;
+        }
+      }
+
+      function resetHoldUi() {
+        hideHoldLoader();
+
+        document.querySelectorAll(".slot-btn").forEach(btn => {
+          btn.disabled = false;
+        });
+
+        document.querySelectorAll(".hold-form").forEach(form => {
+          form.dataset.submitting = "0";
+        });
+      }
+
+      window.addEventListener("pageshow", function () {
+        resetHoldUi();
+      });
+
+      window.addEventListener("load", function () {
+        resetHoldUi();
+      });
+
+      function showErrorModal(title, text) {
+        if (window.showBaseModal) {
+          window.showBaseModal({
+            type: "error",
+            title,
+            text
           });
-        })();
+        } else {
+          alert(text);
+        }
+      }
+
+      document.addEventListener("submit", async function (e) {
+        const form = e.target;
+        if (!form.classList.contains("hold-form")) return;
+
+        e.preventDefault();
+
+        const submitBtn = form.querySelector(".slot-btn");
+        if (submitBtn && submitBtn.disabled) return;
+
+        if (form.dataset.submitting === "1") return;
+        form.dataset.submitting = "1";
+
+        if (submitBtn) {
+          submitBtn.disabled = true;
+        }
+
+        showHoldLoader();
+
+        const url = form.action;
+        const formData = new FormData(form);
+
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => {
+          controller.abort();
+        }, HOLD_TIMEOUT_MS);
+
+        try {
+          const resp = await fetch(url, {
+            method: "POST",
+            headers: {
+              "X-Requested-With": "XMLHttpRequest",
+              "X-CSRFToken": getCookie("csrftoken"),
+            },
+            body: formData,
+            signal: controller.signal,
+          });
+
+          clearTimeout(timeoutId);
+
+          const data = await resp.json().catch(() => null);
+
+          if (!resp.ok) {
+            hideHoldLoader();
+            form.dataset.submitting = "0";
+
+            if (submitBtn) {
+              submitBtn.disabled = false;
+            }
+
+            const msg = (data && data.message) ? data.message : "משהו השתבש. נסי שוב.";
+            showErrorModal("התור לא נתפס", msg);
+            return;
+          }
+
+          if (data && data.ok && data.redirect_url) {
+            form.dataset.submitting = "0";
+            window.location.href = data.redirect_url;
+            return;
+          }
+
+          hideHoldLoader();
+          form.dataset.submitting = "0";
+
+          if (submitBtn) {
+            submitBtn.disabled = false;
+          }
+
+          showErrorModal("שגיאה", "לא התקבלה תשובה תקינה מהשרת.");
+
+        } catch (err) {
+          clearTimeout(timeoutId);
+          hideHoldLoader();
+          form.dataset.submitting = "0";
+
+          if (submitBtn) {
+            submitBtn.disabled = false;
+          }
+
+          if (err.name === "AbortError") {
+            showErrorModal(
+              "פג זמן ההמתנה",
+              "השרת מתעכב יותר מהרגיל. נסי שוב."
+            );
+          } else {
+            showErrorModal(
+              "שגיאת רשת",
+              "לא הצלחנו לתקשר עם השרת. נסי שוב."
+            );
+          }
+        }
+      });
+    })();
     </script>
 {% endblock %}

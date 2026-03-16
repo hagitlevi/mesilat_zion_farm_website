@@ -500,7 +500,6 @@ def available_appointment_view(request, activity_id):
     }
     return render(request, "homePage/available_appointment.html", context)
 
-@csrf_exempt
 def confirm_booking(request):
     print("DEBUG: confirm_booking called with method:", request.method)  # הדפסה לוגית לבדיקה
     if request.method != "POST":
@@ -513,7 +512,7 @@ def confirm_booking(request):
     first_name       = request.POST.get("first_name")
     last_name        = request.POST.get("last_name")
     phone_raw        = request.POST.get("phone")
-    email            = request.POST.get("email") or request.POST.get("email")  # תואם לאחור
+    email            = request.POST.get("email", "")
     participants     = request.POST.get("participants")
     activity_type    = request.POST.get("activity_type")
     wine             = request.POST.get("wine")
