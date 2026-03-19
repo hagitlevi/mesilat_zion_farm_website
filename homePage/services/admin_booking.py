@@ -4,11 +4,15 @@ from django.db import transaction
 from django.db.utils import IntegrityError
 from django.utils import timezone
 import secrets
-
 from homePage.models import Appointment, Activity, Booking
+import logging
+
+logger = logging.getLogger(__name__)
 
 def _gen_unique_mz_ref(digits=8) -> str:
-    # מנסה לייצר MZ-XXXXXXXX ייחודי מול ה-DB
+    """מייצר מחרוזת ייחודית בפורמט MZ-XXXXXXXX, מנסה עד 25 פעמים מול ה-DB לפני פולבאק נדיר עם תאריך"""
+    logger.debug("_gen_unique_mz_ref called with digits: %d", digits)
+
     for _ in range(25):
         cand = "MZ-" + "".join(secrets.choice("0123456789") for _ in range(digits))
         if not Booking.objects.filter(payment_ref=cand).exists():
@@ -31,6 +35,8 @@ def create_booking_from_slot(*, base_slot_id: int, duration_minutes: int,
     - מסמנת is_booked=True, is_paid בהתאם, ואופציונלית תופסת 15 דק' הפסקה בסוף (>30).
     - מייצרת payment_ref ייחודי בפורמט MZ-XXXXXXXX ושומרת על ההזמנה; מעדכנת payment_reference על הסלוטים.
     """
+    logger.debug("create_booking_from_slot called with base_slot_id: %d, duration_minutes: %d, activity_id: %s, participants: %d, customer_name: %s, customer_phone: %s, customer_email: %s, mark_paid: %s, capture_buffer: %s",)
+
     base = Appointment.objects.select_for_update().get(pk=base_slot_id)
     if base.is_booked or base.is_break:
         raise ValueError("סלוט ההתחלה תפוס או מוגדר כהפסקה")

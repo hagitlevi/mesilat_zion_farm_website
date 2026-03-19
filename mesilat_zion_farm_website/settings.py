@@ -18,6 +18,7 @@ import dj_database_url
 BASE_DIR = Path(__file__).resolve().parent.parent
 load_dotenv(BASE_DIR / ".env")
 FEEDBACK_URL = os.getenv("FEEDBACK_URL", "https://mesilat-zion-farm-website.onrender.com/reviews/")
+SEND_EMAIL = os.getenv("SEND_EMAIL", "False") == "True"
 SEND_SMS = os.getenv("SEND_SMS", "False") == "True"
 NTFY_URL = os.getenv("NTFY_URL", "https://ntfy.sh").rstrip("/")
 NTFY_TOPIC = os.getenv("NTFY_TOPIC", "")
@@ -26,30 +27,21 @@ NTFY_PRIORITY = int(os.getenv("NTFY_PRIORITY", "5"))
 GOOGLE_PLACE_ID = os.getenv("GOOGLE_PLACE_ID", "PASTE_YOUR_PLACE_ID_HERE")
 GOOGLE_PLACES_API_KEY = os.getenv("GOOGLE_PLACES_API_KEY", "")
 
-
+DEBUG = os.environ.get("DEBUG", "True") == "True"
 LOGGING = {
     "version": 1,
     "disable_existing_loggers": False,
     "handlers": {"console": {"class": "logging.StreamHandler"}},
-    "root": {"handlers": ["console"], "level": "INFO"},
+    "root": {"handlers": ["console"], "level": "DEBUG" if DEBUG else "WARNING"},
     "loggers": {"django": {"handlers": ["console"], "level": "INFO", "propagate": False}},
 }
 
 
 STATIC_ROOT = BASE_DIR / "staticfiles"
 
-# Quick-start development settings - unsuitable for production
-# See https://docs.djangoproject.com/en/5.2/howto/deployment/checklist/
-
-# SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = os.environ.get("SECRET_KEY", "dev-secret-key")
-
-# SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = os.environ.get("DEBUG", "True") == "True"
-
+SECRET_KEY = os.environ.get("SECRET_KEY")
 
 ALLOWED_HOSTS = os.getenv("ALLOWED_HOSTS", "127.0.0.1,localhost").split(",")
-# Application definition
 
 INSTALLED_APPS = [
     'django.contrib.admin',
@@ -95,18 +87,6 @@ TEMPLATES = [
 
 WSGI_APPLICATION = 'mesilat_zion_farm_website.wsgi.application'
 
-
-# Database
-# https://docs.djangoproject.com/en/5.2/ref/settings/#databases
-"""
-הבסיס נתונים הקודם של הפיתוח
-DATABASES = {
-    "default": {
-        "ENGINE": "django.db.backends.sqlite3",
-        "NAME": BASE_DIR / "db.sqlite3",
-    }
-}
-"""
 
 DATABASES = {
     "default": dj_database_url.config(

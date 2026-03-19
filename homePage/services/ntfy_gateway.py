@@ -14,6 +14,9 @@ from django.core.mail import BadHeaderError
 from django.core.mail import send_mail
 from django.db import transaction
 from zoneinfo import ZoneInfo
+import logging
+
+logger = logging.getLogger(__name__)
 
 ##-----------------------------------פונקציות עזר------------------------------
 
@@ -23,6 +26,7 @@ def get_treatment_amount_nis(session) -> Decimal | None:
   אם יש start_time/end_time – מנסה התאמה מדויקת ל-duration_minutes.
   אחרת נופל לפעילות הראשונה עם price לא-ריק.
   """
+
   qs = Activity.objects.filter(name="שיעורי רכיבה/ טיפולית").exclude(price__isnull=True)
   if not qs.exists():
     return None
@@ -51,7 +55,7 @@ def get_treatment_amount_nis(session) -> Decimal | None:
   return None
 
 def ltr_text(s: str) -> str:
-  # מציג s משמאל-לימין בתוך טקסט RTL (ל־SMS זה פותר היפוך "HH:MM–HH:MM")
+  """מציג s משמאל-לימין בתוך טקסט RTL (ל־SMS זה פותר היפוך "HH:MM–HH:MM")"""
   return "\u2066" + s + "\u2069"  # LRI ... PDI
 
 def session_msgid(session) -> str:
@@ -65,6 +69,7 @@ def session_msgid(session) -> str:
   return f"<session-{ref}@{domain}>"
 
 def gen_unique_ref_any(digits: int = 8) -> str:
+  """מייצר מחרוזת ייחודית בפורמט MZ-XXXXXXXX, מנסה עד 25 פעמים מול ה-DB לפני פולבאק נדיר עם תאריך"""
   for _ in range(25):
     cand = "MZ-" + "".join(secrets.choice("0123456789") for _ in range(digits))
     if (not Booking.objects.filter(payment_ref=cand).exists()
@@ -73,6 +78,7 @@ def gen_unique_ref_any(digits: int = 8) -> str:
   return "MZ-" + timezone.now().strftime("%y%m%d%H%M%S")
 
 def normalize_phone_il(phone: str) -> str:
+  """מסיר כל תו שאינו ספרה, וממיר קידומת 972 ל-0 אם יש לפחות 11 ספרות בסך הכל."""
   p = "".join(ch for ch in (phone or "") if ch.isdigit())
   if p.startswith("972") and len(p) >= 11:
     p = "0" + p[3:]
@@ -168,6 +174,8 @@ def send_sms_via_ntfy(phone: str, text: str, timeout: int = 5) -> bool:
     שולח הודעה ל-ntfy כך שהמאקרו שלך יקבל:
     {not_title} = מספר הטלפון, {notification} = טקסט ההודעה.
     """
+    logger.debug("send_sms_via_ntfy called with phone: %s, text: %s", phone, text)
+
     if not getattr(settings, "SEND_SMS", False):
         return False
     topic = getattr(settings, "NTFY_TOPIC", "")
@@ -192,6 +200,8 @@ def format_session_sms(session, amount: Decimal | None = None, header: str | Non
     """
     שליחת SMS דרך האדמין
     """
+    logger.debug("format_session_sms called with session: %s, amount: %s, header: %s", session, amount, header)
+
     # אם לא קיבלנו override – נחשב מה-Activity "שיעורי רכיבה/ טיפולית"
     if amount is None:
       amount = get_treatment_amount_nis(session)
@@ -242,6 +252,9 @@ def format_session_sms(session, amount: Decimal | None = None, header: str | Non
     return "\n".join(lines)
 
 def format_booking_sms(payment, booking) -> str:
+    """פורמט SMS ייעודי להזמנות (Booking) – כולל פרטים כמו activity, participants, start/end."""
+    logger.debug("format_booking_sms called with payment: %s, booking: %s", payment, booking)
+
     name = (getattr(payment, "customer_name", "") or getattr(booking, "customer_name", "")).strip() or "לקוח/ה"
     charge_id = getattr(payment, "charge_id", "") or "—"
     participants = getattr(booking, "participants", None)
@@ -277,12 +290,32 @@ def format_booking_sms(payment, booking) -> str:
     lines.append("(יש לשמור את מספר ההזמנה לביטולים והחזרים כספיים)")
     return "\n".join(lines)
 
+def notify_booking_success(payment, booking):
+  """פונקציה עזר לשליחת התראות (מייל + SMS) לאחר יצירת Booking חדש בהצלחה."""
+  logger.debug("notify_booking_success called with payment: %s, booking: %s", payment, booking)
+
+  if getattr(settings, "SEND_EMAIL", False):
+    try:
+      send_booking_email(payment, booking)
+    except Exception:
+      pass
+
+  if getattr(settings, "SEND_SMS", False):
+    try:
+      sms_text = format_booking_sms(payment, booking)
+      send_sms_via_ntfy(payment.phone, sms_text)
+    except Exception:
+      pass
 
 
 ##-----------------------------------פונקציות לשליחת מייל------------------------------
 
 def send_treatment_email(session, amount: Decimal | None = None) -> bool:
+  """שולח מייל עם פרטי הזמנה ללקוח, כולל פורמט טוב לשעת המפגש, סכום, ומידע נוסף. מחזיר True אם נשלח לפחות מייל אחד (לא משנה אם SMS הצליח או לא)."""
+  logger.debug("send_treatment_email called with session: %s, amount: %s", session, amount)
 
+  if not getattr(settings, "SEND_EMAIL", False):
+    return
   if not (session.customer_email or "").strip():
     return False
 
@@ -421,6 +454,11 @@ def send_treatment_email(session, amount: Decimal | None = None) -> bool:
   return sent >= 1
 
 def send_booking_email(payment, booking):
+  """שולח מייל עם פרטי הזמנה ללקוח עבור Booking, כולל פורמט טוב לשעת המפגש, סכום, ומידע נוסף. מחזיר True אם נשלח לפחות מייל אחד (לא משנה אם SMS הצליח או לא)."""
+  logger.debug("send_booking_email called with payment: %s, booking: %s", payment, booking)
+
+  if not getattr(settings, "SEND_EMAIL", False):
+    return
   if not getattr(payment, "email", None):
     return False
 
@@ -545,6 +583,11 @@ def send_booking_email(payment, booking):
   return sent >= 1
 
 def send_booking_deleted_email(booking):
+  """שולח מייל על ביטול הזמנה (Booking) ללקוח, כולל פרטים כמו activity, start_dt, ו-ref. מחזיר True אם נשלח לפחות מייל אחד (לא משנה אם SMS הצליח או לא)."""
+  logger.debug("send_booking_deleted_email called with booking: %s", booking)
+
+  if not getattr(settings, "SEND_EMAIL", False):
+    return
   email = (getattr(booking, "customer_email", "") or "").strip()
   if not email:
     return
@@ -581,13 +624,16 @@ def send_booking_deleted_email(booking):
 
 #----------------------------------------------------------------------#
 
-#עדכון שעת ההזמנה להזמנות רגילות
 def notify_time_change_booking(_request, booking, _old_start_dt, _old_end_dt) -> bool:
   """
   שליחת עדכון שינוי שעה להזמנת Booking:
   - מייל (טקסט בלבד)
   - SMS דרך ntfy (אם SEND_SMS=True)
   """
+  logger.debug("notify_time_change_booking called with booking: %s", booking)
+
+  if not getattr(settings, "SEND_EMAIL", False):
+    return False
 
   d = getattr(booking, "start_dt", None)
   e = getattr(booking, "end_dt", None)
@@ -607,11 +653,11 @@ def notify_time_change_booking(_request, booking, _old_start_dt, _old_end_dt) ->
 
   return _notify_time_change_core(booking, new_txt, amount, "notify_time_change_booking")
 
-#עדכון שעת ההזמנה להזמנות רכיבה טיפולית או שיעור רכיבה
 def notify_time_change(_request, session, _old_date, _old_start, _old_end) -> bool:
   """
   שולח מייל (טקסט בלבד) + SMS על שינוי שעה.
   """
+  logger.debug("notify_time_change called with session: %s", session)
 
   d = getattr(session, "date", None)
   st = getattr(session, "start_time", None)
