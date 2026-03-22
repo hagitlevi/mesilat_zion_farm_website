@@ -28,13 +28,17 @@ def _append_qs(url, **params):
     data.update({k: v for k, v in params.items() if v is not None})
     return urlunsplit((s, n, p, urlencode(data), f))
 
-# 1) התחלת תשלום
 def pay_start(request):
-    """מקבל POST מהטופס עם פרטי התור והלקוח, בודק הסכמה לתנאים, יוצר רשומת Payment עם סטטוס 'pending', ומפנה ל-checkout mock."""
+    """
+    מקבל POST מטופס מילוי פרטים.
+    בודק הסכמה לתנאי שימוש — אם חסרה, מחזיר לטופס עם הודעת שגיאה.
+    מחשב מחיר לפי DB, יוצר Payment בסטטוס 'pending',
+    שומר הסכמת שיווק אם סומנה, ומפנה לדף הסליקה.
+    """
     logger.debug("pay_start called with method: %s", request.method)
 
     if request.method != "POST":
-        return HttpResponseBadRequest("Invalid method")
+        return HttpResponseBadRequest("Method not allowed. Expected POST.")
 
     appointment_id   = request.POST.get("appointment_id")
     activity_id      = request.POST.get("activity_id")
@@ -45,7 +49,7 @@ def pay_start(request):
     phone            = request.POST.get("phone","")
     email            = request.POST.get("email","")
 
-    # ✅ NEW: אכיפת/שמירת הסכמה לפני המשך לתשלום
+    #אכיפת/שמירת הסכמה לפני המשך לתשלום
     full_name = f"{(first_name or '').strip()} {(last_name or '').strip()}".strip()
     sid = normalize_phone_il(phone)
     if not _has_consent_by_phone(sid):
@@ -65,30 +69,15 @@ def pay_start(request):
             # נשמור את ההסכמה כי המשתמש סימן עכשיו
             _save_consent_by_phone(request, phone=sid, full_name=full_name)
 
-    activity_id = request.POST.get("activity_id")
-    activity = get_object_or_404(Activity, id=activity_id)
 
-    # שימוש במחיר יחידה שמגיע מהטופס (אם אין – נופלים למחיר הפעילות)
-    full_amount = float(request.POST.get("unit_price"))
+    # מחיר מחושב בשרת לפי מחיר הפעילות ב-DB
+    activity = get_object_or_404(Activity, id=activity_id)
+    full_amount = float(activity.price)
     if activity.name != "טיול כרכרה":
         full_amount =  full_amount * int(participants)
     amount_agorot = int((Decimal(str(full_amount)) * 100).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
 
-    # אם המשתמש סימן וי – נשמור רשומת Marketing בסיסית
-    if request.POST.get("marketing_optin"):
-        MarketingConsent.objects.get_or_create(
-            subject_id=sid,  # הטלפון המנורמל שלך (0XXXXXXXXX)
-            defaults={
-                "version": getattr(settings, "MARKETING_VERSION", "1.0"),
-                "full_name": full_name,
-                "customer_email": (email or "").strip(),
-                "ip": request.META.get("REMOTE_ADDR"),
-                "user_agent": request.META.get("HTTP_USER_AGENT", ""),
-            }
-        )
-
-
-    # --- שמירת/עדכון שיווק מינימלית ---
+    # אם המשתמש סימן וי – נשמור רשומת Marketing
     if request.POST.get("marketing_optin"):
         email_norm = (email or "").strip().lower()
         obj, created = MarketingConsent.objects.get_or_create(
@@ -104,6 +93,7 @@ def pay_start(request):
         if not created and email_norm and not (obj.customer_email or "").strip():
             obj.customer_email = email_norm
             obj.save(update_fields=["customer_email"])
+
     activity_type = (request.POST.get("activity_type") or "").strip().lower()
     wine = (request.POST.get("wine") or "").strip().lower()
 
@@ -123,7 +113,7 @@ def pay_start(request):
         participants=participants,
         customer_name=full_name,
         phone=phone.strip(),
-        email=email.strip(),
+        email=email.strip().lower(),
     )
     request.session['last_payment_id'] = payment.id
     return redirect(reverse("mock_checkout", kwargs={"payment_id": payment.id}))
