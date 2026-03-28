@@ -88,12 +88,18 @@ TEMPLATES = [
 WSGI_APPLICATION = 'mesilat_zion_farm_website.wsgi.application'
 
 
+# DATABASES = {
+#     "default": dj_database_url.config(
+#         default=os.environ.get("DATABASE_URL"),
+#         conn_max_age=600,
+#         ssl_require=True,
+#     )
+# }
 DATABASES = {
-    "default": dj_database_url.config(
-        default=os.environ.get("DATABASE_URL"),
-        conn_max_age=600,
-        ssl_require=True,
-    )
+    'default': {
+        'ENGINE': 'django.db.backends.sqlite3',
+        'NAME': BASE_DIR / 'db.sqlite3',
+    }
 }
 
 
@@ -145,7 +151,9 @@ USE_I18N = True
 
 USE_TZ = True
 
-PAYMENT_PROVIDER = 'mock'
+PAYMENT_PROVIDER           = os.getenv("PAYMENT_PROVIDER", "mock")  # שנה ל-"tranzila" בפרודקשן
+TRANZILA_SUPPLIER          = os.getenv("TRANZILA_SUPPLIER", "")
+TRANZILA_TERMINAL_PASSWORD = os.getenv("TRANZILA_TERMINAL_PASSWORD", "")
 
 
 # ==== Policy Versions (for consent & UI logic) ====

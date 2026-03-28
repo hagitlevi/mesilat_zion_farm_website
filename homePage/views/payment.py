@@ -19,6 +19,36 @@ from ..views.consent import _has_consent_by_phone, _save_consent_by_phone
 import logging
 
 logger = logging.getLogger(__name__)
+#--------------------------פונקציות עזר--------------------------
+def _build_tranzila_url(request, payment) -> str:
+    """בונה URL להעברת הלקוח לדף הסליקה של טרנזילה."""
+    supplier    = settings.TRANZILA_SUPPLIER
+    amount_nis  = str(Decimal(payment.amount_agorot) / 100)
+    success_url = request.build_absolute_uri(reverse("pay_return"))
+    fail_url    = request.build_absolute_uri(reverse("pay_return"))
+    notify_url  = request.build_absolute_uri(reverse("pay_webhook"))
+
+    params = {
+        "supplier":    supplier,
+        "sum":         amount_nis,
+        "currency":    "1",       # 1 = שקל
+        "tranmode":    "A",       # A = חיוב מיידי
+        "cred_type":   "1",       # 1 = רגיל
+        "lang":        "he",
+        "contact":     payment.customer_name,
+        "email":       payment.email,
+        "phone":       payment.phone,
+        "myid":        str(payment.id),
+        "success_url": success_url,
+        "fail_url":    fail_url,
+        "notify_url":  notify_url,
+    }
+    if settings.TRANZILA_TERMINAL_PASSWORD:
+        params["TranzilaPW"] = settings.TRANZILA_TERMINAL_PASSWORD
+
+    base = f"https://direct.tranzila.com/{supplier}/iframenew.php"
+    return f"{base}?{urlencode(params)}"
+
 
 def _append_qs(url, **params):
     logger.debug("_append_qs called with url: %s, params: %s", url, params)
@@ -27,6 +57,7 @@ def _append_qs(url, **params):
     data = dict(parse_qsl(q))
     data.update({k: v for k, v in params.items() if v is not None})
     return urlunsplit((s, n, p, urlencode(data), f))
+#----------------------------------------------------------------
 
 def pay_start(request):
     """
@@ -103,7 +134,7 @@ def pay_start(request):
     }
     request.session.modified = True
     payment = Payment.objects.create(
-        provider="mock",
+        provider=settings.PAYMENT_PROVIDER,
         amount_agorot=amount_agorot,
         currency="ILS",
         status="pending",
@@ -116,6 +147,9 @@ def pay_start(request):
         email=email.strip().lower(),
     )
     request.session['last_payment_id'] = payment.id
+
+    if settings.PAYMENT_PROVIDER == "tranzila":
+        return redirect(_build_tranzila_url(request, payment))
     return redirect(reverse("mock_checkout", kwargs={"payment_id": payment.id}))
 
 # 2) חזרה מהסליקה — מחליטים על הודעה, ומפנים לדף הבית
@@ -162,24 +196,37 @@ def pay_return(request):
 @csrf_exempt
 def pay_webhook(request):
     """
-    Webhook למוק:
-    מקבל POST עם: payment_id, outcome=success|fail|cancel, [next=<url לחזרה>]
-    מעדכן את ה-Payment לסטטוס סופי, מפעיל לוגיקה לאחר הצלחה,
-    ובמוק מחזיר redirect ל-`next` (אם קיים) במקום JSON.
+    Webhook מאוחד — תומך במוק ובטרנזילה.
+
+    מוק (DEBUG בלבד): POST עם payment_id + outcome=success|fail|cancel
+    טרנזילה:          POST עם myid + Response ("000"=הצלחה) + TranzilaTK
     """
     logger.debug("pay_webhook called with method: %s", request.method)
 
     if request.method != "POST":
         return HttpResponseBadRequest("Invalid method")
 
-    try:
-        pid = int(request.POST.get("payment_id"))
-    except (TypeError, ValueError):
-        return HttpResponseBadRequest("missing payment_id")
-
-    outcome = (request.POST.get("outcome") or "").lower()
-    status_map = {"success": "succeeded", "fail": "failed", "cancel": "canceled"}
-    new_status = status_map.get(outcome, "failed")
+    if request.POST.get("TranzilaTK"):
+        # פורמט טרנזילה
+        try:
+            pid = int(request.POST.get("myid"))
+        except (TypeError, ValueError):
+            return HttpResponseBadRequest("missing myid")
+        tranzila_response = (request.POST.get("Response") or "").strip()
+        new_status  = "succeeded" if tranzila_response == "000" else "failed"
+        tranzila_tk = request.POST.get("TranzilaTK", "")
+    else:
+        # פורמט מוק — מותר רק בפיתוח
+        if not settings.DEBUG:
+            return HttpResponseBadRequest("Invalid request")
+        try:
+            pid = int(request.POST.get("payment_id"))
+        except (TypeError, ValueError):
+            return HttpResponseBadRequest("missing payment_id")
+        outcome    = (request.POST.get("outcome") or "").lower()
+        status_map = {"success": "succeeded", "fail": "failed", "cancel": "canceled"}
+        new_status  = status_map.get(outcome, "failed")
+        tranzila_tk = None
 
     payment = get_object_or_404(Payment, id=pid)
     FINALS = ("succeeded", "failed", "canceled", "refunded")
@@ -204,7 +251,9 @@ def pay_webhook(request):
             # 3) סימון סטטוס וסימון זמן קליטת ה-webhook
             payment.status = "succeeded"
             payment.webhook_received_at = timezone.now()
-            # charge_id עודכן ע"י assign_unique_ref אם היה חסר; נשמור את שלושתם
+            # שמירת מזהה עסקה מטרנזילה אם קיים
+            if tranzila_tk and not payment.charge_id:
+                payment.charge_id = tranzila_tk
             payment.save(update_fields=["status", "webhook_received_at", "charge_id"])
 
             # 4) עדכון סטטוס ההזמנה
@@ -232,13 +281,15 @@ def pay_webhook(request):
         pass
 
     # Redirect אם הגיע next; אחרת JSON
+    # מותרות רק URLs פנימיות למניעת Open Redirect
     next_url = request.POST.get("next") or request.GET.get("next")
-    if next_url:
+    if next_url and next_url.startswith("/"):
         if "payment_id=" not in next_url:
             next_url = _append_qs(next_url, payment_id=payment.id)
         return redirect(next_url)
     return JsonResponse({"ok": True, "status": payment.status, "charge_id": payment.charge_id})
 
+#לפיתוח
 @transaction.atomic
 def mock_payment_success(request):
     """
@@ -392,7 +443,7 @@ def mock_payment_success(request):
     }
     return redirect("home")
 
-# 4) דפי Mock — בדיקות
+# לפיתוח
 def mock_checkout(request, payment_id: int):
     """דף בדיקה שמציג פרטי תשלום ומאפשר סימולציה של תרחישי הצלחה/כשל/ביטול ע"י קריאה ל-webhook עם פרמטרים שונים."""
     logger.debug("mock_checkout called with payment_id: %s", payment_id)
