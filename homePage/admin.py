@@ -4,7 +4,7 @@ from .models import (
     Activity, Appointment, CustomSchedule, Booking, SiteReview,
     CancellationRequest, TermsConsent, ScheduleBoard, Weekday,
     BusinessHours, ActivityRule, Instructor, TreatmentSession,
-    MonthlySummary,
+    MonthlySummary, Payment,
 )
 from homePage.services.ntfy_gateway import (
     format_session_sms, format_booking_sms, send_treatment_email,
@@ -201,7 +201,15 @@ def _build_grid(days, timeslots, appt_map):
                         if status_val in {"paid", "שולם"}:
                             paid = True
 
-            status = "break" if is_break else ("paid" if paid else "pending")
+            has_booking = bool(getattr(appt, "booking_id", None))
+            if is_break:
+                status = "break"
+            elif paid:
+                status = "paid"
+            elif has_booking:
+                status = "pending"   # יש הזמנה אך טרם שולם
+            else:
+                status = "available" # סלוט פנוי ללא הזמנה
 
             # אם זה לא סלוט ראשון ברצף—נשאיר כ'free' כי התא מעליו יקבל rowspan ויכסה
             # בודקים האם יש סלוט קודם שנראה אותו booking/הפסקה
@@ -271,7 +279,8 @@ def _build_grid(days, timeslots, appt_map):
                 'title': title,
                 'meta': meta,
                 'status': status,
-                'url': url,   # ← חדש
+                'url': url,
+                'has_booking': bool(appt.booking_id),
             }
 
             # את הסלוטים שמתחת לאותו אירוע נסמן כ-skip
@@ -1377,6 +1386,7 @@ class CreateBookingActionForm(ActionForm):
     activity = forms.ModelChoiceField(label="פעילות (אופציונלי)", queryset=Activity.objects.all(), required=False)
     mark_paid = forms.BooleanField(label="לסמן כשולם", required=False, initial=True)
     capture_buffer = forms.BooleanField(label="לתפוס 15 ד׳ הפסקה בסוף (>30)", required=False, initial=True)
+    skip_payment = forms.BooleanField(label="ללא תשלום – צור ישירות (ללא דף סליקה)", required=False)
 
 @admin.register(ScheduleBoard)
 class ScheduleBoardAdmin(admin.ModelAdmin):
@@ -2249,6 +2259,7 @@ class BookingAdmin(admin.ModelAdmin):
         start_str = (request.POST.get("start_time") or "").strip()
         participants = max(1, int(request.POST.get("participants") or 1))
         mark_paid = str(request.POST.get("mark_paid", "")).lower() in {"1", "true", "on", "yes"}
+        skip_payment = str(request.POST.get("skip_payment", "")).lower() in {"1", "true", "on", "yes"}
 
         # פרטי הלקוח
         first_name = (request.POST.get("first_name") or "").strip()
@@ -2432,6 +2443,80 @@ class BookingAdmin(admin.ModelAdmin):
         if manual_total is not None:
             total_price = manual_total
 
+        # --- מסלול ללא תשלום: יצירה ישירה ללא draft/pay ---
+        if skip_payment:
+            from homePage.services.admin_booking import _gen_unique_mz_ref
+            try:
+                with transaction.atomic():
+                    qs_lock = Appointment.objects.select_for_update().filter(
+                        date=d, time__in=times_needed
+                    )
+                    ref = _gen_unique_mz_ref()
+                    booking = Booking.objects.create(
+                        activity=activity,
+                        customer_name=f"{first_name} {last_name}".strip(),
+                        customer_phone=phone,
+                        customer_email=email,
+                        participants=participants,
+                        total_price=total_price,
+                        payment_method="admin",
+                        payment_ref=ref,
+                        status="pending",
+                        start_dt=start_dt,
+                        end_dt=start_dt + timedelta(minutes=minutes),
+                        details=details_txt or "נקבע באדמין – ללא תשלום",
+                    )
+                    for a in qs_lock:
+                        a.booking = booking
+                        a.is_booked = True
+                        a.is_paid = False
+                        a.is_break = False
+                        a.hold_token = None
+                        a.hold_until = None
+                        a.hold_by = None
+                        a.payment_reference = ref
+                        if a.activity_id != activity.id:
+                            a.activity = activity
+                        a.save(update_fields=[
+                            "booking", "is_booked", "is_paid", "is_break",
+                            "hold_token", "hold_until", "hold_by",
+                            "payment_reference", "activity",
+                        ])
+                        if hasattr(a, "activities"):
+                            a.activities.add(activity)
+
+                    # הפסקת buffer אם >30 דק'
+                    if minutes > 30:
+                        extra_start = start_dt + timedelta(minutes=15 * slot_count)
+                        extra = Appointment.objects.select_for_update().filter(
+                            date=d, time=extra_start.time(), is_booked=False, is_break=False
+                        ).first()
+                        if extra:
+                            extra.booking = booking
+                            extra.is_booked = True
+                            extra.is_paid = False
+                            extra.is_break = True
+                            extra.hold_token = None
+                            extra.hold_until = None
+                            extra.hold_by = None
+                            extra.payment_reference = ref
+                            if extra.activity_id != activity.id:
+                                extra.activity = activity
+                            extra.save(update_fields=[
+                                "booking", "is_booked", "is_paid", "is_break",
+                                "hold_token", "hold_until", "hold_by",
+                                "payment_reference", "activity",
+                            ])
+
+            except Exception as e:
+                messages.error(request, f"שגיאה ביצירת הזמנה: {e}")
+                return redirect(reverse("admin:homePage_appointment_book"))
+
+            # נקה hold מה-session
+            request.session.pop("admin_hold_token", None)
+            messages.success(request, f"הזמנה #{booking.id} נוצרה (ללא תשלום). אסמכתא: {ref}")
+            return redirect(reverse("admin:homePage_booking_change", args=[booking.id]))
+
         # שומר טיוטה ב-session
         draft = {
             "activity_id": activity.id,
@@ -2511,6 +2596,7 @@ class BookingAdmin(admin.ModelAdmin):
         activity = Activity.objects.filter(pk=activity_id).first() if activity_id else None
         capture_buffer = bool(request.POST.get("capture_buffer"))
         mark_paid = str(request.POST.get("mark_paid", "")).lower() in {"1", "true", "on", "yes"}
+        skip_payment = str(request.POST.get("skip_payment", "")).lower() in {"1", "true", "on", "yes"}
 
         # אם לא נבחרה פעילות – ננסה מהסלוט עצמו/ה־M2M
         if not activity:
@@ -2520,6 +2606,103 @@ class BookingAdmin(admin.ModelAdmin):
         if not activity:
             self.message_user(request, "לא נמצאה פעילות מתאימה לסלוט.", level=messages.ERROR)
             return
+
+        # --- מסלול ללא תשלום כלל: יצירה מיידית, ללא redirect לדף סליקה ---
+        if skip_payment:
+            try:
+                from homePage.services.admin_booking import _gen_unique_mz_ref
+                with transaction.atomic():
+                    base = Appointment.objects.select_for_update().get(pk=base_slot.pk)
+                    if base.is_booked or base.is_break:
+                        raise ValueError("סלוט ההתחלה תפוס או מסומן כהפסקה.")
+
+                    start_dt = datetime.combine(base.date, base.time)
+                    slot_count = max(1, (duration + 14) // 15)
+                    times_needed = [(start_dt + timedelta(minutes=15 * i)).time() for i in range(slot_count)]
+
+                    appts = list(
+                        Appointment.objects.select_for_update().filter(
+                            date=base.date, time__in=times_needed, is_booked=False, is_break=False
+                        ).order_by("time")
+                    )
+                    if len(appts) != slot_count:
+                        raise ValueError("אין רצף סלוטים פנוי לכל המשך שנבחר.")
+
+                    ref = _gen_unique_mz_ref()
+
+                    booking = Booking.objects.create(
+                        activity=activity,
+                        customer_name=(base.customer_name or "").strip(),
+                        customer_phone=(base.customer_phone or "").strip(),
+                        customer_email="",
+                        participants=max(1, participants),
+                        total_price=None,
+                        payment_method="admin",
+                        payment_ref=ref,
+                        status="pending",
+                        start_dt=start_dt,
+                        end_dt=start_dt + timedelta(minutes=duration),
+                        details="נקבע באדמין – ללא תשלום",
+                    )
+
+                    for a in appts:
+                        a.booking = booking
+                        a.is_booked = True
+                        a.is_paid = False
+                        a.is_break = False
+                        a.payment_reference = ref
+                        if a.activity_id != activity.id:
+                            a.activity = activity
+                        a.save(update_fields=[
+                            "booking", "is_booked", "is_paid", "is_break", "payment_reference", "activity"
+                        ])
+                        if hasattr(a, "activities"):
+                            a.activities.add(activity)
+
+                    if capture_buffer and duration > 30:
+                        extra_start = start_dt + timedelta(minutes=15 * slot_count)
+                        extra = Appointment.objects.select_for_update().filter(
+                            date=base.date, time=extra_start.time(), is_booked=False, is_break=False
+                        ).first()
+                        if extra:
+                            extra.booking = booking
+                            extra.is_booked = True
+                            extra.is_paid = False
+                            extra.is_break = True
+                            extra.payment_reference = ref
+                            if extra.activity_id != activity.id:
+                                extra.activity = activity
+                            extra.save(update_fields=[
+                                "booking", "is_booked", "is_paid", "is_break", "payment_reference", "activity"
+                            ])
+
+                    # חישוב מחיר
+                    minutes_len = int((booking.end_dt - booking.start_dt).total_seconds() // 60)
+                    unit_price = (
+                        Activity.objects
+                        .filter(name=booking.activity.name, duration_minutes=minutes_len)
+                        .exclude(price__isnull=True)
+                        .values_list("price", flat=True)
+                        .first()
+                    ) or booking.activity.price
+                    if unit_price is not None:
+                        total_price = (
+                            unit_price if booking.activity.name in ("טיול כרכרה", "רכיבה זוגית")
+                            else unit_price * max(1, booking.participants)
+                        )
+                        booking.total_price = total_price
+                        booking.save(update_fields=["total_price"])
+
+            except Exception as e:
+                self.message_user(request, f"שגיאה: {e}", level=messages.ERROR)
+                return
+
+            self.message_user(
+                request,
+                f"הזמנה #{booking.id} נוצרה (ללא תשלום). אסמכתא: {booking.payment_ref}",
+                level=messages.SUCCESS,
+            )
+            return redirect(reverse("admin:homePage_booking_change", args=[booking.id]))
 
         # האם לדחות יצירה/תפיסה עד מסך התשלום?
         # דוחים אם: (א) הפעילות טיפולית/שיעור   או   (ב) המשתמש לא סימן mark_paid
@@ -3113,6 +3296,10 @@ class MarketingConsentAdmin(admin.ModelAdmin):
         return response
     export_as_csv.short_description = "ייצוא בחירה ל-CSV"
 
+
+@admin.register(Payment)
+class PaymentAdmin(admin.ModelAdmin):
+    list_display = ("__str__",)
 
 # ---------- עזרי זמן/חלונות ----------
 def _iter_slot_times(date_obj, start_t: dtime, end_t: dtime, minutes: int = MINUTES_PER_SLOT):
