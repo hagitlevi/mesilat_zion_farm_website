@@ -3,6 +3,7 @@ import logging
 from homePage.models import Activity, Appointment
 from django.http import Http404, HttpResponseBadRequest, JsonResponse
 from django.views.decorators.http import require_POST, require_GET
+from django_ratelimit.decorators import ratelimit
 from django.db.models import Q, Max
 from django.shortcuts import render, redirect, get_object_or_404
 from django.urls import reverse
@@ -288,10 +289,10 @@ def booking_form(request):
     try:
         chosen_activity = qs.get()
     except Activity.MultipleObjectsReturned:
-        print("⚠️ MULTIPLE ACTIVITIES MATCH:", list(qs.values("id", "activity_type", "duration_minutes")))
+        logger.warning("multiple activities match: %s", list(qs.values("id", "activity_type", "duration_minutes")))
         chosen_activity = qs.order_by("id").first()
     except Activity.DoesNotExist:
-        print("❌ NO ACTIVITY MATCH")
+        logger.warning("no activity match for qs: %s", qs.query)
     # 2) וריאציות רלוונטיות להצגה ולחישוב (בלי כפילות price)
     variants = list(
         qs.values('activity_type', 'price').order_by('activity_type')
@@ -722,13 +723,21 @@ def _is_ajax(request):
   return request.headers.get("x-requested-with") == "XMLHttpRequest"
 
 @require_POST
+@ratelimit(key="ip", rate="20/m", method="POST", block=True)
 @transaction.atomic
 def hold_appointment(request):
     """API פנימי ללקוח AJAX להחזקת תור ספציפי, עם כל הלוגיקה של בדיקות זמינות, רצף סלוטים, הפסקות, טוקן בסשן, ותגובה מותאמת ל-AJAX או ל-redirect רגיל"""
     logger.debug("hold_appointment called with method: %s", request.method)
 
-    appt_id = int(request.POST.get("appointment_id"))
-    duration = int(request.POST.get("duration_minutes", "60"))
+    try:
+        appt_id = int(request.POST.get("appointment_id"))
+        duration = int(request.POST.get("duration_minutes", "60"))
+        activity_id = int(request.POST.get("activity_id"))
+    except (TypeError, ValueError):
+        if _is_ajax(request):
+            return JsonResponse({"ok": False, "message": "פרמטרים לא תקינים"}, status=400)
+        return HttpResponseBadRequest("פרמטרים לא תקינים")
+
     now = timezone.now()
     hold_minutes = 15
     token = request.session.get("hold_token")
@@ -736,9 +745,7 @@ def hold_appointment(request):
     if not token:
         token = str(uuid4())
         request.session["hold_token"] = token
-
-    activity_id = int(request.POST.get("activity_id"))
-    date_q = request.POST.get("date", "")
+    date_q   = request.POST.get("date", "")
     variant_q = request.POST.get("variant", "")
 
     def ok_redirect(url):

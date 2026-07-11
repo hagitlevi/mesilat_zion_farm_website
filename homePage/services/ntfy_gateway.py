@@ -1,6 +1,9 @@
+import logging
 import secrets
 import requests
 from django.conf import settings
+
+logger = logging.getLogger(__name__)
 from django.core.mail import EmailMultiAlternatives
 from decimal import Decimal
 from datetime import datetime, timedelta
@@ -120,7 +123,7 @@ def _notify_time_change_core(obj, new_txt: str, amount: Decimal | None, log_tag:
       email.send(fail_silently=True)
       sent_any = True
     except (smtplib.SMTPException, OSError, BadHeaderError) as ex:
-      print(f"[{log_tag}] email failed: {ex}")
+      logger.error("[%s] email failed: %s", log_tag, ex)
 
   # ===== SMS =====
   phone_norm = normalize_phone_il(getattr(obj, "customer_phone", "") or "")
@@ -162,7 +165,7 @@ def _notify_time_change_core(obj, new_txt: str, amount: Decimal | None, log_tag:
       send_sms_via_ntfy(phone_norm, sms_text)
       sent_any = True or sent_any
     except requests.RequestException as ex:
-      print(f"[{log_tag}] SMS send failed: {ex}")
+      logger.error("[%s] SMS send failed: %s", log_tag, ex)
 
   return sent_any
 

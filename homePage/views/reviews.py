@@ -1,6 +1,7 @@
 from homePage.models import SiteReview, Booking, CancellationRequest
 from ..forms import SiteReviewForm, CancelRequestForm
 from django.views.decorators.http import require_http_methods
+from django_ratelimit.decorators import ratelimit
 from django.db.models import Avg
 from django.core.paginator import Paginator
 from django.shortcuts import render, redirect
@@ -21,11 +22,14 @@ def _find_booking_by_payment_ref(payment_ref: str):
   return Booking.objects.filter(payment_ref__iexact=ref).order_by("-id").first()
 
 def _client_ip(request):
-    """שולף את כתובת ה-IP של הלקוח מתוך הבקשה, מתחשב ב-X-Forwarded-For אם קיים"""
+    """שולף IP של הלקוח. מאחורי Render (proxy בודד) — הIP האחרון ב-XFF הוא האמיתי."""
     logger.debug("_client_ip called")
 
     xff = request.META.get("HTTP_X_FORWARDED_FOR")
-    return xff.split(",")[0].strip() if xff else request.META.get("REMOTE_ADDR")
+    if xff:
+        # הproxy מוסיף את ה-IP האמיתי בסוף הרשימה — לכן לא [0] שאפשר לזייף
+        return xff.split(",")[-1].strip()
+    return request.META.get("REMOTE_ADDR")
 
 @require_http_methods(["GET", "POST"])
 def cancel_request_view(request):
@@ -90,6 +94,7 @@ def cancel_request_view(request):
     return render(request, "homePage/cancel_request.html", {"form": form})
 
 @require_http_methods(["GET", "POST"])
+@ratelimit(key="ip", rate="5/m", method="POST", block=True)
 def site_reviews(request):
     """דף ביקורות - מציג ביקורות קיימות ומאפשר להוסיף ביקורת חדשה עם טופס"""
     logger.debug("site_reviews called with method: %s", request.method)

@@ -64,7 +64,7 @@ def try_hold_chain(
         for a in appts:
             if a.is_booked or a.is_break:
                 return HoldResult(False, "already_booked_or_break")
-            if a.hold_until and a.hold_until > now and a.hold_token != token:
+            if a.hold_until and a.hold_until > now and str(a.hold_token) != str(token):
                 return HoldResult(False, "held_by_other")
 
         # כאן תופסים
@@ -113,7 +113,7 @@ def finalize_hold_to_paid_booking(
             if a.is_booked:
                 raise ValueError("already_booked")
             if a.hold_until and a.hold_until > now:
-                if a.hold_token != token:
+                if str(a.hold_token) != str(token):
                     raise ValueError("held_by_other")
             else:
                 # לא מוחזק בתוקף (פג/לא הוחזק) — אם את רוצה “חייב hold” אז תזרקי שגיאה

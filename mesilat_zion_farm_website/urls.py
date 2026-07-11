@@ -18,6 +18,6 @@ from django.contrib import admin # הוספה של שורת ייבוא זו
 from django.urls import path, include
 
 urlpatterns = [
-    path('admin/', admin.site.urls), # הוספה של שורה זו
+    path('mzf-admin/', admin.site.urls),
     path('', include('homePage.urls')),
 ]

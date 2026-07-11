@@ -12,6 +12,7 @@ from django.conf import settings
 import secrets
 import time as time_mod
 from django.contrib import messages
+from django_ratelimit.decorators import ratelimit
 from homePage.utils import assign_unique_ref
 from homePage.services.ntfy_gateway import normalize_phone_il, notify_booking_success
 from ..services.booking_service import _finalize_booking_after_payment, _pick_booking_status
@@ -59,6 +60,7 @@ def _append_qs(url, **params):
     return urlunsplit((s, n, p, urlencode(data), f))
 #----------------------------------------------------------------
 
+@ratelimit(key="ip", rate="10/m", method="POST", block=True)
 def pay_start(request):
     """
     מקבל POST מטופס מילוי פרטים.
@@ -207,7 +209,11 @@ def pay_webhook(request):
         return HttpResponseBadRequest("Invalid method")
 
     if request.POST.get("TranzilaTK"):
-        # פורמט טרנזילה
+        # פורמט טרנזילה — אימות סיסמת טרמינל חובה (fail closed אם לא הוגדרה)
+        terminal_pw = settings.TRANZILA_TERMINAL_PASSWORD
+        if not terminal_pw or request.POST.get("TranzilaPW") != terminal_pw:
+            logger.warning("webhook: terminal password missing/mismatch from IP %s", request.META.get("REMOTE_ADDR"))
+            return HttpResponseBadRequest("Unauthorized")
         try:
             pid = int(request.POST.get("myid"))
         except (TypeError, ValueError):
@@ -283,7 +289,8 @@ def pay_webhook(request):
     # Redirect אם הגיע next; אחרת JSON
     # מותרות רק URLs פנימיות למניעת Open Redirect
     next_url = request.POST.get("next") or request.GET.get("next")
-    if next_url and next_url.startswith("/"):
+    # startswith("/") alone allows //evil.com (protocol-relative open redirect)
+    if next_url and next_url.startswith("/") and not next_url.startswith("//"):
         if "payment_id=" not in next_url:
             next_url = _append_qs(next_url, payment_id=payment.id)
         return redirect(next_url)

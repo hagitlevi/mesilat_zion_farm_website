@@ -27,7 +27,14 @@ NTFY_PRIORITY = int(os.getenv("NTFY_PRIORITY", "5"))
 GOOGLE_PLACE_ID = os.getenv("GOOGLE_PLACE_ID", "PASTE_YOUR_PLACE_ID_HERE")
 GOOGLE_PLACES_API_KEY = os.getenv("GOOGLE_PLACES_API_KEY", "")
 
-DEBUG = os.environ.get("DEBUG", "True") == "True"
+DEBUG = os.environ.get("DEBUG", "False") == "True"
+
+SECRET_KEY = os.environ.get("SECRET_KEY")
+if not SECRET_KEY:
+    if DEBUG:
+        SECRET_KEY = "insecure-dev-key-do-not-use-in-production"
+    else:
+        raise RuntimeError("SECRET_KEY חייב להיות מוגדר בפרודקשן")
 LOGGING = {
     "version": 1,
     "disable_existing_loggers": False,
@@ -39,8 +46,6 @@ LOGGING = {
 
 STATIC_ROOT = BASE_DIR / "staticfiles"
 
-SECRET_KEY = os.environ.get("SECRET_KEY")
-
 ALLOWED_HOSTS = os.getenv("ALLOWED_HOSTS", "127.0.0.1,localhost").split(",")
 
 INSTALLED_APPS = [
@@ -50,11 +55,11 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
-    'homePage'
+    'django_ratelimit',
+    'homePage',
 ]
 
 MIDDLEWARE = [
-    'django.middleware.security.SecurityMiddleware',
     'django.middleware.security.SecurityMiddleware',
     'whitenoise.middleware.WhiteNoiseMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
@@ -88,18 +93,12 @@ TEMPLATES = [
 WSGI_APPLICATION = 'mesilat_zion_farm_website.wsgi.application'
 
 
-# DATABASES = {
-#     "default": dj_database_url.config(
-#         default=os.environ.get("DATABASE_URL"),
-#         conn_max_age=600,
-#         ssl_require=True,
-#     )
-# }
 DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
-    }
+    "default": dj_database_url.config(
+        default=f"sqlite:///{BASE_DIR / 'db.sqlite3'}",
+        conn_max_age=600,
+        ssl_require=not DEBUG,
+    )
 }
 
 
@@ -166,9 +165,8 @@ MARKETING_VERSION = "1.3"
 # https://docs.djangoproject.com/en/5.2/howto/static-files/
 
 STATIC_URL = '/static/'
-STATICFILES_DIRS = [
-    BASE_DIR / "homePage/static",
-]
+# הערה: אין צורך ב-STATICFILES_DIRS ל-homePage/static — הוא כבר מתגלה
+# אוטומטית ע"י AppDirectoriesFinder (homePage היא app מותקנת).
 
 if os.getenv("EMAIL_BACKEND", "smtp") == "console":
     EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
@@ -187,4 +185,29 @@ else:
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
+# django-ratelimit דורש cache backend משותף בין תהליכים (לא locmem).
+# FileBasedCache משותף בין worker processes אך לא תומך ב-increment אטומי;
+# עבור עומס גבוה יותר כדאי לשדרג ל-Redis/Memcached (django-redis).
+CACHES = {
+    "default": {
+        "BACKEND": "django.core.cache.backends.filebased.FileBasedCache",
+        "LOCATION": str(BASE_DIR / "django_cache"),
+    }
+}
+SILENCED_SYSTEM_CHECKS = ["django_ratelimit.E003"]
+
 STATICFILES_STORAGE = "whitenoise.storage.CompressedManifestStaticFilesStorage"
+
+# ---- הגדרות אבטחה לפרודקשן ----
+if not DEBUG:
+    SECURE_SSL_REDIRECT = True
+    SESSION_COOKIE_SECURE = True
+    CSRF_COOKIE_SECURE = True
+    SECURE_HSTS_SECONDS = 31536000          # שנה
+    SECURE_HSTS_INCLUDE_SUBDOMAINS = True
+    SECURE_HSTS_PRELOAD = True
+    SECURE_CONTENT_TYPE_NOSNIFF = True
+    SECURE_BROWSER_XSS_FILTER = True
+    X_FRAME_OPTIONS = "DENY"
+    # Render הוא reverse proxy — מספר לג'נגו איך לזהות HTTPS
+    SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
