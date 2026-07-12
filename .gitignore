@@ -15,3 +15,4 @@ db.sqlite3
 # Backups
 backups/
 *backup*.sqlite3
+data.json
