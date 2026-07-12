@@ -48,6 +48,12 @@ STATIC_ROOT = BASE_DIR / "staticfiles"
 
 ALLOWED_HOSTS = os.getenv("ALLOWED_HOSTS", "127.0.0.1,localhost").split(",")
 
+# רשימת מקורות מהימנים ל-CSRF (חובה ל-Django 4+ עבור POST מדומיין אמיתי).
+# פורמט: כתובת מלאה כולל https://, מופרדות בפסיקים.
+CSRF_TRUSTED_ORIGINS = [
+    origin.strip() for origin in os.getenv("CSRF_TRUSTED_ORIGINS", "").split(",") if origin.strip()
+]
+
 INSTALLED_APPS = [
     'django.contrib.admin',
     'django.contrib.auth',

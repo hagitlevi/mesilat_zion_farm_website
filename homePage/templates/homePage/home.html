@@ -11,7 +11,7 @@
 {% block content %}
     <div class="container">
         <h1 class="sr-only">חוות סוסים מסילת ציון - רכיבה על סוסים במסילת ציון</h1>
-        <div class="about-wrapper">
+        <div class="about-wrapper reveal">
             <section class="about">
               <div class="frame-text">קצת עלינו</div>
 
@@ -27,8 +27,8 @@
                   <li>רכיבת שטח מלאת אנרגיה</li>
                   <li>רכיבה לילדים</li>
                   <li>צילומים עם הסוסים וחיות נוספות</li>
-                  <li style="display:none;">שיעורי רכיבה מקצועיים למתחילים ומתקדמים</li>
-                  <li style="display:none;">רכיבה טיפולית</li>
+                  <li>שיעורי רכיבה מקצועיים למתחילים ומתקדמים</li>
+                  <li>רכיבה טיפולית</li>
                   <li>טיול בכרכרה לאווירה כפרית של פעם</li>
               </ul>
 
@@ -47,14 +47,14 @@
         <section class="activities">
             <h2>לפרטים והזמנת תורים:</h2>
             <ul>
-                <li>
+                <li class="reveal">
                     <div class="activity-button">
                         <a href="{% url 'couple_riding' %}" class="details-link"> <h4> לפרטים והזמנות</h4></a>
                         <img src="{% static 'homePage/images/couple-riding.jpg' %}" alt="רכיבה זוגית">
                         <span class="title-text">רכיבה זוגית </span>
                     </div>
                 </li>
-                <li>
+                <li class="reveal">
                     <div class="activity-button" >
                         <a href="{% url 'group_riding' %}" class="details-link"> <h4> לפרטים והזמנות</h4></a>
                         <img src="{% static 'homePage/images/group-riding.jpg' %}" alt="רכיבה קבוצתית">
@@ -62,7 +62,7 @@
                     </div>
                 </li>
                 {% if not is_winter %}
-                <li>
+                <li class="reveal">
                     <div class="activity-button" >
                         <a href="{% url 'night_riding' %}" class="details-link"> <h4> לפרטים והזמנות</h4></a>
                         <img src="{% static 'homePage/images/night-riding.jpg' %}" alt="רכיבת לילה">
@@ -70,35 +70,35 @@
                     </div>
                 </li>
                 {% endif %}
-                <li>
+                <li class="reveal">
                     <div class="activity-button" >
                         <a href="{% url 'sunrise_riding' %}" class="details-link"> <h4> לפרטים והזמנות</h4></a>
                         <img src="{% static 'homePage/images/sunrise-riding.jpg' %}" alt="רכיבה בזריחה">
                         <span class="title-text">רכיבה בזריחה</span>
                     </div>
                 </li>
-                <li>
+                <li class="reveal">
                     <div class="activity-button" >
                         <a href="{% url 'children_riding' %}" class="details-link"> <h4> לפרטים והזמנות</h4></a>
                         <img src="{% static 'homePage/images/children-riding.jpg' %}" alt="רכיבה לילדים">
                         <span class="title-text">רכיבת ילדים</span>
                     </div>
                 </li>
-                <li>
+                <li class="reveal">
                     <div class="activity-button" >
                         <a href="{% url 'carriage_trip' %}" class="details-link"> <h4> לפרטים והזמנות</h4></a>
                         <img src="{% static 'homePage/images/carriage-trip.jpg' %}" alt="טיול כרכרה">
                         <span class="title-text">טיול כרכרה</span>
                     </div>
                 </li>
-                <li>
+                <li class="reveal">
                     <div class="activity-button" >
                         <a href="{% url 'photographs' %}" class="details-link"> <h4> לפרטים והזמנות</h4></a>
                         <img src="{% static 'homePage/images/photographs.jpg' %}" alt="צילומים">
                         <span class="title-text">צילומים</span>
                     </div>
                 </li>
-                <li style="display:none;">
+                <li class="reveal">
                     <div class="activity-button" >
                         <a href="{% url 'riding_lessons' %}" class="details-link"> <h4> לפרטים והזמנות</h4></a>
                         <img src="{% static 'homePage/images/riding-lessons.jpg' %}" alt="שיעורי רכיבה">
@@ -109,7 +109,7 @@
         </section>
     </div>
 
-    <section class="carousel">
+    <section class="carousel reveal">
         <h3>תמונות מהחווה שלנו</h3>
         <div class="carousel-container">
             <img id="carousel-image" src="{% static 'homePage/images/p1.jpg' %}" alt="תמונה מהחווה">
@@ -118,7 +118,7 @@
         </div>
     </section>
 
-    <section class="reviews-wrap" dir="rtl">
+    <section class="reviews-wrap reveal" dir="rtl">
       <div class="reviews-header">
         {% if reviews_total %}
           <span class="avg">דירוג: {{ reviews_avg|floatformat:1 }} ★</span>
@@ -351,6 +351,62 @@
     const carouselContainer = document.querySelector(".carousel-container");
     carouselContainer.addEventListener('mouseenter', () => clearInterval(autoSlideInterval));
     carouselContainer.addEventListener('mouseleave', () => startAutoSlide());
+
+    // גילוי בגלילה: כל אלמנט עם class="reveal" עולה בעדינות כשהוא נכנס למסך
+    const revealEls = document.querySelectorAll('.reveal');
+    if (revealEls.length && 'IntersectionObserver' in window) {
+        const revealObserver = new IntersectionObserver((entries) => {
+            entries.forEach((entry) => {
+                if (entry.isIntersecting) {
+                    entry.target.classList.add('is-visible');
+                    revealObserver.unobserve(entry.target);
+                }
+            });
+        }, { threshold: 0.15, rootMargin: '0px 0px -40px 0px' });
+        revealEls.forEach((el) => revealObserver.observe(el));
+    } else {
+        revealEls.forEach((el) => el.classList.add('is-visible'));
+    }
+
+    // "פעילות במוקד" בטלפון: תוך כדי גלילה, הכרטיס הכי קרוב למרכז
+    // המסך מקבל --focus=1 (בהיר וגדול), וכרטיסים רחוקים ממנו דוהים
+    // ומצטמצמים בהדרגה — כך שבכל רגע פעילות אחת בולטת בבירור,
+    // גם כשמדפדפים קדימה וגם כשגוללים אחורה.
+    (function () {
+        const mq = window.matchMedia('(max-width: 600px)');
+        const cards = Array.from(document.querySelectorAll('.activities ul li'));
+        if (!cards.length) return;
+
+        let ticking = false;
+
+        function updateFocus() {
+            ticking = false;
+            if (!mq.matches) {
+                cards.forEach((c) => c.style.removeProperty('--focus'));
+                return;
+            }
+            const centerY = window.innerHeight / 2;
+            const maxDist = window.innerHeight * 0.62;
+            cards.forEach((card) => {
+                const rect = card.getBoundingClientRect();
+                const cardCenter = rect.top + rect.height / 2;
+                const distance = Math.abs(centerY - cardCenter);
+                const focus = Math.max(0, 1 - distance / maxDist);
+                card.style.setProperty('--focus', focus.toFixed(3));
+            });
+        }
+
+        function onScrollOrResize() {
+            if (!ticking) {
+                ticking = true;
+                requestAnimationFrame(updateFocus);
+            }
+        }
+
+        window.addEventListener('scroll', onScrollOrResize, { passive: true });
+        window.addEventListener('resize', onScrollOrResize);
+        updateFocus();
+    })();
 
 </script>
 {% endblock %}
