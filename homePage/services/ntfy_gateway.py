@@ -299,16 +299,30 @@ def notify_booking_success(payment, booking):
 
   if getattr(settings, "SEND_EMAIL", False):
     try:
-      send_booking_email(payment, booking)
+      sent = send_booking_email(payment, booking)
+      if not sent:
+        logger.warning("notify_booking_success: email not sent for payment #%s (booking #%s) — "
+                        "no exception raised, but send_booking_email returned falsy "
+                        "(missing/invalid email, or SMTP failed silently)", payment.id, booking.id)
     except Exception:
-      pass
+      logger.exception("notify_booking_success: email send raised for payment #%s (booking #%s)",
+                        payment.id, booking.id)
+  else:
+    logger.info("notify_booking_success: SEND_EMAIL is off — skipping email for payment #%s", payment.id)
 
   if getattr(settings, "SEND_SMS", False):
     try:
       sms_text = format_booking_sms(payment, booking)
-      send_sms_via_ntfy(payment.phone, sms_text)
+      sent = send_sms_via_ntfy(payment.phone, sms_text)
+      if not sent:
+        logger.warning("notify_booking_success: SMS not sent for payment #%s (booking #%s) — "
+                        "no exception raised, but send_sms_via_ntfy returned falsy "
+                        "(missing phone/topic, or ntfy call failed silently)", payment.id, booking.id)
     except Exception:
-      pass
+      logger.exception("notify_booking_success: SMS send raised for payment #%s (booking #%s)",
+                        payment.id, booking.id)
+  else:
+    logger.info("notify_booking_success: SEND_SMS is off — skipping SMS for payment #%s", payment.id)
 
 
 ##-----------------------------------פונקציות לשליחת מייל------------------------------
@@ -453,7 +467,11 @@ def send_treatment_email(session, amount: Decimal | None = None) -> bool:
   )
 
   email.attach_alternative(html_body, "text/html")
-  sent = email.send(fail_silently=True)
+  try:
+    sent = email.send(fail_silently=False)
+  except (smtplib.SMTPException, OSError, BadHeaderError):
+    logger.exception("send_treatment_email: SMTP send failed for session #%s", getattr(session, "id", None))
+    return False
   return sent >= 1
 
 def send_booking_email(payment, booking):
@@ -582,7 +600,12 @@ def send_booking_email(payment, booking):
   if html_body:
     email.attach_alternative(html_body, "text/html")
 
-  sent = email.send(fail_silently=True)
+  try:
+    sent = email.send(fail_silently=False)
+  except (smtplib.SMTPException, OSError, BadHeaderError):
+    logger.exception("send_booking_email: SMTP send failed for payment #%s (booking #%s)",
+                      getattr(payment, "id", None), getattr(booking, "id", None))
+    return False
   return sent >= 1
 
 def send_booking_deleted_email(booking):

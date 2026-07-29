@@ -328,10 +328,16 @@ def pay_return(request):
     # לחכות ל-polling בכלל.
     txn_uid = request.GET.get("transaction_uid")
     if payment and payment.status == "pending" and payment.provider == "payplus" and txn_uid:
-        result = _query_payplus_transaction_status(payment, transaction_uid=txn_uid)
-        if result and result[0] == "000":
-            _apply_payment_outcome(request, payment, "succeeded", charge_ref=result[1])
-            payment.refresh_from_db()
+        # לא נותנים לכשל כאן (עומס, תקלת רשת, מקרה קצה בסגירת ההזמנה) להפיל את עמוד
+        # החזרה של הלקוח ב-500 — במקרה כזה פשוט ממשיכים כאילו עדיין pending, וה-webhook
+        # או ה-polling הרגיל (pay_status) יטפלו בזה בהמשך.
+        try:
+            result = _query_payplus_transaction_status(payment, transaction_uid=txn_uid)
+            if result and result[0] == "000":
+                _apply_payment_outcome(request, payment, "succeeded", charge_ref=result[1])
+                payment.refresh_from_db()
+        except Exception:
+            logger.exception("pay_return: failed to finalize payment #%s via transaction_uid check", payment.id)
 
     if payment and payment.status == 'succeeded':
         messages.success(
@@ -371,9 +377,12 @@ def pay_status(request, payment_id: int):
         return JsonResponse({"status": "not_found"}, status=404)
 
     if payment.status == "pending" and payment.provider == "payplus":
-        result = _query_payplus_transaction_status(payment)
-        if result and result[0] == "000":
-            _apply_payment_outcome(request, payment, "succeeded", charge_ref=result[1])
+        try:
+            result = _query_payplus_transaction_status(payment)
+            if result and result[0] == "000":
+                _apply_payment_outcome(request, payment, "succeeded", charge_ref=result[1])
+        except Exception:
+            logger.exception("pay_status: failed to finalize payment #%s via status check", payment.id)
 
     return JsonResponse({"status": payment.status})
 
