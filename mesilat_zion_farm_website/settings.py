@@ -161,7 +161,12 @@ PAYMENT_PROVIDER = os.getenv("PAYMENT_PROVIDER", "mock")  # שנה ל-"payplus" 
 
 # שני סטים של מפתחות חיים ב-.env בו-זמנית (test + production) — הבחירה ביניהם
 # אוטומטית לפי DEBUG, כדי שלא יהיה צורך להחליף ערכים ידנית בין הסביבות.
-if DEBUG:
+# PAYPLUS_SANDBOX_OVERRIDE: מתג נפרד מ-DEBUG לצורך בדיקות זמניות באתר החי (Render) —
+# מאפשר להשתמש ב-SANDBOX של PayPlus בפרודקשן בלי לגעת ב-DEBUG (שמשפיע גם על אבטחה/לוגים).
+# ברירת המחדל היא False, כך שההתנהגות הקיימת לא משתנה אלא אם מגדירים את המשתנה במפורש.
+PAYPLUS_SANDBOX_OVERRIDE = os.getenv("PAYPLUS_SANDBOX_OVERRIDE", "False") == "True"
+
+if DEBUG or PAYPLUS_SANDBOX_OVERRIDE:
     PAYPLUS_API_KEY          = os.getenv("PAYPLUS_TEST_API_KEY", "")
     PAYPLUS_SECRET_KEY       = os.getenv("PAYPLUS_TEST_SECRET_KEY", "")
     PAYPLUS_PAYMENT_PAGE_UID = os.getenv("PAYPLUS_TEST_PAYMENT_PAGE_UID", "")
