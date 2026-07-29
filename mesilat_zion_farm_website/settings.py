@@ -103,7 +103,8 @@ DATABASES = {
     "default": dj_database_url.config(
         default=f"sqlite:///{BASE_DIR / 'db.sqlite3'}",
         conn_max_age=600,
-        ssl_require=not DEBUG,
+        # SSL רלוונטי רק כשיש DATABASE_URL אמיתי (Postgres) — SQLite לא מכיר sslmode
+        ssl_require=bool(os.getenv("DATABASE_URL")) and not DEBUG,
     )
 }
 
@@ -216,7 +217,10 @@ SILENCED_SYSTEM_CHECKS = ["django_ratelimit.E003"]
 STATICFILES_STORAGE = "whitenoise.storage.CompressedManifestStaticFilesStorage"
 
 # ---- הגדרות אבטחה לפרודקשן ----
-if not DEBUG:
+# מותנה גם ב-RENDER (משתנה שה-Render מגדיר אוטומטית) ולא רק ב-DEBUG, כדי שאפשר יהיה
+# להריץ מקומית עם DEBUG=False (למשל לבדיקת מפתחות production) בלי הפניית HTTPS שבורה,
+# כי runserver המקומי לא מגיש TLS בכלל.
+if not DEBUG and os.getenv("RENDER"):
     SECURE_SSL_REDIRECT = True
     SESSION_COOKIE_SECURE = True
     CSRF_COOKIE_SECURE = True

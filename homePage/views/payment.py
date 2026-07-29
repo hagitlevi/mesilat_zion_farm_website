@@ -10,7 +10,6 @@ from urllib.parse import urlencode, urlsplit, urlunsplit, parse_qsl
 from decimal import Decimal, ROUND_HALF_UP
 from django.conf import settings
 import secrets
-import time as time_mod
 import base64
 import hashlib
 import hmac
@@ -190,7 +189,8 @@ def pay_start(request):
         return redirect(link)
     return redirect(reverse("mock_checkout", kwargs={"payment_id": payment.id}))
 
-# 2) חזרה מהסליקה — מחליטים על הודעה, ומפנים לדף הבית
+# 2) חזרה מהסליקה — לא חוסמים בהמתנה ל-webhook, רק בודקים סטטוס נוכחי ומפנים לדף הבית.
+#    אם עדיין pending, ה-JS בדף (base.html) יבצע polling מול pay_status עד שהתשלום יתעדכן.
 def pay_return(request):
     """נקרא אחרי הסליקה (או אם המשתמש חזר באמצע) עם ?payment_id=XXX."""
     logger.debug("pay_return called with method: %s", request.method)
@@ -201,19 +201,9 @@ def pay_return(request):
         messages.error(request, "לא נמצא תשלום תואם.", extra_tags="payment_failed")
         return redirect('home')
 
-    # נחכה בשקט עד 10 שניות שה-webhook יסיים (בלי להראות "מעבדים...")
-    deadline = time_mod.time() + 10.0
-    payment = None
     finals = ('succeeded', 'failed', 'canceled', 'refunded')
-
-    while time_mod.time() < deadline:
-        payment = Payment.objects.filter(id=pid).only('status', 'charge_id').first()
-        if payment and payment.status in finals:
-            break
-        time_mod.sleep(0.3)
-
-    # בדיקה אחרונה
     payment = Payment.objects.filter(id=pid).only('status', 'charge_id').first()
+
     if payment and payment.status == 'succeeded':
         messages.success(
             request,
@@ -228,16 +218,23 @@ def pay_return(request):
             extra_tags="payment_failed",
         )
     else:
-        # עדיין pending אחרי ההמתנה — לא ידוע בוודאות שנכשל (ה-webhook עלול להגיע באיחור),
-        # אז לא מציגים הודעת כישלון שקרית.
+        # עדיין pending — לא ידוע בוודאות שנכשל (ה-webhook עלול להגיע באיחור),
+        # אז לא מציגים הודעת כישלון שקרית ולא חוסמים את הבקשה. ה-JS בדף יעדכן בעצמו.
         messages.info(
             request,
-            "התשלום עדיין בעיבוד. אם בוצע בהצלחה תקבלו אישור במייל ובהודעת SMS בדקות הקרובות. "
-            "אם לא תקבלו אישור בזמן קצר, אנא צרו קשר.",
-            extra_tags="payment_pending",
+            "התשלום מתעבד, רגע בבקשה...",
+            extra_tags=f"payment_pending payment_id_{pid}",
         )
 
     return redirect('home')
+
+
+def pay_status(request, payment_id: int):
+    """נקודת קצה קלה ל-polling מהדפדפן: מחזירה את סטטוס התשלום הנוכחי בלי לחסום."""
+    payment = Payment.objects.filter(id=payment_id).only('status').first()
+    if not payment:
+        return JsonResponse({"status": "not_found"}, status=404)
+    return JsonResponse({"status": payment.status})
 
 # Webhook — כאן קובעים סטטוס סופי, יוצרים Booking, ושולחים מייל+SMS (3
 @csrf_exempt

@@ -104,7 +104,7 @@
     {% block scripts %}{% endblock %}
 
 
-<div id="success-modal" class="success-modal" dir="rtl" aria-hidden="true" style="display:none;">
+<div id="success-modal" class="success-modal" dir="rtl" aria-hidden="true">
   <div class="success-modal__backdrop" aria-hidden="true"></div>
 
   <div class="success-modal__card" role="dialog" aria-modal="true" aria-labelledby="success-title" tabindex="-1">
@@ -222,8 +222,8 @@
     h.textContent = title || (type === "error" ? "שגיאה" : "הצלחה");
     p.textContent = text || "";
 
-    modal.style.display = "block";
     modal.classList.add("open");
+    modal.setAttribute('aria-hidden', 'false');
     document.body.classList.add('modal-open');
 
     const card = modal.querySelector('.success-modal__card');
@@ -256,6 +256,46 @@
                  : "הודעה",
             text: "{{ m|escapejs }}"
           });
+
+          // תשלום עדיין pending בזמן הרינדור — בודקים בעצמנו (polling) בלי לחסום את הדף,
+          // ומעדכנים את הפופאפ ברגע שה-webhook מגיע.
+          const pidMatch = tags.match(/payment_id_(\d+)/);
+          if (tags.includes("payment_pending") && pidMatch) {
+            const paymentId = pidMatch[1];
+            const finals = ["succeeded", "failed", "canceled", "refunded"];
+            let attempts = 0;
+            const maxAttempts = 15; // ~15 * 1.5 שנ' = כ-22.5 שניות
+            const poll = setInterval(function () {
+              attempts++;
+              fetch(`/pay/status/${paymentId}/`)
+                .then(r => r.json())
+                .then(data => {
+                  if (data.status === "succeeded") {
+                    clearInterval(poll);
+                    window.showBaseModal({
+                      type: "success",
+                      title: "התשלום הצליח",
+                      text: "הקבלה והפרטים על התור יישלחו במייל ובהודעת SMS בדקות הקרובות."
+                    });
+                  } else if (finals.includes(data.status)) {
+                    clearInterval(poll);
+                    window.showBaseModal({
+                      type: "error",
+                      title: "התשלום נכשל",
+                      text: "התשלום לא הושלם. ניתן לנסות שוב או ליצור קשר."
+                    });
+                  } else if (attempts >= maxAttempts) {
+                    clearInterval(poll);
+                    window.showBaseModal({
+                      type: "success",
+                      title: "התשלום בעיבוד",
+                      text: "התשלום עדיין בעיבוד. אם בוצע בהצלחה תקבלו אישור במייל ובהודעת SMS. אם לא תקבלו אישור בזמן קצר, אנא צרו קשר."
+                    });
+                  }
+                })
+                .catch(function () { /* שגיאת רשת חד-פעמית — ננסה שוב בפעימה הבאה */ });
+            }, 1500);
+          }
         });
       </script>
     {% endif %}

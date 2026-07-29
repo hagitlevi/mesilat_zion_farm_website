@@ -26,6 +26,7 @@ urlpatterns = [
     path("pay/return/", views.pay_return, name="pay_return"),
     path("pay/start/", views.pay_start, name="pay_start"),
     path("pay/webhook/", views.pay_webhook, name="pay_webhook"),
+    path("pay/status/<int:payment_id>/", views.pay_status, name="pay_status"),
 
     path("appointments/hold/", views.hold_appointment, name="hold_appointment"),
 
