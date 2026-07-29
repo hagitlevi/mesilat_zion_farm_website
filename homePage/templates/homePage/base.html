@@ -250,7 +250,10 @@
           const tags = "{{ m.tags|escapejs }}";
           window.showBaseModal({
             type: (tags.includes("error") || tags.includes("payment_failed") || tags.includes("review_error")) ? "error" : "success",
-            title: (tags.includes("payment_failed")) ? "התשלום נכשל" : "הודעה",
+            title: tags.includes("payment_failed") ? "התשלום נכשל"
+                 : tags.includes("payment_pending") ? "התשלום בעיבוד"
+                 : tags.includes("payment_succeeded") ? "התשלום הצליח"
+                 : "הודעה",
             text: "{{ m|escapejs }}"
           });
         });
