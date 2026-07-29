@@ -211,17 +211,19 @@
     // אייקון לפי type
     icon.innerHTML = (type === "error")
       ? `<svg width="64" height="64" viewBox="0 0 88 88" xmlns="http://www.w3.org/2000/svg">
-           <rect x="6" y="6" width="76" height="76" rx="18" fill="#F57C7C"/>
+           <circle cx="44" cy="44" r="38" fill="#F57C7C"/>
            <path d="M32 32 L56 56 M56 32 L32 56" stroke="#fff" stroke-width="8" stroke-linecap="round"/>
          </svg>`
       : `<svg width="64" height="64" viewBox="0 0 88 88" xmlns="http://www.w3.org/2000/svg">
-           <rect x="6" y="6" width="76" height="76" rx="18" fill="#7ED28A"/>
+           <circle cx="44" cy="44" r="38" fill="#7ED28A"/>
            <path d="M30 44.5l9.5 9.5L58 35.5" fill="none" stroke="#fff" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
          </svg>`;
 
     h.textContent = title || (type === "error" ? "שגיאה" : "הצלחה");
     p.textContent = text || "";
 
+    modal.classList.remove("type-success", "type-error");
+    modal.classList.add(type === "error" ? "type-error" : "type-success");
     modal.classList.add("open");
     modal.setAttribute('aria-hidden', 'false');
     document.body.classList.add('modal-open');
@@ -236,7 +238,7 @@
     const okBtn = modal.querySelector('.success-modal__ok');
     if (okBtn) okBtn.addEventListener('click', () => {
       modal.classList.remove('open');
-      modal.style.display = "none";
+      modal.setAttribute('aria-hidden', 'true');
       document.body.classList.remove('modal-open');
     });
   })();

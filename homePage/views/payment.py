@@ -63,6 +63,120 @@ def _create_payplus_payment_link(request, payment) -> str:
     return data["payment_page_link"]
 
 
+def _query_payplus_transaction_status(payment, transaction_uid: str | None = None) -> tuple[str, str] | None:
+    """
+    שואלת את PayPlus ישירות (Transactions/View) מהו הסטטוס האמיתי של העסקה — לפי transaction_uid
+    אם יש (מדויק יותר; מגיע מ-query params בחזרה מהסליקה), אחרת לפי more_info=payment.id.
+    ברירת מחדל היא לחכות ל-webhook, אבל בסביבת פיתוח מקומית (localhost) PayPlus לא מצליחה
+    להגיע לכתובת ה-callback שלנו, אז ה-webhook אף פעם לא מגיע. זו רשת ביטחון: בודקת ישירות
+    מול PayPlus (עם ה-api-key/secret-key שלנו — לא סומכים על סטטוס שמגיע מה-URL של הלקוח,
+    כי אפשר לזייף query params) אם העסקה בעצם כן הצליחה.
+    מחזירה (status_code, charge_ref) גולמיים (למשל "000" להצלחה), או None אם אין תשובה חד-משמעית.
+    """
+    headers = {
+        "api-key":    settings.PAYPLUS_API_KEY,
+        "secret-key": settings.PAYPLUS_SECRET_KEY,
+        "Content-Type": "application/json",
+    }
+    payload = {"transaction_uid": transaction_uid} if transaction_uid else {"more_info": str(payment.id)}
+    try:
+        resp = requests.post(
+            f"{settings.PAYPLUS_BASE_URL}/Transactions/View",
+            json=payload, headers=headers, timeout=6,
+        )
+    except requests.RequestException:
+        logger.warning("payplus: status check request failed for payment #%s", payment.id, exc_info=True)
+        return None
+    if not resp.ok:
+        logger.warning("payplus: status check HTTP %s for payment #%s: %s", resp.status_code, payment.id, resp.text[:500])
+        return None
+    try:
+        body = resp.json()
+    except ValueError:
+        logger.warning("payplus: status check non-JSON response for payment #%s: %s", payment.id, resp.text[:500])
+        return None
+
+    results_code = (body.get("results") or {}).get("code")
+    if results_code not in (0, None):
+        logger.info("payplus: status check returned results.code=%s for payment #%s: %s", results_code, payment.id, body)
+        return None
+
+    # הצורה האמיתית שחזרה מ-PayPlus: data.transactions.transaction, כאשר "transaction" הוא
+    # dict בודד אם יש תוצאה אחת, או list אם יש כמה (דומה למבנה XML-to-JSON טיפוסי).
+    data = body.get("data") or {}
+    txns_wrapper = data.get("transactions")
+    if isinstance(txns_wrapper, dict):
+        inner = txns_wrapper.get("transaction")
+    elif isinstance(txns_wrapper, list):
+        inner = txns_wrapper
+    else:
+        inner = data.get("transaction")
+
+    if isinstance(inner, list):
+        transactions = inner
+    elif isinstance(inner, dict):
+        transactions = [inner]
+    else:
+        transactions = None
+
+    if not transactions:
+        logger.info("payplus: status check found no transactions yet for payment #%s: %s", payment.id, body)
+        return None
+
+    txn = transactions[0]
+    status_code = str(txn.get("status_code") or "").strip()
+    if not status_code:
+        logger.info("payplus: status check transaction has no status_code for payment #%s: %s", payment.id, txn)
+        return None
+    logger.info("payplus: status check resolved payment #%s to status_code=%s", payment.id, status_code)
+    return status_code, (txn.get("transaction_uid") or txn.get("uid") or "")
+
+
+def _apply_payment_outcome(request, payment, new_status: str, charge_ref: str | None = None) -> None:
+    """
+    מעדכנת סטטוס תשלום בצורה אידמפוטנטית: יוצרת Booking, מקצה ref, ושולחת התראות בהצלחה.
+    לוגיקה משותפת ל-webhook (המקור העיקרי) ול-fallback שבודק סטטוס ישירות מול PayPlus
+    (pay_status) — כדי שלשני המקורות תהיה בדיוק אותה התנהגות ואותה הגנת אידמפוטנטיות.
+    """
+    FINALS = ("succeeded", "failed", "canceled", "refunded")
+
+    if payment.status == "succeeded":
+        if not payment.charge_id and getattr(payment, "booking_id", None):
+            payment.charge_id = (getattr(payment.booking, "payment_ref", None) or str(payment.booking_id))
+            payment.save(update_fields=["charge_id"])
+        return
+
+    if payment.status in FINALS:
+        return
+
+    if new_status == "succeeded":
+        extra = request.session.pop("pending_booking_extra", {})
+        request.session.modified = True
+        booking = _finalize_booking_after_payment(payment, pending_extra=extra)
+
+        assign_unique_ref(booking, payment, digits=8)
+
+        payment.status = "succeeded"
+        payment.webhook_received_at = timezone.now()
+        if charge_ref and not payment.charge_id:
+            payment.charge_id = charge_ref
+        payment.save(update_fields=["status", "webhook_received_at", "charge_id"])
+
+        new_bstatus = _pick_booking_status(Booking, "confirmed", "paid", "succeeded")
+        if getattr(booking, "status", None) != new_bstatus:
+            try:
+                booking.status = new_bstatus
+                booking.save(update_fields=["status"])
+            except Exception:
+                booking.save()
+
+        notify_booking_success(payment, booking)
+    else:
+        payment.status = new_status
+        payment.webhook_received_at = timezone.now()
+        payment.save(update_fields=["status", "webhook_received_at"])
+
+
 def _verify_payplus_signature(request) -> bool:
     """מאמת שהבקשה אכן הגיעה מ-PayPlus: HMAC-SHA256 של גוף הבקשה הגולמי, מושווה מול header בשם hash."""
     if request.META.get("HTTP_USER_AGENT") != "PayPlus":
@@ -194,6 +308,10 @@ def pay_start(request):
 def pay_return(request):
     """נקרא אחרי הסליקה (או אם המשתמש חזר באמצע) עם ?payment_id=XXX."""
     logger.debug("pay_return called with method: %s", request.method)
+    if settings.DEBUG:
+        # אבחון חד-פעמי: אם PayPlus בכל זאת מצרפת מידע שימושי ל-query string בחזרה
+        # (סטטוס/מזהה עסקה), נרצה לראות זאת כאן כדי לשקול דרך אמינה יותר מ-polling.
+        logger.info("pay_return GET params: %s", dict(request.GET))
 
     # נשלוף וננקה את ה-id מהסשן כדי לא להציג שוב הודעות בשגגה
     pid = request.GET.get("payment_id") or request.session.pop("last_payment_id", None)
@@ -202,7 +320,18 @@ def pay_return(request):
         return redirect('home')
 
     finals = ('succeeded', 'failed', 'canceled', 'refunded')
-    payment = Payment.objects.filter(id=pid).only('status', 'charge_id').first()
+    payment = Payment.objects.filter(id=pid).first()
+
+    # PayPlus מצרפת transaction_uid ל-query string בחזרה מהסליקה — לא סומכים עליו כשלעצמו
+    # (אפשר לזייף URL), אלא משתמשים בו כמפתח חיפוש לאימות אמיתי מול PayPlus (עם המפתחות
+    # שלנו). זה פותר את בעיית ה-webhook שלא מגיע ב-localhost כבר בעמוד החזרה עצמו, בלי
+    # לחכות ל-polling בכלל.
+    txn_uid = request.GET.get("transaction_uid")
+    if payment and payment.status == "pending" and payment.provider == "payplus" and txn_uid:
+        result = _query_payplus_transaction_status(payment, transaction_uid=txn_uid)
+        if result and result[0] == "000":
+            _apply_payment_outcome(request, payment, "succeeded", charge_ref=result[1])
+            payment.refresh_from_db()
 
     if payment and payment.status == 'succeeded':
         messages.success(
@@ -230,10 +359,22 @@ def pay_return(request):
 
 
 def pay_status(request, payment_id: int):
-    """נקודת קצה קלה ל-polling מהדפדפן: מחזירה את סטטוס התשלום הנוכחי בלי לחסום."""
-    payment = Payment.objects.filter(id=payment_id).only('status').first()
+    """
+    נקודת קצה קלה ל-polling מהדפדפן: מחזירה את סטטוס התשלום הנוכחי בלי לחסום.
+    אם עדיין pending ומדובר ב-PayPlus, בודקת גם ישירות מול PayPlus (Transactions/View)
+    ולא רק מחכה ל-webhook — כי בסביבת פיתוח מקומית ה-webhook של PayPlus לא יכול להגיע
+    ל-localhost. רק תוצאת "הצליח" מוחלת כאן (fail-safe): אם הבדיקה לא חד-משמעית, ממשיכים
+    להסתמך על ה-webhook כמקור האמת לכישלון/ביטול, כדי לא לסמן בטעות תשלום שהצליח כנכשל.
+    """
+    payment = Payment.objects.filter(id=payment_id).first()
     if not payment:
         return JsonResponse({"status": "not_found"}, status=404)
+
+    if payment.status == "pending" and payment.provider == "payplus":
+        result = _query_payplus_transaction_status(payment)
+        if result and result[0] == "000":
+            _apply_payment_outcome(request, payment, "succeeded", charge_ref=result[1])
+
     return JsonResponse({"status": payment.status})
 
 # Webhook — כאן קובעים סטטוס סופי, יוצרים Booking, ושולחים מייל+SMS (3
@@ -281,56 +422,7 @@ def pay_webhook(request):
         charge_ref  = None
 
     payment = get_object_or_404(Payment, id=pid)
-    FINALS = ("succeeded", "failed", "canceled", "refunded")
-
-    # אידמפוטנטיות: אם כבר הצליח – לא משנים סטטוס. רק משלימים מזהה אם צריך.
-    if payment.status == "succeeded":
-        if not payment.charge_id and getattr(payment, "booking_id", None):
-            # נעדיף את ה-ref מההזמנה אם קיים; אחרת מספר ההזמנה
-            payment.charge_id = (getattr(payment.booking, "payment_ref", None) or str(payment.booking_id))
-            payment.save(update_fields=["charge_id"])
-        # המשך ל-redirect/JSON בסוף הפונקציה
-    elif payment.status not in FINALS:
-        if new_status == "succeeded":
-            # 1) יצירת/איתור Booking
-            extra = request.session.pop("pending_booking_extra", {})
-            request.session.modified = True
-            booking = _finalize_booking_after_payment(payment, pending_extra=extra)
-
-            # 2) הקצאת מזהה עסקה ייחודי בפורמט MZ-XXXXXXXX לשני הצדדים (Booking & Payment)
-            ref = assign_unique_ref(booking, payment, digits=8)
-
-            # 3) סימון סטטוס וסימון זמן קליטת ה-webhook
-            payment.status = "succeeded"
-            payment.webhook_received_at = timezone.now()
-            # שמירת מזהה עסקה מהספק אם קיים
-            if charge_ref and not payment.charge_id:
-                payment.charge_id = charge_ref
-            payment.save(update_fields=["status", "webhook_received_at", "charge_id"])
-
-            # 4) עדכון סטטוס ההזמנה
-            new_bstatus = _pick_booking_status(Booking, "confirmed", "paid", "succeeded")
-            if getattr(booking, "status", None) != new_bstatus:
-                try:
-                    booking.status = new_bstatus
-                    booking.save(update_fields=["status"])
-                except Exception:
-                    booking.save()
-
-            notify_booking_success(payment, booking)
-
-
-
-
-        else:
-            # fail / cancel / refunded — סוגרים את התשלום בלי ליצור הזמנה
-            payment.status = new_status
-            payment.webhook_received_at = timezone.now()
-            payment.save(update_fields=["status", "webhook_received_at"])
-    else:
-        # כאן payment.status כבר באחד הסופיים (failed/canceled/refunded).
-        # לא משנים אותו כדי לשמור על אידמפוטנטיות.
-        pass
+    _apply_payment_outcome(request, payment, new_status, charge_ref)
 
     # Redirect אם הגיע next; אחרת JSON
     # מותרות רק URLs פנימיות למניעת Open Redirect
