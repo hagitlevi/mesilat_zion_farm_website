@@ -79,7 +79,6 @@ button[type="submit"]:hover{filter:brightness(1.05);}
 .errors{color:#b00020; margin-top:6px;}
 
 .stars-input{display:inline-flex; flex-direction: row-reverse; gap:6px;}
-.stars-input input{display:none;}
 .stars-input label{
   cursor:pointer; font-size:28px; color:#A47148; filter:grayscale(1) opacity(.55);
   transition: transform .1s, filter .2s;
@@ -87,6 +86,11 @@ button[type="submit"]:hover{filter:brightness(1.05);}
 .stars-input input:checked ~ label,
 .stars-input label:hover,
 .stars-input label:hover ~ label{filter:none; transform:scale(1.05);}
+.stars-input input:focus-visible + label{
+  outline: 2px solid var(--brown-dark, #5C4033);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
 
 .pagination{display:flex; gap:8px; justify-content:center; margin:16px 0 6px;}
 .pagination a, .pagination span{
@@ -196,7 +200,6 @@ button[type="submit"]{
 
 /* כוכבים לבחירת דירוג – גדולים במגע */
 .stars-input{ display:inline-flex; flex-direction:row-reverse; gap:8px; }
-.stars-input input{ display:none; }
 .stars-input label{
   cursor:pointer;
   font-size: clamp(28px, 9vw, 40px);

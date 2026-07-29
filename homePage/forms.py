@@ -46,10 +46,10 @@ class CancelRequestForm(forms.ModelForm):
             "booking", "appointment",
         ]
         widgets = {
-            "full_name": forms.TextInput(attrs={"placeholder": "*שם מלא שנרשם בעת הרכישה"}),
-            "phone": forms.TextInput(attrs={"placeholder": "*טלפון", "inputmode": "tel"}),
+            "full_name": forms.TextInput(attrs={"placeholder": "שם מלא שנרשם בעת הרכישה (חובה)"}),
+            "phone": forms.TextInput(attrs={"placeholder": "טלפון (חובה)", "inputmode": "tel"}),
             "email": forms.EmailInput(attrs={"placeholder": "אימייל"}),
-            "order_id": forms.TextInput(attrs={"placeholder": "*מס׳ הזמנה (כפי שמופיע באישור ההזמנה לדוגמה: MZ-12345678) "}),
+            "order_id": forms.TextInput(attrs={"placeholder": "מס׳ הזמנה (חובה, כפי שמופיע באישור ההזמנה לדוגמה: MZ-12345678)"}),
             "start_dt": forms.DateTimeInput(attrs={"type": "datetime-local", "dir": "rtl"}),
             "reason": forms.Textarea(attrs={"rows": 3, "placeholder": "סיבת הביטול"}),
             "booking": forms.HiddenInput(),
@@ -65,6 +65,7 @@ class CancelRequestForm(forms.ModelForm):
             "required": True,
             "oninvalid": "this.setCustomValidity('חובה להזין מס׳ הזמנה')",
             "oninput": "this.setCustomValidity('')",
+            "aria-describedby": "order_id-error",
         })
 
         self.fields['full_name'].widget.attrs.update({
@@ -72,12 +73,14 @@ class CancelRequestForm(forms.ModelForm):
             "pattern": r".*\S.*",
             "oninvalid": "this.setCustomValidity('חובה למלא שם מלא')",
             "oninput": "this.setCustomValidity('')",
+            "aria-describedby": "full_name-error",
         })
 
         # אימייל – הודעה שונה אם הפורמט לא תקין
         self.fields['email'].widget.attrs.update({
             "oninvalid": "this.setCustomValidity(this.validity.typeMismatch ? 'כתובת אימייל לא תקינה' : 'חובה למלא אימייל')",
             "oninput": "this.setCustomValidity('')",
+            "aria-describedby": "email-error",
         })
 
         # טלפון (אם את רוצה בועה מותאמת)
@@ -87,6 +90,11 @@ class CancelRequestForm(forms.ModelForm):
             "title": "מספר טלפון ישראלי לא תקין",
             "oninvalid": "this.setCustomValidity(this.validity.patternMismatch ? 'מספר טלפון ישראלי לא תקין' : 'חובה למלא טלפון')",
             "oninput": "this.setCustomValidity('')",
+            "aria-describedby": "phone-error",
+        })
+
+        self.fields['reason'].widget.attrs.update({
+            "aria-describedby": "reason-error",
         })
 
     # 2) ולידציה שרתית ישראלית (כולל תמיכה ב-+972)

@@ -9,6 +9,39 @@
     --main-background: #faf7ed;
 }
 
+.sr-only{
+  position:absolute;
+  width:1px;
+  height:1px;
+  padding:0;
+  margin:-1px;
+  overflow:hidden;
+  clip:rect(0,0,0,0);
+  white-space:nowrap;
+  border:0;
+}
+
+.skip-link{
+  position:absolute;
+  top:-60px;
+  right:10px;
+  z-index:100000;
+  background:var(--main-color);
+  color:#fff;
+  padding:10px 16px;
+  border-radius:8px;
+  text-decoration:none;
+  transition:top .2s ease;
+}
+
+.skip-link:focus{
+  top:10px;
+}
+
+main:focus-visible{
+  outline:none;
+}
+
 header{
     height: 80px;
     width: 100%;

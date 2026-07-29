@@ -2,7 +2,7 @@
 {% block title %}תשלום מדומה{% endblock %}
 {% block content %}
 <section class="details" dir="rtl" style="max-width:520px; margin:2rem auto; text-align:center">
-  <h2>תשלום מדומה</h2>
+  <h1 style="font-size:1.5em; margin:0.83em 0; font-weight:bold;">תשלום מדומה</h1>
   <p>סכום לתשלום: <strong>{{ amount_nis|floatformat:2 }}</strong> ₪</p>
 
     {% url 'pay_return' as payreturn %}

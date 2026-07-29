@@ -172,20 +172,24 @@
     {% if unit_price %}<input type="hidden" name="unit_price"  value="{{ unit_price }}">{% endif %}
     {% if total_price %}<input type="hidden" name="total_price" value="{{ total_price }}">{% endif %}
 
-    <input type="text"  name="first_name" placeholder="שם פרטי*"  required
+    <label for="first_name" class="sr-only">שם פרטי (חובה)</label>
+    <input type="text"  id="first_name" name="first_name" placeholder="שם פרטי (חובה)"  required
            oninvalid="this.setCustomValidity('חובה למלא שם פרטי')"
            oninput="this.setCustomValidity('')">
 
-    <input type="text"  name="last_name"  placeholder="שם משפחה*" required
+    <label for="last_name" class="sr-only">שם משפחה (חובה)</label>
+    <input type="text"  id="last_name" name="last_name"  placeholder="שם משפחה (חובה)" required
            oninvalid="this.setCustomValidity('חובה למלא שם משפחה')"
            oninput="this.setCustomValidity('')">
 
-    <input type="tel"   name="phone"      placeholder="טלפון*"     required
+    <label for="phone" class="sr-only">טלפון (חובה)</label>
+    <input type="tel"   id="phone" name="phone"      placeholder="טלפון (חובה)"     required
            pattern="^0(5\d{8}|[2-9]\d{7})$"
            oninvalid="this.setCustomValidity(this.validity.patternMismatch ? 'מספר טלפון ישראלי לא תקין' : 'חובה למלא טלפון')"
            oninput="this.setCustomValidity('')">
 
-    <input type="email" name="email"      placeholder="מייל*"      required
+    <label for="email" class="sr-only">מייל (חובה)</label>
+    <input type="email" id="email" name="email"      placeholder="מייל (חובה)"      required
            oninvalid="this.setCustomValidity(this.validity.typeMismatch ? 'כתובת מייל לא תקינה' : 'חובה למלא מייל')"
            oninput="this.setCustomValidity('')">
 

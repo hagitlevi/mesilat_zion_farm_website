@@ -8,7 +8,8 @@
 {% endblock %}
 
 {% block content %}
-<main class="reviews-wrap">
+<div class="reviews-wrap">
+  <h1 class="sr-only">חוות דעת — חוות מסילת ציון</h1>
 
   <div class="reviews-header">
     {% if rating_count %}
@@ -66,10 +67,11 @@
           {% csrf_token %}
           {{ form.website }} {# שדה honeypot נסתר #}
 
-          <input type="text" name="name" placeholder="שם (לא חובה)"
+          <label for="review-name" class="sr-only">שם (לא חובה)</label>
+          <input type="text" id="review-name" name="name" placeholder="שם (לא חובה)"
                  value="{{ form.name.value|default_if_none:'' }}">
 
-          <div class="stars-input">
+          <div class="stars-input" id="rating-stars" tabindex="-1">
             {# סדר מ־5 עד 1 לציור נכון של כוכבים #}
             {% for val in '5,4,3,2,1'|cut:',' %}
               <input
@@ -88,7 +90,8 @@
             <div class="field-error">{{ form.rating.errors.0 }}</div>
           {% endif %}
 
-          <textarea name="comment" rows="3" placeholder="איך היה?">{{ form.comment.value|default_if_none:'' }}</textarea>
+          <label for="review-comment" class="sr-only">תגובה</label>
+          <textarea id="review-comment" name="comment" rows="3" placeholder="איך היה?">{{ form.comment.value|default_if_none:'' }}</textarea>
 
           <button type="submit">שליחה</button>
 
@@ -114,7 +117,7 @@
         <span id="review-form-bottom" aria-hidden="true"></span>
       </section>
   </div>
-</main>
+</div>
 
 {% if focus_rating_error %}
 <script>

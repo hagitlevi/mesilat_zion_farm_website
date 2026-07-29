@@ -43,9 +43,17 @@ button {
     gap:20px;
 }
 
-/*הסתרת כפתורי הרדיו*/
+/*מוסתר ויזואלית אך נשאר נגיש למקלדת ולקורא מסך*/
 .appointments-columns input[type="radio"]{
-    display: none;
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+    border: 0;
 }
 
 /*עיצוב טאב של שעה מסויימת*/
@@ -60,6 +68,12 @@ button {
     text-align: center;
     display: block;
     margin-bottom: 5px;
+}
+
+/*פוקוס נראה לטאב כשמנווטים במקלדת*/
+.appointments-columns input[type="radio"]:focus-visible + label{
+    outline: 2px solid #000;
+    outline-offset: 2px;
 }
 
 /*כל שורות התורים המוצגים*/

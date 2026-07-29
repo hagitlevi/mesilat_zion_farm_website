@@ -14,6 +14,8 @@
 </head>
 <body>
 
+    <a href="#main-content" class="skip-link">דלג לתוכן המרכזי</a>
+
     <header>
 
         <div class="right-icons">
@@ -67,7 +69,7 @@
         </div>
     </header>
 
-    <main>
+    <main id="main-content" tabindex="-1">
         {% block content %}
         <!-- כאן ייכנס התוכן של כל עמוד אחר -->
         {% endblock %}

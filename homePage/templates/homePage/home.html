@@ -114,7 +114,7 @@
         <div class="carousel-container">
             <img id="carousel-image" src="{% static 'homePage/images/p1.jpg' %}" alt="תמונה מהחווה">
 
-            <button class="prev-btn">&lt;</button> <button class="next-btn">&gt;</button> <div class="carousel-dots"></div>
+            <button type="button" class="prev-btn" aria-label="תמונה קודמת">&lt;</button> <button type="button" class="next-btn" aria-label="תמונה הבאה">&gt;</button> <button type="button" class="carousel-toggle" aria-pressed="false" aria-label="השהה מעבר אוטומטי בין תמונות"><i class="fa-solid fa-pause" aria-hidden="true"></i></button> <div class="carousel-dots" role="group" aria-label="בחירת תמונה בקרוסלה"></div>
         </div>
     </section>
 
@@ -250,9 +250,17 @@
     const prevBtn = document.querySelector(".prev-btn");
     const nextBtn = document.querySelector(".next-btn");
     const dotsContainer = document.querySelector(".carousel-dots");
+    const carouselToggle = document.querySelector(".carousel-toggle");
+    const carouselContainer = document.querySelector(".carousel-container");
 
     let autoSlideInterval; // משתנה לשמירת ה-Interval של המעבר האוטומטי
-    const slideDuration = 4500; // שנייה אחת (1000 מילישניות) - כפי שביקשת
+    const slideDuration = 3000; // 3 שניות לכל תמונה
+
+    // כיבוד prefers-reduced-motion: אם המשתמש/ת ביקשו פחות תנועה, המעבר האוטומטי מתחיל במצב מושהה
+    const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    let isHovering = false;
+    let isFocusedWithin = false;
+    let isManuallyPaused = prefersReducedMotion;
 
 
     // פונקציה למעבר לתמונה הבאה
@@ -271,8 +279,10 @@
     function createDots() {
         dotsContainer.innerHTML = ''; // מנקה נקודות קיימות לפני יצירה מחדש (אם נקרא שוב)
         images.forEach((_, i) => { // עובר על כל תמונה במערך
-            const dot = document.createElement('span'); // יוצר אלמנט span לנקודה
+            const dot = document.createElement('button'); // כפתור אמיתי כדי שיהיה נגיש למקלדת
+            dot.type = 'button';
             dot.classList.add('dot'); // מוסיף לו את הקלאס 'dot'
+            dot.setAttribute('aria-label', `עבור לתמונה ${i + 1} מתוך ${images.length}`);
             if (i === index) { // אם זו הנקודה של התמונה הנוכחית
                 dot.classList.add('active'); // מוסיף לה את הקלאס 'active'
             }
@@ -299,14 +309,53 @@
 
     // פונקציה להתחלת המעבר האוטומטי
     function startAutoSlide() {
+        if (autoSlideInterval) return;
         autoSlideInterval = setInterval(nextSlide, slideDuration); // מפעיל פונקציה כל פרק זמן קבוע
     }
 
-    // פונקציה לאיפוס המעבר האוטומטי (עוצר ומתחיל מחדש)
+    function stopAutoSlide() {
+        clearInterval(autoSlideInterval);
+        autoSlideInterval = undefined;
+    }
+
+    // האם המעבר האוטומטי אמור לרוץ כרגע (לא מושהה ידנית/בריחוף/בפוקוס)
+    function shouldAutoPlay() {
+        return !isManuallyPaused && !isHovering && !isFocusedWithin;
+    }
+
+    // מסנכרן את מצב הטיימר בפועל עם המצב הרצוי, ומעדכן את כפתור ההשהיה
+    function syncAutoSlide() {
+        if (shouldAutoPlay()) {
+            startAutoSlide();
+        } else {
+            stopAutoSlide();
+        }
+        updateToggleButton();
+    }
+
+    // פונקציה לאיפוס המעבר האוטומטי (עוצר ומתחיל מחדש אם המצב מאפשר)
     // חשוב כדי שלחיצות ידניות לא יתנגשו עם המעבר האוטומטי
     function resetAutoSlide() {
-        clearInterval(autoSlideInterval); // עוצר את הטיימר הקיים
-        startAutoSlide(); // מתחיל טיימר חדש
+        stopAutoSlide();
+        syncAutoSlide();
+    }
+
+    function updateToggleButton() {
+        if (!carouselToggle) return;
+        const icon = carouselToggle.querySelector('i');
+        carouselToggle.setAttribute('aria-pressed', String(isManuallyPaused));
+        carouselToggle.setAttribute('aria-label', isManuallyPaused ? 'הפעל מעבר אוטומטי בין תמונות' : 'השהה מעבר אוטומטי בין תמונות');
+        if (icon) {
+            icon.classList.toggle('fa-pause', !isManuallyPaused);
+            icon.classList.toggle('fa-play', isManuallyPaused);
+        }
+    }
+
+    if (carouselToggle) {
+        carouselToggle.addEventListener('click', () => {
+            isManuallyPaused = !isManuallyPaused;
+            syncAutoSlide();
+        });
     }
 
     function updateCarousel() {
@@ -343,14 +392,29 @@
     document.addEventListener('DOMContentLoaded', () => {
         createDots(); // יוצר את הנקודות בפעם הראשונה
         updateCarousel(); // מציג את התמונה הראשונה ומעדכן נקודות
-        startAutoSlide(); // מתחיל את הקרוסלה האוטומטית
+        syncAutoSlide(); // מתחיל את הקרוסלה האוטומטית (אלא אם מושהית מראש)
     });
 
-    // אופציונלי: עצירת המעבר האוטומטי בריחוף מעל הקרוסלה
-    // זה מונע מהתמונות להתחלף אוטומטית כשהמשתמש מעביר עכבר מעל הקרוסלה
-    const carouselContainer = document.querySelector(".carousel-container");
-    carouselContainer.addEventListener('mouseenter', () => clearInterval(autoSlideInterval));
-    carouselContainer.addEventListener('mouseleave', () => startAutoSlide());
+    // עצירת המעבר האוטומטי בריחוף עכבר מעל הקרוסלה, וכן כשהפוקוס נמצא בתוכה (ניווט מקלדת)
+    // זה מונע מהתמונות להתחלף אוטומטית מתחת לידיים של מי שמנווט/ת עם עכבר או מקלדת
+    if (carouselContainer) {
+        carouselContainer.addEventListener('mouseenter', () => { isHovering = true; syncAutoSlide(); });
+        carouselContainer.addEventListener('mouseleave', () => { isHovering = false; syncAutoSlide(); });
+        // עוצרים בפוקוס רק כשמדובר בניווט מקלדת (:focus-visible) —
+        // לא כשעכבר לוחץ על כפתור ומשאיר עליו פוקוס, כדי שהקרוסלה לא "תיתקע" מושהית אחרי לחיצה
+        carouselContainer.addEventListener('focusin', (e) => {
+            if (e.target.matches && e.target.matches(':focus-visible')) {
+                isFocusedWithin = true;
+                syncAutoSlide();
+            }
+        });
+        carouselContainer.addEventListener('focusout', (e) => {
+            if (!carouselContainer.contains(e.relatedTarget)) {
+                isFocusedWithin = false;
+                syncAutoSlide();
+            }
+        });
+    }
 
     // גילוי בגלילה: כל אלמנט עם class="reveal" עולה בעדינות כשהוא נכנס למסך
     const revealEls = document.querySelectorAll('.reveal');

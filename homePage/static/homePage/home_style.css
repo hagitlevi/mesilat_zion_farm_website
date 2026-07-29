@@ -326,6 +326,38 @@ footer.contact-section .follow-block > * { margin: 0; }               /* איפ�
     background-color: rgba(0, 0, 0, 0.8); /* רקע כהה יותר בריחוף */
 }
 
+/* כפתור השהיה/הפעלה של המעבר האוטומטי — באותה שפה עיצובית של החיצים */
+.carousel-container .carousel-toggle {
+    position: absolute;
+    top: 10px;
+    left: 10px;
+    background-color: rgba(0, 0, 0, 0.5);
+    color: white;
+    border: none;
+    width: 32px;
+    height: 32px;
+    padding: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    font-size: 0.9em;
+    border-radius: 50%;
+    transition: background-color 0.3s ease;
+    z-index: 10;
+}
+
+.carousel-container .carousel-toggle:hover {
+    background-color: rgba(0, 0, 0, 0.8);
+}
+
+.carousel-container .prev-btn:focus-visible,
+.carousel-container .next-btn:focus-visible,
+.carousel-container .carousel-toggle:focus-visible {
+    outline: 3px solid #fff;
+    outline-offset: 2px;
+}
+
 .carousel-dots {
     position: absolute;
     bottom: 10px;
@@ -343,11 +375,18 @@ footer.contact-section .follow-block > * { margin: 0; }               /* איפ�
     border-radius: 50%; /* הופך את הנקודות לעגולות */
     cursor: pointer;
     transition: background-color 0.3s ease, transform 0.2s ease;
+    border: none;
+    padding: 0;
 }
 
 .dot.active {
     background-color: black; /* צבע הנקודה הפעילה */
     transform: scale(1.2); /* הגדלה קלה של הנקודה הפעילה */
+}
+
+.dot:focus-visible {
+    outline: 2px solid #fff;
+    outline-offset: 2px;
 }
 
 

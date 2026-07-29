@@ -14,36 +14,47 @@
     {% csrf_token %}
     {{ form.honeypot }}
     <div class="form-grid">
-      <label>*שם מלא שנרשם בעת הרכישה {{ form.full_name }}</label>
-      {% for err in form.full_name.errors %}
-      {% endfor %}
+      <label>שם מלא שנרשם בעת הרכישה (חובה) {{ form.full_name }}</label>
+      {% if form.full_name.errors %}
+      <div id="full_name-error" class="errors" role="alert">
+        {% for err in form.full_name.errors %}{{ err }}{% endfor %}
+      </div>
+      {% endif %}
 
-      <label>טלפון* {{ form.phone }}</label>
-      {% for err in form.phone.errors %}
-      {% endfor %}
+      <label>טלפון (חובה) {{ form.phone }}</label>
+      {% if form.phone.errors %}
+      <div id="phone-error" class="errors" role="alert">
+        {% for err in form.phone.errors %}{{ err }}{% endfor %}
+      </div>
+      {% endif %}
 
-      <label>מס׳ הזמנה (כפי שמופיע באישור ההזמנה לדוגמה: MZ-12345678)* {{ form.order_id }}</label>
-      {% for err in form.order_id.errors %}
-      {% endfor %}
+      <label>מס׳ הזמנה (חובה, כפי שמופיע באישור ההזמנה לדוגמה: MZ-12345678) {{ form.order_id }}</label>
+      {% if form.order_id.errors %}
+      <div id="order_id-error" class="errors" role="alert">
+        {% for err in form.order_id.errors %}{{ err }}{% endfor %}
+      </div>
+      {% endif %}
 
       <label>אימייל {{ form.email }}</label>
-      {% for err in form.email.errors %}
-      {% endfor %}
+      {% if form.email.errors %}
+      <div id="email-error" class="errors" role="alert">
+        {% for err in form.email.errors %}{{ err }}{% endfor %}
+      </div>
+      {% endif %}
 
       <label>סיבת הביטול {{ form.reason }}</label>
-      {% for err in form.reason.errors %}
-      {% endfor %}
+      {% if form.reason.errors %}
+      <div id="reason-error" class="errors" role="alert">
+        {% for err in form.reason.errors %}{{ err }}{% endfor %}
+      </div>
+      {% endif %}
 
       {{ form.booking }} {{ form.appointment }}
     </div>
 
     {# שגיאות כלליות (non-field) מלמעלה — כמו שאהבת #}
     {% for err in form.non_field_errors %}
-      <div class="errors">{{ err }}</div>
-    {% endfor %}
-
-    {% for err in form.non_field_errors %}
-      <div class="errors">{{ err }}</div>
+      <div class="errors" role="alert">{{ err }}</div>
     {% endfor %}
 
     <button type="submit" class="btn btn-primary">שליחת בקשה</button>
