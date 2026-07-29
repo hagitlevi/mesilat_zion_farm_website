@@ -156,9 +156,20 @@ USE_I18N = True
 
 USE_TZ = True
 
-PAYMENT_PROVIDER           = os.getenv("PAYMENT_PROVIDER", "mock")  # שנה ל-"tranzila" בפרודקשן
-TRANZILA_SUPPLIER          = os.getenv("TRANZILA_SUPPLIER", "")
-TRANZILA_TERMINAL_PASSWORD = os.getenv("TRANZILA_TERMINAL_PASSWORD", "")
+PAYMENT_PROVIDER = os.getenv("PAYMENT_PROVIDER", "mock")  # שנה ל-"payplus" בפרודקשן
+
+# שני סטים של מפתחות חיים ב-.env בו-זמנית (test + production) — הבחירה ביניהם
+# אוטומטית לפי DEBUG, כדי שלא יהיה צורך להחליף ערכים ידנית בין הסביבות.
+if DEBUG:
+    PAYPLUS_API_KEY          = os.getenv("PAYPLUS_TEST_API_KEY", "")
+    PAYPLUS_SECRET_KEY       = os.getenv("PAYPLUS_TEST_SECRET_KEY", "")
+    PAYPLUS_PAYMENT_PAGE_UID = os.getenv("PAYPLUS_TEST_PAYMENT_PAGE_UID", "")
+    PAYPLUS_BASE_URL         = "https://restapidev.payplus.co.il/api/v1.0"
+else:
+    PAYPLUS_API_KEY          = os.getenv("PAYPLUS_PROD_API_KEY", "")
+    PAYPLUS_SECRET_KEY       = os.getenv("PAYPLUS_PROD_SECRET_KEY", "")
+    PAYPLUS_PAYMENT_PAGE_UID = os.getenv("PAYPLUS_PROD_PAYMENT_PAGE_UID", "")
+    PAYPLUS_BASE_URL         = "https://restapi.payplus.co.il/api/v1.0"
 
 
 # ==== Policy Versions (for consent & UI logic) ====

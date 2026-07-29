@@ -11,6 +11,11 @@ from decimal import Decimal, ROUND_HALF_UP
 from django.conf import settings
 import secrets
 import time as time_mod
+import base64
+import hashlib
+import hmac
+import json
+import requests
 from django.contrib import messages
 from django_ratelimit.decorators import ratelimit
 from homePage.utils import assign_unique_ref
@@ -21,34 +26,56 @@ import logging
 
 logger = logging.getLogger(__name__)
 #--------------------------פונקציות עזר--------------------------
-def _build_tranzila_url(request, payment) -> str:
-    """בונה URL להעברת הלקוח לדף הסליקה של טרנזילה."""
-    supplier    = settings.TRANZILA_SUPPLIER
-    amount_nis  = str(Decimal(payment.amount_agorot) / 100)
-    success_url = request.build_absolute_uri(reverse("pay_return"))
-    fail_url    = request.build_absolute_uri(reverse("pay_return"))
-    notify_url  = request.build_absolute_uri(reverse("pay_webhook"))
+def _create_payplus_payment_link(request, payment) -> str:
+    """יוצר קישור לדף הסליקה המתארח של PayPlus ושומר את מזהה בקשת התשלום."""
+    return_url   = _append_qs(request.build_absolute_uri(reverse("pay_return")), payment_id=payment.id)
+    callback_url = request.build_absolute_uri(reverse("pay_webhook"))
 
-    params = {
-        "supplier":    supplier,
-        "sum":         amount_nis,
-        "currency":    "1",       # 1 = שקל
-        "tranmode":    "A",       # A = חיוב מיידי
-        "cred_type":   "1",       # 1 = רגיל
-        "lang":        "he",
-        "contact":     payment.customer_name,
-        "email":       payment.email,
-        "phone":       payment.phone,
-        "myid":        str(payment.id),
-        "success_url": success_url,
-        "fail_url":    fail_url,
-        "notify_url":  notify_url,
+    payload = {
+        "payment_page_uid": settings.PAYPLUS_PAYMENT_PAGE_UID,
+        "amount":           float(Decimal(payment.amount_agorot) / 100),
+        "currency_code":    payment.currency,
+        "more_info":        str(payment.id),
+        "refURL_success":   return_url,
+        "refURL_failure":   return_url,
+        "refURL_cancel":    return_url,
+        "refURL_callback":  callback_url,
+        "sendEmailApproval": False,
+        "sendEmailFailure":  False,
     }
-    if settings.TRANZILA_TERMINAL_PASSWORD:
-        params["TranzilaPW"] = settings.TRANZILA_TERMINAL_PASSWORD
+    headers = {
+        "api-key":    settings.PAYPLUS_API_KEY,
+        "secret-key": settings.PAYPLUS_SECRET_KEY,
+        "Content-Type": "application/json",
+    }
+    resp = requests.post(
+        f"{settings.PAYPLUS_BASE_URL}/PaymentPages/generateLink",
+        json=payload, headers=headers, timeout=10,
+    )
+    if not resp.ok:
+        raise ValueError(f"PayPlus generateLink HTTP {resp.status_code}: {resp.text}")
+    body = resp.json()
+    if (body.get("results") or {}).get("code") != 0:
+        raise ValueError(f"PayPlus generateLink error: {body.get('results')}")
 
-    base = f"https://direct.tranzila.com/{supplier}/iframenew.php"
-    return f"{base}?{urlencode(params)}"
+    data = body["data"]
+    payment.provider_session_id = data.get("page_request_uid", "")
+    payment.save(update_fields=["provider_session_id"])
+    return data["payment_page_link"]
+
+
+def _verify_payplus_signature(request) -> bool:
+    """מאמת שהבקשה אכן הגיעה מ-PayPlus: HMAC-SHA256 של גוף הבקשה הגולמי, מושווה מול header בשם hash."""
+    if request.META.get("HTTP_USER_AGENT") != "PayPlus":
+        return False
+    received_hash = request.headers.get("hash", "")
+    secret = settings.PAYPLUS_SECRET_KEY
+    if not received_hash or not secret:
+        return False
+    computed_hash = base64.b64encode(
+        hmac.new(secret.encode(), request.body, hashlib.sha256).digest()
+    ).decode()
+    return hmac.compare_digest(computed_hash, received_hash)
 
 
 def _append_qs(url, **params):
@@ -150,8 +177,17 @@ def pay_start(request):
     )
     request.session['last_payment_id'] = payment.id
 
-    if settings.PAYMENT_PROVIDER == "tranzila":
-        return redirect(_build_tranzila_url(request, payment))
+    if settings.PAYMENT_PROVIDER == "payplus":
+        try:
+            link = _create_payplus_payment_link(request, payment)
+        except Exception:
+            logger.exception("payplus: failed to create payment link for payment #%s", payment.id)
+            payment.status = "failed"
+            payment.error_message = "שגיאה ביצירת קישור לתשלום"
+            payment.save(update_fields=["status", "error_message"])
+            messages.error(request, "לא ניתן להתחיל את התשלום כרגע. נסו שוב מאוחר יותר.", extra_tags="payment_failed")
+            return redirect("home")
+        return redirect(link)
     return redirect(reverse("mock_checkout", kwargs={"payment_id": payment.id}))
 
 # 2) חזרה מהסליקה — מחליטים על הודעה, ומפנים לדף הבית
@@ -198,29 +234,33 @@ def pay_return(request):
 @csrf_exempt
 def pay_webhook(request):
     """
-    Webhook מאוחד — תומך במוק ובטרנזילה.
+    Webhook מאוחד — תומך במוק וב-PayPlus.
 
-    מוק (DEBUG בלבד): POST עם payment_id + outcome=success|fail|cancel
-    טרנזילה:          POST עם myid + Response ("000"=הצלחה) + TranzilaTK
+    מוק (DEBUG בלבד): POST (form) עם payment_id + outcome=success|fail|cancel
+    PayPlus:          POST (JSON) מאומת ע"י header בשם hash (HMAC-SHA256 של הגוף)
     """
     logger.debug("pay_webhook called with method: %s", request.method)
 
     if request.method != "POST":
         return HttpResponseBadRequest("Invalid method")
 
-    if request.POST.get("TranzilaTK"):
-        # פורמט טרנזילה — אימות סיסמת טרמינל חובה (fail closed אם לא הוגדרה)
-        terminal_pw = settings.TRANZILA_TERMINAL_PASSWORD
-        if not terminal_pw or request.POST.get("TranzilaPW") != terminal_pw:
-            logger.warning("webhook: terminal password missing/mismatch from IP %s", request.META.get("REMOTE_ADDR"))
+    if request.headers.get("hash"):
+        # פורמט PayPlus — אימות חתימה חובה (fail closed אם לא תקין)
+        if not _verify_payplus_signature(request):
+            logger.warning("webhook: payplus signature missing/mismatch from IP %s", request.META.get("REMOTE_ADDR"))
             return HttpResponseBadRequest("Unauthorized")
         try:
-            pid = int(request.POST.get("myid"))
+            body = json.loads(request.body or b"{}")
+        except ValueError:
+            return HttpResponseBadRequest("invalid json")
+        transaction = body.get("transaction") or {}
+        try:
+            pid = int(transaction.get("more_info"))
         except (TypeError, ValueError):
-            return HttpResponseBadRequest("missing myid")
-        tranzila_response = (request.POST.get("Response") or "").strip()
-        new_status  = "succeeded" if tranzila_response == "000" else "failed"
-        tranzila_tk = request.POST.get("TranzilaTK", "")
+            return HttpResponseBadRequest("missing more_info")
+        status_code = str(transaction.get("status_code") or "").strip()
+        new_status  = "succeeded" if status_code == "000" else "failed"
+        charge_ref  = transaction.get("uid") or ""
     else:
         # פורמט מוק — מותר רק בפיתוח
         if not settings.DEBUG:
@@ -232,7 +272,7 @@ def pay_webhook(request):
         outcome    = (request.POST.get("outcome") or "").lower()
         status_map = {"success": "succeeded", "fail": "failed", "cancel": "canceled"}
         new_status  = status_map.get(outcome, "failed")
-        tranzila_tk = None
+        charge_ref  = None
 
     payment = get_object_or_404(Payment, id=pid)
     FINALS = ("succeeded", "failed", "canceled", "refunded")
@@ -257,9 +297,9 @@ def pay_webhook(request):
             # 3) סימון סטטוס וסימון זמן קליטת ה-webhook
             payment.status = "succeeded"
             payment.webhook_received_at = timezone.now()
-            # שמירת מזהה עסקה מטרנזילה אם קיים
-            if tranzila_tk and not payment.charge_id:
-                payment.charge_id = tranzila_tk
+            # שמירת מזהה עסקה מהספק אם קיים
+            if charge_ref and not payment.charge_id:
+                payment.charge_id = charge_ref
             payment.save(update_fields=["status", "webhook_received_at", "charge_id"])
 
             # 4) עדכון סטטוס ההזמנה
