@@ -201,8 +201,8 @@ def pay_return(request):
         messages.error(request, "לא נמצא תשלום תואם.", extra_tags="payment_failed")
         return redirect('home')
 
-    # נחכה בשקט עד 5 שניות שה-webhook יסיים (בלי להראות "מעבדים...")
-    deadline = time_mod.time() + 5.0
+    # נחכה בשקט עד 10 שניות שה-webhook יסיים (בלי להראות "מעבדים...")
+    deadline = time_mod.time() + 10.0
     payment = None
     finals = ('succeeded', 'failed', 'canceled', 'refunded')
 
@@ -212,7 +212,7 @@ def pay_return(request):
             break
         time_mod.sleep(0.3)
 
-    # בדיקה אחרונה והודעה אחת בלבד: הצלחה או שגיאה
+    # בדיקה אחרונה
     payment = Payment.objects.filter(id=pid).only('status', 'charge_id').first()
     if payment and payment.status == 'succeeded':
         messages.success(
@@ -220,12 +220,21 @@ def pay_return(request):
             "הקבלה והפרטים על התור יישלחו במייל ובהודעת SMS בדקות הקרובות.",
             extra_tags="payment_succeeded",
         )
-    else:
-        ref = (payment.charge_id if payment else None) or "—"
+    elif payment and payment.status in finals:
+        # סטטוס סופי אמיתי (failed/canceled/refunded) — כישלון וודאי
         messages.error(
             request,
-            f"התשלום לא הושלם. ניתן לנסות שוב או ליצור קשר.",
+            "התשלום לא הושלם. ניתן לנסות שוב או ליצור קשר.",
             extra_tags="payment_failed",
+        )
+    else:
+        # עדיין pending אחרי ההמתנה — לא ידוע בוודאות שנכשל (ה-webhook עלול להגיע באיחור),
+        # אז לא מציגים הודעת כישלון שקרית.
+        messages.info(
+            request,
+            "התשלום עדיין בעיבוד. אם בוצע בהצלחה תקבלו אישור במייל ובהודעת SMS בדקות הקרובות. "
+            "אם לא תקבלו אישור בזמן קצר, אנא צרו קשר.",
+            extra_tags="payment_pending",
         )
 
     return redirect('home')
