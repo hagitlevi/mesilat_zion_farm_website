@@ -523,6 +523,7 @@ def admin_pay_stub(request):
             if mode == "booking" and obj:
                 fail_redirect = reverse("admin:homePage_booking_change", args=[obj.id])
 
+            hold_token = None
             try:
                 if mode == "booking_draft":
                     activity = Activity.objects.get(pk=int(booking_draft["activity_id"]))
@@ -677,112 +678,28 @@ def admin_pay_stub(request):
             if sent:
                 messages.success(request, f"קישור תשלום נשלח ב-SMS למספר {phone_raw}.")
             else:
-                messages.warning(request, f"נוצר קישור תשלום אך שליחת ה-SMS נכשלה. אפשר להעתיק ולשלוח ידנית: {link}")
+                # ה-SMS לא באמת הגיע ללקוח — לא משאירים משהו שנראה כמו הצלחה חלקית:
+                # מבטלים את ה-hold (אם זו טיוטה) ומסמנים את התשלום ככשל, כדי שאפשר יהיה לנסות שוב מאפס.
+                if mode == "booking_draft" and hold_token:
+                    release_hold(hold_token)
+                payment.status = "failed"
+                payment.error_message = "שליחת ה-SMS נכשלה"
+                payment.save(update_fields=["status", "error_message"])
+                messages.error(request, f"שליחת ה-SMS נכשלה — הקישור לא נשלח ללקוח. אפשר להעתיק ולשלוח ידנית: {link}")
 
             return redirect(fail_redirect)
 
         # ---------- הזמנה מטיוטה ----------
+        # אין יותר אפשרות "לסמן כשולם" ידנית על טיוטה חדשה: אם לא סומן "ללא תשלום"
+        # בטופס היצירה, ההזמנה יכולה להיסגר רק אחרי תשלום אמיתי ומאומת מול PayPlus
+        # (ראו הענף "שליחת קישור תשלום ללקוח" למעלה, שמטפל ב-action == "send_link").
         if mode == "booking_draft":
-            try:
-                with transaction.atomic():
-                    activity = Activity.objects.select_for_update().get(pk=int(booking_draft["activity_id"]))
-                    d = datetime.fromisoformat(booking_draft["date"]).date()
-                    start_time = datetime.strptime(booking_draft["start"], "%H:%M:%S").time()
-                    minutes = int(booking_draft["minutes"])
-                    participants = int(booking_draft["participants"])
-
-                    start_dt = datetime.combine(d, start_time)
-                    slot_count = max(1, (minutes + 14) // 15)
-                    times_needed = [(start_dt + timedelta(minutes=15 * i)).time() for i in range(slot_count)]
-
-                    # לוודא שהסלוטים עדיין פנויים
-                    appts = list(
-                        Appointment.objects.select_for_update().filter(
-                            date=d, time__in=times_needed, is_booked=False, is_break=False
-                        ).order_by("time")
-                    )
-                    if len(appts) != slot_count:
-                        messages.error(request, "הסלוטים כבר נתפסו; התשלום לא בוצע.")
-                        return redirect(reverse("admin:homePage_appointment_book"))
-
-                    # סכום
-                    total_price = Decimal(booking_draft["total_price"]) if booking_draft.get("total_price") else None
-                    manual_total = Decimal(booking_draft["manual_total"]) if booking_draft.get("manual_total") else None
-                    if manual_total is not None:
-                        total_price = manual_total
-
-                    # יצירת ההזמנה (שולם)
-                    booking = Booking.objects.create(
-                        activity=activity,
-                        customer_name=f'{booking_draft["customer"]["first_name"]} {booking_draft["customer"]["last_name"]}'.strip(),
-                        customer_phone=booking_draft["customer"]["phone"],
-                        customer_email=booking_draft["customer"]["email"],
-                        participants=participants,
-                        total_price=total_price,
-                        payment_method="admin",
-                        status="paid",
-                        start_dt=start_dt,
-                        end_dt=start_dt + timedelta(minutes=minutes),
-                        details=booking_draft.get("details") or "נקבע באדמין",
-                    )
-                    booking.payment_ref = gen_unique_ref_any()
-                    booking.save(update_fields=["payment_ref"])
-
-                    # תפיסת סלוטים
-                    for a in appts:
-                        a.booking = booking
-                        a.is_booked = True
-                        a.is_paid = True
-                        a.is_break = False
-                        a.payment_reference = booking.payment_ref
-                        if a.activity_id != activity.id:
-                            a.activity = activity
-                        a.save(update_fields=["booking", "is_booked", "is_paid", "is_break", "payment_reference", "activity"])
-                        if hasattr(a, "activities"):
-                            a.activities.add(activity)
-
-                    # הפסקת 15 דק׳ אם צריך (אם פנויה)
-                    if minutes > 30:
-                        extra_start = start_dt + timedelta(minutes=15 * slot_count)
-                        extra = Appointment.objects.select_for_update().filter(
-                            date=d, time=extra_start.time(), is_booked=False, is_break=False
-                        ).first()
-                        if extra:
-                            extra.booking = booking
-                            extra.is_booked = True
-                            extra.is_break = True
-                            extra.is_paid = False
-                            extra.payment_reference = booking.payment_ref
-                            if extra.activity_id != activity.id:
-                                extra.activity = activity
-                            extra.save(update_fields=["booking", "is_booked", "is_break", "is_paid", "payment_reference", "activity"])
-
-            except Exception:
-                messages.error(request, "שגיאה במהלך התשלום/היצירה.")
-                return redirect(reverse("admin:homePage_appointment_book"))
-
-            # מייל + SMS
-            try:
-                agorot = int(Decimal(booking.total_price or 0) * 100)
-                payment_like = SimpleNamespace(
-                    email=booking.customer_email,
-                    customer_name=booking.customer_name,
-                    amount_agorot=agorot,
-                    charge_id=booking.payment_ref,
-                )
-                send_booking_email(payment_like, booking)
-                if getattr(settings, "SEND_SMS", False) and (booking.customer_phone or "").strip():
-                    sms_text = format_booking_sms(payment_like, booking)
-                    try:
-                        send_sms_via_ntfy(booking.customer_phone, sms_text)
-                    except Exception:
-                        pass
-            except Exception:
-                pass
-
-            request.session.pop("booking_draft", None)
-            messages.success(request, f"התשלום בוצע וההזמנה #{booking.id} נוצרה.")
-            return redirect(reverse("admin:homePage_booking_change", args=[booking.id]))
+            messages.error(
+                request,
+                "לא ניתן ליצור הזמנה בלי תשלום מאומת. השתמשי ב'שלח קישור תשלום ללקוח', "
+                "או סמני 'ללא תשלום – צור הזמנה ישירות' בטופס היצירה.",
+            )
+            return redirect(reverse("admin:homePage_appointment_book"))
 
         # ---------- תשלום להזמנה קיימת ----------
         if mode == "booking" and obj:

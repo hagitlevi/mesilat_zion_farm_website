@@ -90,7 +90,9 @@
       {% endif %}
 
       <div class="mz-actions">
-        <button class="mz-btn" name="action" value="mark_paid" type="submit">בצע תשלום</button>
+        {% if mode != "booking_draft" %}
+          <button class="mz-btn" name="action" value="mark_paid" type="submit">בצע תשלום</button>
+        {% endif %}
         {% if show_send_link %}
           <button class="mz-btn" name="action" value="send_link" type="submit">שלח קישור תשלום ללקוח</button>
         {% endif %}
