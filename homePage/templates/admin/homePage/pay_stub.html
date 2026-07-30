@@ -73,12 +73,29 @@
       {% endif %}
     {% endif %}
 
-    {# ---- כפתור תשלום יחיד ---- #}
-    <form method="post" class="mz-actions" id="pay-form">
+    {# ---- כפתורי תשלום ---- #}
+    <form method="post" id="pay-form">
       {% csrf_token %}
       {% if obj %}<input type="hidden" name="id" value="{{ obj.pk }}">{% endif %}
-      <button class="mz-btn" id="pay-btn" type="submit">בצע תשלום</button>
-      <a class="button" href="{% url 'admin:index' %}" style="line-height:36px">חזרה</a>
+
+      {% if show_send_link %}
+        <div class="mz-row">
+          <div class="mz-label">טל' לשליחת קישור</div>
+          <div class="mz-val">
+            <input type="tel" name="link_phone" value="{{ send_link_phone|default:'' }}"
+                   placeholder="05XXXXXXXX" dir="ltr"
+                   style="padding:6px 10px;border:1px solid #d1d5db;border-radius:6px;width:200px;text-align:left">
+          </div>
+        </div>
+      {% endif %}
+
+      <div class="mz-actions">
+        <button class="mz-btn" name="action" value="mark_paid" type="submit">בצע תשלום</button>
+        {% if show_send_link %}
+          <button class="mz-btn" name="action" value="send_link" type="submit">שלח קישור תשלום ללקוח</button>
+        {% endif %}
+        <a class="button" href="{% url 'admin:index' %}" style="line-height:36px">חזרה</a>
+      </div>
     </form>
   </div>
 </div>
@@ -86,11 +103,10 @@
 <script>
   (function(){
     const f = document.getElementById('pay-form');
-    const b = document.getElementById('pay-btn');
-    if(!f || !b) return;
-    f.addEventListener('submit', function(){
-      b.disabled = true;
-      b.textContent = 'מעבד...';
+    if(!f) return;
+    f.addEventListener('submit', function(e){
+      f.querySelectorAll('button[type="submit"]').forEach(function(b){ b.disabled = true; });
+      if (e.submitter) { e.submitter.textContent = 'מעבד...'; }
     });
   })();
 </script>

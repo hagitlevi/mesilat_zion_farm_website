@@ -46,6 +46,7 @@ from django.db import transaction
 from django.utils import timezone
 import uuid
 from django.db.models import Q
+from homePage.views.payment import _create_payplus_payment_link
 
 delete_selected.short_description = "מחיקה"
 
@@ -508,6 +509,178 @@ def admin_pay_stub(request):
 
     # ===== POST: ביצוע התשלום =====
     if request.method == "POST":
+        action = (request.POST.get("action") or "mark_paid").strip()
+
+        # ---------- שליחת קישור תשלום ללקוח (PayPlus, בפועל מחייב כרטיס) ----------
+        if action == "send_link" and mode in {"booking_draft", "booking"}:
+            link_phone = (request.POST.get("link_phone") or "").strip()
+
+            if not getattr(settings, "PAYPLUS_API_KEY", "") or not getattr(settings, "PAYPLUS_PAYMENT_PAGE_UID", ""):
+                messages.error(request, "שירות הסליקה (PayPlus) עדיין לא מוגדר עם מפתחות אמיתיים.")
+                return redirect(reverse("admin:index"))
+
+            fail_redirect = reverse("admin:homePage_appointment_book")
+            if mode == "booking" and obj:
+                fail_redirect = reverse("admin:homePage_booking_change", args=[obj.id])
+
+            try:
+                if mode == "booking_draft":
+                    activity = Activity.objects.get(pk=int(booking_draft["activity_id"]))
+                    d = datetime.fromisoformat(booking_draft["date"]).date()
+                    start_time = datetime.strptime(booking_draft["start"], "%H:%M:%S").time()
+                    minutes = int(booking_draft["minutes"])
+                    participants = int(booking_draft["participants"])
+                    customer = booking_draft.get("customer") or {}
+                    phone_raw = link_phone or (customer.get("phone") or "").strip()
+                    full_name = f'{customer.get("first_name","")} {customer.get("last_name","")}'.strip()
+
+                    total_price = Decimal(booking_draft["total_price"]) if booking_draft.get("total_price") else None
+                    manual_total = Decimal(booking_draft["manual_total"]) if booking_draft.get("manual_total") else None
+                    if manual_total is not None:
+                        total_price = manual_total
+
+                    if not phone_raw:
+                        messages.error(request, "אין מספר טלפון לשליחת קישור תשלום.")
+                        return redirect(fail_redirect)
+                    if total_price is None:
+                        messages.error(request, "אין סכום לחיוב.")
+                        return redirect(fail_redirect)
+
+                    start_dt = datetime.combine(d, start_time)
+                    base_appt = Appointment.objects.filter(date=d, time=start_time).first()
+                    if not base_appt:
+                        messages.error(request, "לא נמצא סלוט מתאים לשליחת קישור.")
+                        return redirect(fail_redirect)
+
+                    amount = total_price
+                    hold_token = str(uuid.uuid4())
+                    hold_minutes = minutes + (15 if minutes > 30 else 0)
+                    hold = try_hold_chain(
+                        token=hold_token, user=request.user, date=d, start_dt=start_dt,
+                        minutes_total_for_hold=hold_minutes, ttl_minutes=60,
+                    )
+                    if not hold.ok:
+                        messages.error(request, "הסלוטים תפוסים/מוחזקים כרגע; לא ניתן לשלוח קישור תשלום.")
+                        return redirect(fail_redirect)
+
+                    amount_agorot = int((total_price * 100).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
+                    payment = Payment.objects.create(
+                        provider="payplus",
+                        amount_agorot=amount_agorot,
+                        currency="ILS",
+                        status="pending",
+                        appointment_id=base_appt.id,
+                        activity_id=activity.id,
+                        duration_minutes=minutes,
+                        participants=participants,
+                        customer_name=full_name,
+                        phone=phone_raw,
+                        email=(customer.get("email") or "").strip().lower(),
+                        raw_metadata={
+                            "activity_type": booking_draft.get("couple_variant") or booking_draft.get("horse_color") or "",
+                            "wine": booking_draft.get("wine") or "",
+                            "admin_hold_token": hold_token,
+                            "source": "admin_pay_stub_draft",
+                        },
+                    )
+
+                    try:
+                        link = _create_payplus_payment_link(request, payment)
+                    except Exception:
+                        release_hold(hold_token)
+                        payment.status = "failed"
+                        payment.save(update_fields=["status"])
+                        messages.error(request, "שגיאה ביצירת קישור התשלום מול PayPlus.")
+                        return redirect(fail_redirect)
+
+                    request.session.pop("booking_draft", None)
+
+                else:  # mode == "booking" — הזמנה קיימת (למשל נוצרה קודם ללא תשלום)
+                    if not obj:
+                        messages.error(request, "לא נמצאה הזמנה.")
+                        return redirect(reverse("admin:index"))
+
+                    phone_raw = link_phone or (obj.customer_phone or "").strip()
+                    full_name = (obj.customer_name or "").strip()
+                    if not phone_raw:
+                        messages.error(request, "אין מספר טלפון לשליחת קישור תשלום.")
+                        return redirect(fail_redirect)
+                    if obj.total_price is None:
+                        messages.error(request, "אין סכום לחיוב בהזמנה זו.")
+                        return redirect(fail_redirect)
+                    if not (obj.start_dt and obj.end_dt):
+                        messages.error(request, "חסרות שעות התחלה/סיום בהזמנה.")
+                        return redirect(fail_redirect)
+
+                    base_appt = Appointment.objects.filter(booking=obj).order_by("time").first()
+                    if not base_appt:
+                        messages.error(request, "לא נמצאו סלוטים משויכים להזמנה זו.")
+                        return redirect(fail_redirect)
+
+                    existing_payment = Payment.objects.filter(booking=obj).first()
+                    if existing_payment and existing_payment.status == "succeeded":
+                        messages.info(request, "ההזמנה כבר שולמה.")
+                        return redirect(fail_redirect)
+
+                    amount = Decimal(obj.total_price)
+                    minutes = int((obj.end_dt - obj.start_dt).total_seconds() // 60)
+                    amount_agorot = int((amount * 100).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
+
+                    if existing_payment:
+                        payment = existing_payment
+                        payment.amount_agorot = amount_agorot
+                        payment.phone = phone_raw
+                        payment.customer_name = full_name
+                        payment.email = (obj.customer_email or "").strip().lower()
+                        payment.duration_minutes = minutes
+                        payment.participants = obj.participants
+                        payment.appointment_id = base_appt.id
+                        payment.activity_id = obj.activity_id
+                        payment.status = "pending"
+                        payment.save()
+                    else:
+                        payment = Payment.objects.create(
+                            provider="payplus",
+                            amount_agorot=amount_agorot,
+                            currency="ILS",
+                            status="pending",
+                            appointment_id=base_appt.id,
+                            activity_id=obj.activity_id,
+                            duration_minutes=minutes,
+                            participants=obj.participants,
+                            customer_name=full_name,
+                            phone=phone_raw,
+                            email=(obj.customer_email or "").strip().lower(),
+                            booking=obj,
+                            raw_metadata={"source": "admin_pay_stub_booking"},
+                        )
+
+                    try:
+                        link = _create_payplus_payment_link(request, payment)
+                    except Exception:
+                        payment.status = "failed"
+                        payment.save(update_fields=["status"])
+                        messages.error(request, "שגיאה ביצירת קישור התשלום מול PayPlus.")
+                        return redirect(fail_redirect)
+
+            except (KeyError, ValueError, TypeError, Activity.DoesNotExist):
+                messages.error(request, "שגיאה בנתוני ההזמנה/הטיוטה.")
+                return redirect(fail_redirect)
+
+            sms_text = f"שלום {full_name}, לתשלום עבור ההזמנה במסילת ציון:\n{link}\nסכום לתשלום: {_fmt_ils(amount)}"
+            sent = False
+            try:
+                sent = send_sms_via_ntfy(phone_raw, sms_text)
+            except Exception:
+                sent = False
+
+            if sent:
+                messages.success(request, f"קישור תשלום נשלח ב-SMS למספר {phone_raw}.")
+            else:
+                messages.warning(request, f"נוצר קישור תשלום אך שליחת ה-SMS נכשלה. אפשר להעתיק ולשלוח ידנית: {link}")
+
+            return redirect(fail_redirect)
+
         # ---------- הזמנה מטיוטה ----------
         if mode == "booking_draft":
             try:
@@ -801,6 +974,12 @@ def admin_pay_stub(request):
         return redirect(reverse("admin:index"))
 
     # ===== GET: מציגים תמיד אותו דף תשלום (בלי chooser) =====
+    if mode == "booking_draft":
+        draft_phone = ((booking_draft.get("customer") or {}).get("phone") or "").strip()
+    else:
+        draft_phone = ""
+    obj_phone = (getattr(obj, "customer_phone", "") or "").strip() if mode == "booking" and obj else ""
+
     ctx = {
         "title": title,
         "opts": (Booking._meta if mode.startswith("booking") else TreatmentSession._meta),
@@ -808,6 +987,8 @@ def admin_pay_stub(request):
         "obj": obj,
         "draft": booking_draft if mode == "booking_draft" else (session_draft if mode == "session_draft" else None),
         "has_draft": mode in {"booking_draft", "session_draft"},
+        "show_send_link": mode in {"booking_draft", "booking"},
+        "send_link_phone": draft_phone or obj_phone,
     }
     return render(request, "admin/homePage/pay_stub.html", ctx)
 
