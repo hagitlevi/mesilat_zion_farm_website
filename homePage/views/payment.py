@@ -101,23 +101,34 @@ def _query_payplus_transaction_status(payment, transaction_uid: str | None = Non
         logger.info("payplus: status check returned results.code=%s for payment #%s: %s", results_code, payment.id, body)
         return None
 
-    # הצורה האמיתית שחזרה מ-PayPlus: data.transactions.transaction, כאשר "transaction" הוא
-    # dict בודד אם יש תוצאה אחת, או list אם יש כמה (דומה למבנה XML-to-JSON טיפוסי).
-    data = body.get("data") or {}
-    txns_wrapper = data.get("transactions")
-    if isinstance(txns_wrapper, dict):
-        inner = txns_wrapper.get("transaction")
-    elif isinstance(txns_wrapper, list):
-        inner = txns_wrapper
-    else:
-        inner = data.get("transaction")
+    # הצורה האמיתית שחוזרת מ-PayPlus ל-Transactions/View (מאומת מול הסביבה האמיתית):
+    # data הוא LIST של רשומות {"transaction": {...}, "data": {...}}. עדיין תומכים גם
+    # בצורה החלופית data.transactions.transaction (dict/list) ליתר ביטחון, כי לא
+    # מתועד רשמית איזו צורה בדיוק חוזרת בכל query (more_info מול transaction_uid).
+    data = body.get("data")
+    entries: list = []
+    if isinstance(data, list):
+        entries = data
+    elif isinstance(data, dict):
+        txns_wrapper = data.get("transactions")
+        if isinstance(txns_wrapper, dict):
+            inner = txns_wrapper.get("transaction")
+        elif isinstance(txns_wrapper, list):
+            inner = txns_wrapper
+        else:
+            inner = data.get("transaction")
+        if isinstance(inner, list):
+            entries = inner
+        elif isinstance(inner, dict):
+            entries = [inner]
 
-    if isinstance(inner, list):
-        transactions = inner
-    elif isinstance(inner, dict):
-        transactions = [inner]
-    else:
-        transactions = None
+    transactions = []
+    for entry in entries:
+        if not isinstance(entry, dict):
+            continue
+        txn = entry.get("transaction") if isinstance(entry.get("transaction"), dict) else entry
+        if isinstance(txn, dict) and txn.get("status_code") is not None:
+            transactions.append(txn)
 
     if not transactions:
         logger.info("payplus: status check found no transactions yet for payment #%s: %s", payment.id, body)
@@ -140,41 +151,50 @@ def _apply_payment_outcome(request, payment, new_status: str, charge_ref: str | 
     """
     FINALS = ("succeeded", "failed", "canceled", "refunded")
 
-    if payment.status == "succeeded":
-        if not payment.charge_id and getattr(payment, "booking_id", None):
-            payment.charge_id = (getattr(payment.booking, "payment_ref", None) or str(payment.booking_id))
-            payment.save(update_fields=["charge_id"])
-        return
+    with transaction.atomic():
+        # נועלים את שורת ה-Payment עצמה (ולא רק את התור, כמו שקורה בהמשך בתוך
+        # _finalize_booking_after_payment) - כדי שקריאות מקבילות לאותו תשלום (webhook +
+        # pay_return + פולינג מה-JS ב-pay_status, שיכולות להגיע כמעט בו-זמנית בפרודקשן
+        # עם webhook אמיתי) לא "יעברו יחד" את בדיקת הסטטוס לפני שאחת מהן הספיקה לכתוב.
+        # בלי הנעילה הזו, שתי הקריאות עלולות שתיהן לראות status='pending' ולשלוח
+        # ללקוח מייל+SMS כפולים על אותו תשלום.
+        payment.refresh_from_db(from_queryset=Payment.objects.select_for_update())
 
-    if payment.status in FINALS:
-        return
+        if payment.status == "succeeded":
+            if not payment.charge_id and getattr(payment, "booking_id", None):
+                payment.charge_id = (getattr(payment.booking, "payment_ref", None) or str(payment.booking_id))
+                payment.save(update_fields=["charge_id"])
+            return
 
-    if new_status == "succeeded":
-        extra = request.session.pop("pending_booking_extra", {})
-        request.session.modified = True
-        booking = _finalize_booking_after_payment(payment, pending_extra=extra)
+        if payment.status in FINALS:
+            return
 
-        assign_unique_ref(booking, payment, digits=8)
+        if new_status == "succeeded":
+            extra = request.session.pop("pending_booking_extra", {})
+            request.session.modified = True
+            booking = _finalize_booking_after_payment(payment, pending_extra=extra)
 
-        payment.status = "succeeded"
-        payment.webhook_received_at = timezone.now()
-        if charge_ref and not payment.charge_id:
-            payment.charge_id = charge_ref
-        payment.save(update_fields=["status", "webhook_received_at", "charge_id"])
+            assign_unique_ref(booking, payment, digits=8)
 
-        new_bstatus = _pick_booking_status(Booking, "confirmed", "paid", "succeeded")
-        if getattr(booking, "status", None) != new_bstatus:
-            try:
-                booking.status = new_bstatus
-                booking.save(update_fields=["status"])
-            except Exception:
-                booking.save()
+            payment.status = "succeeded"
+            payment.webhook_received_at = timezone.now()
+            if charge_ref and not payment.charge_id:
+                payment.charge_id = charge_ref
+            payment.save(update_fields=["status", "webhook_received_at", "charge_id"])
 
-        notify_booking_success(payment, booking)
-    else:
-        payment.status = new_status
-        payment.webhook_received_at = timezone.now()
-        payment.save(update_fields=["status", "webhook_received_at"])
+            new_bstatus = _pick_booking_status(Booking, "confirmed", "paid", "succeeded")
+            if getattr(booking, "status", None) != new_bstatus:
+                try:
+                    booking.status = new_bstatus
+                    booking.save(update_fields=["status"])
+                except Exception:
+                    booking.save()
+
+            notify_booking_success(payment, booking)
+        else:
+            payment.status = new_status
+            payment.webhook_received_at = timezone.now()
+            payment.save(update_fields=["status", "webhook_received_at"])
 
 
 def _verify_payplus_signature(request) -> bool:
@@ -361,6 +381,14 @@ def pay_return(request):
             extra_tags=f"payment_pending payment_id_{pid}",
         )
 
+    # תשלום שהמנהלת התחילה מדף הניהול ("הקלידי כרטיס כאן") — לא מחזירים אותה
+    # לדף הבית של האתר כמו לקוח רגיל, אלא נשארים בממשק הניהול.
+    source = (getattr(payment, "raw_metadata", None) or {}).get("source", "") if payment else ""
+    if payment and str(source).startswith("admin_pay_stub"):
+        if payment.booking_id:
+            return redirect(reverse("admin:homePage_booking_change", args=[payment.booking_id]))
+        return redirect(reverse("admin:homePage_appointment_book"))
+
     return redirect('home')
 
 
@@ -384,7 +412,7 @@ def pay_status(request, payment_id: int):
         except Exception:
             logger.exception("pay_status: failed to finalize payment #%s via status check", payment.id)
 
-    return JsonResponse({"status": payment.status})
+    return JsonResponse({"status": payment.status, "booking_id": payment.booking_id})
 
 # Webhook — כאן קובעים סטטוס סופי, יוצרים Booking, ושולחים מייל+SMS (3
 @csrf_exempt

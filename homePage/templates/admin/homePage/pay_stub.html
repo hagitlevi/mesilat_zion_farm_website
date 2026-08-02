@@ -18,6 +18,62 @@
   <h1 style="margin-bottom:14px">{{ title|default:"תשלום" }}</h1>
 
   <div class="mz-card">
+  {% if waiting_payment_id %}
+    <div class="mz-row"><div class="mz-label">סטטוס</div>
+      <div class="mz-val" id="wait-status">ממתינים לאישור התשלום מהלקוח...</div></div>
+    <div class="mz-row"><div class="mz-label">סכום</div><div class="mz-val">{{ waiting_amount }}</div></div>
+    {% if waiting_open_here %}
+      <div class="mz-row"><div class="mz-label">דף סליקה</div>
+        <div class="mz-val">
+          <a id="open-payplus" class="button" href="{{ waiting_link }}" target="_blank" rel="noopener">פתחי את דף הסליקה של PayPlus</a>
+          <div style="margin-top:6px;color:#6b7280">נפתח בכרטיסייה חדשה. מקלידים שם את פרטי הכרטיס בדיוק כמו שלקוח עושה באתר.</div>
+        </div></div>
+      <script>window.open("{{ waiting_link|escapejs }}", "_blank", "noopener");</script>
+    {% elif waiting_sms_sent %}
+      <div class="mz-row"><div class="mz-label">קישור</div>
+        <div class="mz-val">נשלח ב-SMS למספר {{ waiting_phone }}</div></div>
+    {% else %}
+      <div class="mz-row"><div class="mz-label">קישור</div>
+        <div class="mz-val" style="color:#b91c1c">
+          שליחת ה-SMS נכשלה — הקישור עצמו כן נוצר ותקף. אפשר להעתיק ולשלוח ידנית:<br>
+          <a href="{{ waiting_link }}" target="_blank" rel="noopener">{{ waiting_link }}</a>
+        </div></div>
+    {% endif %}
+
+    <div class="mz-actions">
+      <a class="button" href="{% url 'admin:index' %}" style="line-height:36px">חזרה (הבדיקה תמשיך ברקע)</a>
+    </div>
+
+    <script>
+      (function(){
+        const paymentId = {{ waiting_payment_id }};
+        const bookingUrlTpl = "{% url 'admin:homePage_booking_change' 0 %}";
+        const statusEl = document.getElementById('wait-status');
+        async function poll(){
+          try{
+            const r = await fetch("/pay/status/" + paymentId + "/", {headers: {"X-Requested-With": "XMLHttpRequest"}});
+            const data = await r.json();
+            if (data.status === "succeeded") {
+              statusEl.textContent = "התשלום אושר! עוברת להזמנה...";
+              statusEl.style.color = "#15803d";
+              if (data.booking_id) {
+                location.href = bookingUrlTpl.replace("/0/", "/" + data.booking_id + "/");
+              }
+              return;
+            }
+            if (data.status === "failed" || data.status === "canceled") {
+              statusEl.textContent = "התשלום נכשל או בוטל על ידי הלקוח.";
+              statusEl.style.color = "#b91c1c";
+              return;
+            }
+          } catch (e) { /* ignore, ננסה שוב */ }
+          setTimeout(poll, 4000);
+        }
+        poll();
+      })();
+    </script>
+
+  {% else %}
     {# ---- תקציר פרטים לפי מצב ---- #}
     {% if mode|default:""|slice:":7" == "booking" %}
       <div class="mz-row"><div class="mz-label">סוג</div><div class="mz-val">הזמנה</div></div>
@@ -95,10 +151,12 @@
         {% endif %}
         {% if show_send_link %}
           <button class="mz-btn" name="action" value="send_link" type="submit">שלח קישור תשלום ללקוח</button>
+          <button class="mz-btn" name="action" value="charge_here" type="submit">הקלידי כרטיס כאן (דף PayPlus)</button>
         {% endif %}
         <a class="button" href="{% url 'admin:index' %}" style="line-height:36px">חזרה</a>
       </div>
     </form>
+  {% endif %}
   </div>
 </div>
 
@@ -107,8 +165,15 @@
     const f = document.getElementById('pay-form');
     if(!f) return;
     f.addEventListener('submit', function(e){
-      f.querySelectorAll('button[type="submit"]').forEach(function(b){ b.disabled = true; });
-      if (e.submitter) { e.submitter.textContent = 'מעבד...'; }
+      // חשוב: אסור לנטרל (disabled) את הכפתור שנלחץ באופן סינכרוני כאן -
+      // דפדפנים לא כוללים כפתור מנוטרל בנתוני הטופס הנשלחים, כך שערך ה-action
+      // שלו (למשל charge_here) היה נעלם מהבקשה ומגיע לשרת כברירת המחדל mark_paid.
+      // ה-setTimeout דוחה את הניטרול לאחר שהדפדפן כבר קרא את נתוני השליחה.
+      const submitter = e.submitter;
+      setTimeout(function(){
+        f.querySelectorAll('button[type="submit"]').forEach(function(b){ b.disabled = true; });
+        if (submitter) { submitter.textContent = 'מעבד...'; }
+      }, 0);
     });
   })();
 </script>

@@ -297,32 +297,38 @@ def notify_booking_success(payment, booking):
   """פונקציה עזר לשליחת התראות (מייל + SMS) לאחר יצירת Booking חדש בהצלחה."""
   logger.debug("notify_booking_success called with payment: %s, booking: %s", payment, booking)
 
+  # לוגים כאן ברמת WARNING ומעלה בכוונה (לא INFO/DEBUG) — בפרודקשן (DEBUG=False) רמת
+  # הלוג היא WARNING, אז הודעות ברמה נמוכה יותר פשוט לא היו נראות בכלל בלוגים של Render.
   if getattr(settings, "SEND_EMAIL", False):
     try:
       sent = send_booking_email(payment, booking)
-      if not sent:
-        logger.warning("notify_booking_success: email not sent for payment #%s (booking #%s) — "
+      if sent:
+        logger.warning("notify_booking_success: email SENT OK for payment #%s (booking #%s)", payment.id, booking.id)
+      else:
+        logger.warning("notify_booking_success: email NOT sent for payment #%s (booking #%s) — "
                         "no exception raised, but send_booking_email returned falsy "
                         "(missing/invalid email, or SMTP failed silently)", payment.id, booking.id)
     except Exception:
       logger.exception("notify_booking_success: email send raised for payment #%s (booking #%s)",
                         payment.id, booking.id)
   else:
-    logger.info("notify_booking_success: SEND_EMAIL is off — skipping email for payment #%s", payment.id)
+    logger.warning("notify_booking_success: SEND_EMAIL is off — skipping email for payment #%s", payment.id)
 
   if getattr(settings, "SEND_SMS", False):
     try:
       sms_text = format_booking_sms(payment, booking)
       sent = send_sms_via_ntfy(payment.phone, sms_text)
-      if not sent:
-        logger.warning("notify_booking_success: SMS not sent for payment #%s (booking #%s) — "
+      if sent:
+        logger.warning("notify_booking_success: SMS SENT OK for payment #%s (booking #%s)", payment.id, booking.id)
+      else:
+        logger.warning("notify_booking_success: SMS NOT sent for payment #%s (booking #%s) — "
                         "no exception raised, but send_sms_via_ntfy returned falsy "
                         "(missing phone/topic, or ntfy call failed silently)", payment.id, booking.id)
     except Exception:
       logger.exception("notify_booking_success: SMS send raised for payment #%s (booking #%s)",
                         payment.id, booking.id)
   else:
-    logger.info("notify_booking_success: SEND_SMS is off — skipping SMS for payment #%s", payment.id)
+    logger.warning("notify_booking_success: SEND_SMS is off — skipping SMS for payment #%s", payment.id)
 
 
 ##-----------------------------------פונקציות לשליחת מייל------------------------------

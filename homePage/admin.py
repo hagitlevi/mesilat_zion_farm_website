@@ -511,8 +511,10 @@ def admin_pay_stub(request):
     if request.method == "POST":
         action = (request.POST.get("action") or "mark_paid").strip()
 
-        # ---------- שליחת קישור תשלום ללקוח (PayPlus, בפועל מחייב כרטיס) ----------
-        if action == "send_link" and mode in {"booking_draft", "booking"}:
+        # ---------- תשלום אמיתי דרך PayPlus: שליחת קישור ללקוח, או פתיחת דף הסליקה ----------
+        # (אותו דף PayPlus מתארח בדיוק כמו שלקוחות רואים באתר - רק שכאן המנהלת פותחת
+        # אותו בעצמה, למשל כדי להקליד פרטי כרטיס שהלקוח הקריא לה בטלפון)
+        if action in {"send_link", "charge_here"} and mode in {"booking_draft", "booking"}:
             link_phone = (request.POST.get("link_phone") or "").strip()
 
             if not getattr(settings, "PAYPLUS_API_KEY", "") or not getattr(settings, "PAYPLUS_PAYMENT_PAGE_UID", ""):
@@ -540,7 +542,7 @@ def admin_pay_stub(request):
                     if manual_total is not None:
                         total_price = manual_total
 
-                    if not phone_raw:
+                    if action == "send_link" and not phone_raw:
                         messages.error(request, "אין מספר טלפון לשליחת קישור תשלום.")
                         return redirect(fail_redirect)
                     if total_price is None:
@@ -554,7 +556,10 @@ def admin_pay_stub(request):
                         return redirect(fail_redirect)
 
                     amount = total_price
-                    hold_token = str(uuid.uuid4())
+                    # ממשיכים על אותו hold_token שנוצר כבר בשלב ה-ajax=hold באשף (ולא
+                    # יוצרים טוקן חדש) - אחרת try_hold_chain רואה את הסלוטים כתפוסים
+                    # ע"י טוקן אחר ("held_by_other") למרות שהם בעצם מוחזקים ע"י אותה טיוטה.
+                    hold_token = (booking_draft.get("hold_token") or "").strip() or str(uuid.uuid4())
                     hold_minutes = minutes + (15 if minutes > 30 else 0)
                     hold = try_hold_chain(
                         token=hold_token, user=request.user, date=d, start_dt=start_dt,
@@ -603,7 +608,7 @@ def admin_pay_stub(request):
 
                     phone_raw = link_phone or (obj.customer_phone or "").strip()
                     full_name = (obj.customer_name or "").strip()
-                    if not phone_raw:
+                    if action == "send_link" and not phone_raw:
                         messages.error(request, "אין מספר טלפון לשליחת קישור תשלום.")
                         return redirect(fail_redirect)
                     if obj.total_price is None:
@@ -668,6 +673,24 @@ def admin_pay_stub(request):
                 messages.error(request, "שגיאה בנתוני ההזמנה/הטיוטה.")
                 return redirect(fail_redirect)
 
+            base_ctx = {
+                "title": title,
+                "opts": Booking._meta,
+                "mode": mode,
+                "obj": obj,
+                "draft": None,
+                "has_draft": False,
+                "show_send_link": False,
+                "waiting_payment_id": payment.id,
+                "waiting_amount": _fmt_ils(amount),
+                "waiting_link": link,
+            }
+
+            if action == "charge_here":
+                # המנהלת פותחת בעצמה את דף הסליקה המתארח של PayPlus (בדיוק כמו שלקוח
+                # רואה באתר) כדי להקליד שם פרטי כרטיס - אין SMS ואין צורך בטלפון.
+                return render(request, "admin/homePage/pay_stub.html", {**base_ctx, "waiting_open_here": True})
+
             sms_text = f"שלום {full_name}, לתשלום עבור ההזמנה במסילת ציון:\n{link}\nסכום לתשלום: {_fmt_ils(amount)}"
             sent = False
             try:
@@ -675,19 +698,15 @@ def admin_pay_stub(request):
             except Exception:
                 sent = False
 
-            if sent:
-                messages.success(request, f"קישור תשלום נשלח ב-SMS למספר {phone_raw}.")
-            else:
-                # ה-SMS לא באמת הגיע ללקוח — לא משאירים משהו שנראה כמו הצלחה חלקית:
-                # מבטלים את ה-hold (אם זו טיוטה) ומסמנים את התשלום ככשל, כדי שאפשר יהיה לנסות שוב מאפס.
-                if mode == "booking_draft" and hold_token:
-                    release_hold(hold_token)
-                payment.status = "failed"
-                payment.error_message = "שליחת ה-SMS נכשלה"
-                payment.save(update_fields=["status", "error_message"])
-                messages.error(request, f"שליחת ה-SMS נכשלה — הקישור לא נשלח ללקוח. אפשר להעתיק ולשלוח ידנית: {link}")
-
-            return redirect(fail_redirect)
+            # הקישור/ה-Payment תקפים בכל מקרה (גם אם ה-SMS נכשל — הלינק עצמו עדיין
+            # עובד אם שולחים אותו ידנית), אז לא מנתקים ולא מבטלים כלום: נשארים על
+            # אותו מסך וממתינים בפולינג לאישור התשלום בפועל מ-PayPlus.
+            ctx = {
+                **base_ctx,
+                "waiting_phone": phone_raw,
+                "waiting_sms_sent": sent,
+            }
+            return render(request, "admin/homePage/pay_stub.html", ctx)
 
         # ---------- הזמנה מטיוטה ----------
         # אין יותר אפשרות "לסמן כשולם" ידנית על טיוטה חדשה: אם לא סומן "ללא תשלום"
@@ -2610,6 +2629,24 @@ class BookingAdmin(admin.ModelAdmin):
                 messages.error(request, f"שגיאה ביצירת הזמנה: {e}")
                 return redirect(reverse("admin:homePage_appointment_book"))
 
+            try:
+                agorot = int(Decimal(booking.total_price or 0) * 100)
+                payment_like = SimpleNamespace(
+                    email=booking.customer_email,
+                    customer_name=booking.customer_name,
+                    amount_agorot=agorot,
+                    charge_id=booking.payment_ref,
+                )
+                send_booking_email(payment_like, booking)
+                if getattr(settings, "SEND_SMS", False) and (booking.customer_phone or "").strip():
+                    sms_text = format_booking_sms(payment_like, booking)
+                    try:
+                        send_sms_via_ntfy(booking.customer_phone, sms_text)
+                    except Exception:
+                        pass
+            except Exception:
+                pass
+
             # נקה hold מה-session
             request.session.pop("admin_hold_token", None)
             messages.success(request, f"הזמנה #{booking.id} נוצרה (ללא תשלום). אסמכתא: {ref}")
@@ -2634,6 +2671,7 @@ class BookingAdmin(admin.ModelAdmin):
             "couple_variant": couple_variant,
             "wine": wine,
             "horse_color": horse_color,
+            "hold_token": hold_token,
         }
         request.session["booking_draft"] = draft
         request.session.modified = True
