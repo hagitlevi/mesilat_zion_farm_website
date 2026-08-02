@@ -247,7 +247,6 @@ All configuration is loaded from a `.env` file in the project root. Key variable
 |---|---|---|
 | `GET/POST` | `/reviews/` | View and submit customer reviews |
 | `GET/POST` | `/cancel-request/` | Submit a cancellation request |
-| `GET` | `/cancel-policy/` | Cancellation policy page |
 | `GET` | `/terms/` | Terms of service |
 | `GET` | `/privacy/` | Privacy policy |
 | `GET` | `/api/consent-status/` | Check whether phone number requires consent |

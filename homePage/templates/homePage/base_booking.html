@@ -19,7 +19,7 @@
 
     <div class="top-image-container">
         <img src="{% block image_src %}{% endblock %}" alt="{% block image_alt %}{% endblock %}">
-        {% if activity.name != "שיעורי רכיבה/ טיפולית" %}
+        {% if activity.name != "שיעורי רכיבה/ טיפולית" and activity.name != "צילומים" %}
           <a href="#booking-notice" class="cta-on-image" aria-label="לעבור להזמנה">להזמנה</a>
         {% endif %}
         <p class="text_on_picture">
@@ -53,21 +53,13 @@
         </p>
 
         <p class="section-title">מדיניות ביטולים:</p>
-        {% if activity.name != "שיעורי רכיבה/ טיפולית" %}
             <ul>
-                <li>ביטול עד 48 שעות לפני המועד — יתקבל החזר של 80% מהתשלום</li>
-                <li>ביטול בין 24-48 שעות לפני המועד — יתקבל החזר של 50% מהתשלום</li>
+                <li>ביטול בין 24-72 שעות לפני המועד — יתקבל החזר של 80% מהתשלום</li>
                 <li>ביטול בתוך 24 שעות לפני המועד או אי-הגעה — לא יתקבל החזר, והתשלום המלא ייגבה</li>
             </ul>
-        {% else %}
-            <ul>
-                <li>ביטול עד 24 שעות לפני המועד — יתקבל החזר של 100% מהתשלום</li>
-                <li>ביטול בתוך 24 שעות לפני המועד או אי-הגעה — לא יתקבל החזר, והתשלום המלא ייגבה</li>
-            </ul>
-        {% endif %}
     </div>
 
-    {% if activity.name != "שיעורי רכיבה/ טיפולית" %}
+    {% if activity.name != "שיעורי רכיבה/ טיפולית" and activity.name != "צילומים"%}
         {% block appointment_title %}
         <div class="appointment_title">הזמנת רכיבה</div>
         {% endblock %}
@@ -104,7 +96,7 @@
 
 {% block scripts %}
     <script>
-    {% if activity.name != "שיעורי רכיבה/ טיפולית" %}
+    {% if activity.name != "שיעורי רכיבה/ טיפולית" and activity.name != "צילומים" %}
         document.addEventListener("DOMContentLoaded", function () {
           const loader       = document.getElementById("appointments-loader");
           const content      = document.getElementById("appointments-content");

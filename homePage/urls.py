@@ -22,7 +22,6 @@ urlpatterns = [
     path("cancel-request/", cancel_request_view, name="cancel_request"),
     path("terms/", TemplateView.as_view(template_name="homePage/terms.html"), name="terms"),
     path("privacy/", TemplateView.as_view(template_name="homePage/privacy.html"), name="privacy"),
-    path("cancel-policy/", TemplateView.as_view(template_name="homePage/cancel_policy.html"), name="cancel_policy"),
     path("pay/return/", views.pay_return, name="pay_return"),
     path("pay/start/", views.pay_start, name="pay_start"),
     path("pay/webhook/", views.pay_webhook, name="pay_webhook"),
