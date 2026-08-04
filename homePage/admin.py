@@ -1515,7 +1515,7 @@ class ScheduleBoardAdmin(admin.ModelAdmin):
 
     def changelist_view(self, request, extra_context=None):
         # מצב תצוגה: week / day
-        view_mode = request.GET.get("views", "week")
+        view_mode = request.GET.get("view", "week")
 
         # תאריך פתיחה (אם לא נשלח – היום)
         try:
