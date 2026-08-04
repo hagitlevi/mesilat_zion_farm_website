@@ -521,7 +521,7 @@ class Receipt(models.Model):
         ("paybox", "פייבוקס"),
     ]
 
-    receipt_number = models.CharField(max_length=20, unique=True, editable=False)
+    receipt_number = models.CharField(max_length=40, unique=True, editable=False)
     payment = models.OneToOneField('Payment', on_delete=models.PROTECT, related_name='receipt', null=True, blank=True)
     customer_name = models.CharField(max_length=150)
     customer_email = models.EmailField(blank=True)

@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 def _assign_receipt_number(receipt: Receipt) -> None:
   """שומר את הקבלה פעמיים: שמירה ראשונה עם ערך זמני ייחודי כדי לקבל pk, ואז קביעת
   receipt_number הסופי (סדרה A- משותפת לקבלות אוטומטיות וידניות כאחד)."""
-  receipt.receipt_number = f"TMP-{uuid.uuid4().hex}"
+  receipt.receipt_number = f"TMP-{uuid.uuid4().hex[:16]}"
   receipt.save()
   receipt.receipt_number = f"A-{receipt.pk:06d}"
   receipt.save(update_fields=["receipt_number"])
