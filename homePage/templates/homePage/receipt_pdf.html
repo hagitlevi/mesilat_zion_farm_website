@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <title>קבלה {{ receipt.receipt_number }}</title>
     <style>
-      @page { size: A4; margin: 20mm 16mm; }
+      @page { size: A4; margin: 20mm 16mm 20mm 10mm; }
       body {
         direction: rtl;
         font-family: "Noto Sans Hebrew", "Noto Sans", Arial, sans-serif;
@@ -27,7 +27,7 @@
         flex-direction: column;
         align-items: flex-end;
       }
-      .header-left .logo { max-height: 55px; max-width: 140px; margin-bottom: 8px; }
+      .header-left .logo { max-height: 165px; max-width: 165px; margin-bottom: 8px; }
       .meta { text-align: left; font-size: 13px; }
       .meta div { margin-bottom: 4px; }
       .row {
@@ -86,7 +86,7 @@
       }
       .footer .date { font-size: 13px; }
       .footer .signature { text-align: center; font-size: 12px; }
-      .footer .signature img { max-height: 60px; display: block; margin-bottom: 4px; }
+      .footer .signature img { max-height: 140px; display: block; margin-bottom: 4px; }
     </style>
   </head>
   <body>
