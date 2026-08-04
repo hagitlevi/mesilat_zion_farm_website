@@ -21,6 +21,13 @@
       }
       .header h1 { margin: 0; font-size: 20px; color: #2f2a27; }
       .header .business { font-size: 13px; color: #555; margin-top: 4px; }
+      .header .business div { margin-bottom: 2px; }
+      .header-left {
+        display: flex;
+        flex-direction: column;
+        align-items: flex-end;
+      }
+      .header-left .logo { max-height: 55px; max-width: 140px; margin-bottom: 8px; }
       .meta { text-align: left; font-size: 13px; }
       .meta div { margin-bottom: 4px; }
       .row {
@@ -86,11 +93,18 @@
     <div class="header">
       <div>
         <h1>קבלה</h1>
-        <div class="business">חוות מסילת ציון</div>
+        <div class="business">
+          <div>חוות מסילת ציון</div>
+          <div>טל: 0558859569</div>
+          <div>עוסק פטור מס' 322601436</div>
+        </div>
       </div>
-      <div class="meta">
-        <div>מס' קבלה: {{ receipt.receipt_number }}</div>
-        <div>תאריך: {{ receipt.created_at|date:"d.m.Y" }}</div>
+      <div class="header-left">
+        {% if logo_uri %}<img class="logo" src="{{ logo_uri }}" alt="לוגו">{% endif %}
+        <div class="meta">
+          <div>מס' קבלה: {{ receipt.receipt_number }}</div>
+          <div>תאריך: {{ receipt.created_at|date:"d.m.Y" }}</div>
+        </div>
       </div>
     </div>
 

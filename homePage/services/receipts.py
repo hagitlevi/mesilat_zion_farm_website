@@ -34,11 +34,14 @@ def render_receipt_pdf(receipt: Receipt) -> bytes:
   מערכת (Pango/Cairo) שלא בהכרח מותקנות בסביבת פיתוח, ולא צריכות לחסום ייבוא/עבודה עם שאר האתר."""
   from weasyprint import HTML
 
-  signature_path = finders.find("homePage/images/signature.png")
+  signature_path = finders.find("homePage/images/sign.png")
   signature_uri = Path(signature_path).as_uri() if signature_path else None
+
+  logo_path = finders.find("homePage/images/logo.png")
+  logo_uri = Path(logo_path).as_uri() if logo_path else None
 
   html_string = render_to_string(
       "homePage/receipt_pdf.html",
-      {"receipt": receipt, "signature_uri": signature_uri},
+      {"receipt": receipt, "signature_uri": signature_uri, "logo_uri": logo_uri},
   )
   return HTML(string=html_string).write_pdf()
