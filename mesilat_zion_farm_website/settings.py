@@ -17,7 +17,7 @@ import dj_database_url
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 load_dotenv(BASE_DIR / ".env")
-FEEDBACK_URL = os.getenv("FEEDBACK_URL", "https://mesilat-zion-farm-website.onrender.com/reviews/")
+FEEDBACK_URL = os.getenv("FEEDBACK_URL", "https://mesilatzionfarm.co.il/reviews/")
 SEND_EMAIL = os.getenv("SEND_EMAIL", "False") == "True"
 SEND_SMS = os.getenv("SEND_SMS", "False") == "True"
 NTFY_URL = os.getenv("NTFY_URL", "https://ntfy.sh").rstrip("/")
