@@ -103,6 +103,20 @@ html[dir="rtl"] .mz-card-hd{ text-align:right; }
 .change-list .paginator{ font-size:14px; }
 
 
+/* ---------- תיקיות מתקפלות (עמוד הבית) ---------- */
+.mz-folder{ margin-bottom:16px; }
+.mz-folder-hd{
+  cursor:pointer; list-style:none; user-select:none;
+  font-size:18px; font-weight:800; color:#2b3b4b;
+  padding:10px 14px; border-radius:12px;
+  background:#eef3f8; border:1px solid #dbe4ea;
+}
+.mz-folder-hd::-webkit-details-marker{ display:none; }
+.mz-folder-hd::before{ content:"▸ "; }
+.mz-folder[open] > .mz-folder-hd::before{ content:"▾ "; }
+.mz-folder-hd:hover{ background:#e2ebf4; }
+.mz-folder > .mz-card-grid{ margin-top:12px; }
+
 .admin-mod-grid{ display:grid; grid-template-columns:repeat(auto-fit, minmax(260px,1fr)); gap:18px; }
 .admin-mod-grid > .module{
   background:#fff; border:1px solid #e5e7eb; border-radius:16px; overflow:hidden;

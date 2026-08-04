@@ -132,19 +132,22 @@ AUTH_PASSWORD_VALIDATORS = [
 
 ADMIN_MODEL_ORDER = {
     "homePage": {
-        "name": [
-            "לוח שנה",
-            "הזמנות",
-            "ביקורות",
-            "אישורי מדיניות",
-            "פעילויות",
-            "ימים בשבוע",
-            "שעות עבודה כלליות",
-            "כללי פעילות",
-            "לוחות זמנים מיוחדים",
-            "תורים",
-        ]
+        "object_name": [
+            "ScheduleBoard", "Booking", "Receipt", "CancellationRequest",
+        ],
     }
+}
+
+# עמוד הבית של האדמין: קיבוץ המודלים לתיקיות ניתנות לקיפול/פתיחה, בסדר הזה.
+# מודל שלא רשום כאן נופל לקבוצת "אחר" בסוף.
+ADMIN_MODEL_GROUPS = {
+    "homePage": [
+        ("הזמנות ולוח זמנים", ["ScheduleBoard", "Booking", "CancellationRequest", "Appointment",
+                                "CustomSchedule", "BusinessHours", "Weekday", "ActivityRule"]),
+        ("כספים", ["Receipt", "Payment", "MonthlySummary"]),
+        ("פעילויות ומדריכים", ["Activity", "Instructor", "TreatmentSession"]),
+        ("ביקורות והסכמות", ["SiteReview", "TermsConsent", "MarketingConsent"]),
+    ]
 }
 
 # Internationalization

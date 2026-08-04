@@ -32,24 +32,45 @@
 
   <!-- בלוק כל שאר האפליקציות -->
   <h2 class="mz-sec-title" style="margin-top:2rem">ניהול התוכן</h2>
-  <div class="mz-card-grid">
-    {% for app in app_list %}
-      {% if app.app_label != 'auth' %}
-        {% with app.models|order_models:app.app_label as models %}
-          {% for model in models %}
-            <div class="mz-card">
-              <div class="mz-card-hd">{{ model.name }}</div>
-              <div class="mz-card-actions">
-                <a class="mz-btn" href="{{ model.admin_url }}">ניהול</a>
-                {% if model.add_url %}<a class="mz-btn ghost" href="{{ model.add_url }}">+ הוספה</a>{% endif %}
+  {% for app in app_list %}
+    {% if app.app_label != 'auth' %}
+      {% with app.models|order_models:app.app_label as models %}
+        {% group_models models app.app_label as model_groups %}
+        {% for group_name, group_list in model_groups %}
+          {% if group_name %}
+            <details class="mz-folder">
+              <summary class="mz-folder-hd">{{ group_name }}</summary>
+              <div class="mz-card-grid">
+                {% for model in group_list %}
+                  <div class="mz-card">
+                    <div class="mz-card-hd">{{ model.name }}</div>
+                    <div class="mz-card-actions">
+                      <a class="mz-btn" href="{{ model.admin_url }}">ניהול</a>
+                      {% if model.add_url %}<a class="mz-btn ghost" href="{{ model.add_url }}">+ הוספה</a>{% endif %}
+                    </div>
+                    <div class="mz-card-sub">{{ app.name }}</div>
+                  </div>
+                {% endfor %}
               </div>
-              <div class="mz-card-sub">{{ app.name }}</div>
+            </details>
+          {% else %}
+            <div class="mz-card-grid">
+              {% for model in group_list %}
+                <div class="mz-card">
+                  <div class="mz-card-hd">{{ model.name }}</div>
+                  <div class="mz-card-actions">
+                    <a class="mz-btn" href="{{ model.admin_url }}">ניהול</a>
+                    {% if model.add_url %}<a class="mz-btn ghost" href="{{ model.add_url }}">+ הוספה</a>{% endif %}
+                  </div>
+                  <div class="mz-card-sub">{{ app.name }}</div>
+                </div>
+              {% endfor %}
             </div>
-          {% endfor %}
-        {% endwith %}
-      {% endif %}
-    {% endfor %}
-  </div>
+          {% endif %}
+        {% endfor %}
+      {% endwith %}
+    {% endif %}
+  {% endfor %}
 
 
 </div>
