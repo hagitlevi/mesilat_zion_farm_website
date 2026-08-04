@@ -1,10 +1,11 @@
 from datetime import timedelta
+from decimal import Decimal
 
 from django.test import TestCase
 from django.utils import timezone
 
 from homePage.models import Activity, Booking, Payment, Receipt
-from homePage.services.receipts import create_receipt_for_payment
+from homePage.services.receipts import create_receipt_for_payment, create_manual_receipt
 
 
 def _activity():
@@ -42,10 +43,11 @@ class CreateReceiptForPaymentTests(TestCase):
 
         self.assertTrue(receipt.receipt_number.startswith("A-"))
         self.assertEqual(receipt.receipt_number, f"A-{receipt.pk:06d}")
-        self.assertEqual(receipt.activity_name, "רכיבה זוגית")
+        self.assertEqual(receipt.items, [{"description": "רכיבה זוגית", "amount": "250"}])
         self.assertEqual(receipt.customer_name, "ישראל ישראלי")
         self.assertEqual(receipt.amount, 250)
         self.assertEqual(receipt.payment, payment)
+        self.assertEqual(receipt.payment_method, "credit")
 
     def test_numbers_increase_across_separate_receipts(self):
         activity = _activity()
@@ -86,6 +88,90 @@ class CreateReceiptForPaymentTests(TestCase):
                 receipt_number=receipt.receipt_number,
                 payment=Payment.objects.create(amount_agorot=100, booking=_booking(activity)),
                 customer_name="x",
-                activity_name="y",
+                items=[{"description": "y", "amount": "1"}],
                 amount=1,
             )
+
+
+class CreateManualReceiptTests(TestCase):
+    def test_creates_receipt_with_multiple_items_and_computed_total(self):
+        receipt = create_manual_receipt(
+            customer_name="דנה כהן",
+            customer_email="dana@example.com",
+            items=[
+                {"description": "רכיבה זוגית", "amount": "250"},
+                {"description": "תוספת פיקניק", "amount": "80.5"},
+            ],
+            payment_method="cash",
+        )
+
+        self.assertTrue(receipt.receipt_number.startswith("A-"))
+        self.assertEqual(receipt.amount, Decimal("330.5"))
+        self.assertEqual(len(receipt.items), 2)
+        self.assertIsNone(receipt.payment_id)
+        self.assertEqual(receipt.payment_method, "cash")
+
+    def test_shares_number_series_with_automatic_receipts(self):
+        activity = _activity()
+        booking = _booking(activity)
+        payment = _payment(booking)
+        auto_receipt = create_receipt_for_payment(payment, booking)
+
+        manual_receipt = create_manual_receipt(
+            customer_name="דנה כהן",
+            customer_email="dana@example.com",
+            items=[{"description": "רכיבה", "amount": "100"}],
+            payment_method="bit",
+        )
+
+        self.assertTrue(auto_receipt.receipt_number.startswith("A-"))
+        self.assertTrue(manual_receipt.receipt_number.startswith("A-"))
+        self.assertGreater(manual_receipt.pk, auto_receipt.pk)
+
+    def test_skips_rows_with_missing_description_or_amount(self):
+        receipt = create_manual_receipt(
+            customer_name="דנה כהן",
+            customer_email="dana@example.com",
+            items=[
+                {"description": "רכיבה זוגית", "amount": "100"},
+                {"description": "", "amount": "50"},
+                {"description": "בלי סכום", "amount": ""},
+            ],
+            payment_method="credit",
+        )
+
+        self.assertEqual(receipt.items, [{"description": "רכיבה זוגית", "amount": "100"}])
+        self.assertEqual(receipt.amount, Decimal("100"))
+
+    def test_raises_when_no_valid_items(self):
+        with self.assertRaises(ValueError):
+            create_manual_receipt(
+                customer_name="דנה כהן",
+                customer_email="dana@example.com",
+                items=[{"description": "", "amount": ""}],
+                payment_method="cash",
+            )
+
+    def test_cheque_requires_bank_details(self):
+        with self.assertRaises(ValueError):
+            create_manual_receipt(
+                customer_name="דנה כהן",
+                customer_email="dana@example.com",
+                items=[{"description": "רכיבה", "amount": "100"}],
+                payment_method="cheque",
+            )
+
+    def test_cheque_with_details_succeeds(self):
+        receipt = create_manual_receipt(
+            customer_name="דנה כהן",
+            customer_email="dana@example.com",
+            items=[{"description": "רכיבה", "amount": "100"}],
+            payment_method="cheque",
+            cheque_bank="בנק הפועלים",
+            cheque_branch="123",
+            cheque_due_date="01.09.2026",
+        )
+
+        self.assertEqual(receipt.cheque_bank, "בנק הפועלים")
+        self.assertEqual(receipt.cheque_branch, "123")
+        self.assertEqual(receipt.cheque_due_date, "01.09.2026")

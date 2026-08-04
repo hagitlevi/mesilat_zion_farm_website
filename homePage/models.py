@@ -509,12 +509,29 @@ class Payment(models.Model):
 
 
 class Receipt(models.Model):
-    """קבלה דיגיטלית שנוצרת אוטומטית עבור תשלום PayPlus שהצליח. אי אפשר לערוך/למחוק (ראו ReceiptAdmin) — מספור וסכום הם תמונת מצב קבועה מרגע היצירה."""
+    """קבלה דיגיטלית — נוצרת אוטומטית עבור תשלום PayPlus שהצליח, או ידנית דרך האדמין
+    (לתשלומי מזומן/ביט/פייבוקס/העברה/שיק). אי אפשר לערוך/למחוק (ראו ReceiptAdmin) —
+    כל השדות הם תמונת מצב קבועה מרגע היצירה. `amount` הוא הסכום הכולל (סכום כל הפריטים ב-items)."""
+    PAYMENT_METHOD_CHOICES = [
+        ("cash", "מזומן"),
+        ("credit", "אשראי"),
+        ("bank_transfer", "העברה בנקאית"),
+        ("cheque", "שיק"),
+        ("bit", "ביט"),
+        ("paybox", "פייבוקס"),
+    ]
+
     receipt_number = models.CharField(max_length=20, unique=True, editable=False)
-    payment = models.OneToOneField('Payment', on_delete=models.PROTECT, related_name='receipt')
+    payment = models.OneToOneField('Payment', on_delete=models.PROTECT, related_name='receipt', null=True, blank=True)
     customer_name = models.CharField(max_length=150)
-    activity_name = models.CharField(max_length=150)
+    customer_email = models.EmailField(blank=True)
+    items = models.JSONField(default=list)
     amount = models.DecimalField(max_digits=8, decimal_places=2)
+    payment_method = models.CharField(max_length=20, choices=PAYMENT_METHOD_CHOICES, default="credit")
+    cheque_bank = models.CharField(max_length=100, blank=True)
+    cheque_branch = models.CharField(max_length=100, blank=True)
+    cheque_due_date = models.CharField(max_length=50, blank=True)
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

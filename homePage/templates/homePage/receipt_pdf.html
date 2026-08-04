@@ -56,7 +56,8 @@
       }
       .payment-methods {
         display: flex;
-        gap: 22px;
+        flex-wrap: wrap;
+        gap: 14px 22px;
         margin-bottom: 14px;
         font-size: 13px;
       }
@@ -121,22 +122,28 @@
         </tr>
       </thead>
       <tbody>
+        {% for item in receipt.items %}
         <tr>
-          <td>{{ receipt.activity_name }}</td>
-          <td>₪{{ receipt.amount }}</td>
+          <td>{{ item.description }}</td>
+          <td>₪{{ item.amount|floatformat:2 }}</td>
         </tr>
+        {% endfor %}
       </tbody>
     </table>
 
-    <div class="total-row">סה"כ נתקבל: ₪{{ receipt.amount }}</div>
+    <div class="total-row">סה"כ נתקבל: ₪{{ receipt.amount|floatformat:2 }}</div>
 
     <div class="payment-methods">
-      <span class="method"><span class="checkbox"></span> מזומן</span>
-      <span class="method"><span class="checkbox">✓</span> אשראי</span>
-      <span class="method"><span class="checkbox"></span> העברה בנקאית</span>
-      <span class="method"><span class="checkbox"></span> שיק</span>
+      <span class="method"><span class="checkbox">{% if receipt.payment_method == "cash" %}✓{% endif %}</span> מזומן</span>
+      <span class="method"><span class="checkbox">{% if receipt.payment_method == "credit" %}✓{% endif %}</span> אשראי</span>
+      <span class="method"><span class="checkbox">{% if receipt.payment_method == "bank_transfer" %}✓{% endif %}</span> העברה בנקאית</span>
+      <span class="method"><span class="checkbox">{% if receipt.payment_method == "cheque" %}✓{% endif %}</span> שיק</span>
+      <span class="method"><span class="checkbox">{% if receipt.payment_method == "bit" %}✓{% endif %}</span> ביט</span>
+      <span class="method"><span class="checkbox">{% if receipt.payment_method == "paybox" %}✓{% endif %}</span> פייבוקס</span>
     </div>
-    <div class="cheque-fields">בנק: ______ &nbsp; סניף: ______ &nbsp; זמן פירעון: ______</div>
+    {% if receipt.payment_method == "cheque" %}
+    <div class="cheque-fields">בנק: {{ receipt.cheque_bank }} &nbsp; סניף: {{ receipt.cheque_branch }} &nbsp; זמן פירעון: {{ receipt.cheque_due_date }}</div>
+    {% endif %}
 
     <div class="footer">
       <div class="date">תאריך: {{ receipt.created_at|date:"d.m.Y" }}</div>

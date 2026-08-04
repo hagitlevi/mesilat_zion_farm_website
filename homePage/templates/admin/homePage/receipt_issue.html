@@ -1,0 +1,166 @@
+{% extends "admin/base_site.html" %}
+{% load static %}
+
+{% block extrastyle %}
+<style>
+  .rcp-form { direction: rtl; max-width: 720px; margin: 0 auto; }
+  .rcp-form * { box-sizing: border-box; }
+  .rcp-card {
+    background: #fff;
+    border: 1px solid #dfe3e6;
+    border-radius: 12px;
+    padding: 22px;
+    box-shadow: 0 1px 0 rgba(0,0,0,.02);
+  }
+  .rcp-title {
+    background: #4f6f84; color: #fff;
+    padding: 12px 18px; border-radius: 10px;
+    margin: -6px -6px 18px; font-size: 20px; font-weight: 600;
+  }
+  .rcp-field { margin-bottom: 16px; }
+  .rcp-field label { display: block; font-weight: 600; margin-bottom: 6px; color: #2c3e50; }
+  .rcp-field input[type="text"],
+  .rcp-field input[type="email"] {
+    width: 100%; height: 40px; padding: 0 10px; font-size: 15px;
+    border: 1px solid #ccc; border-radius: 8px;
+  }
+  .rcp-items-table { width: 100%; border-collapse: collapse; margin-bottom: 8px; }
+  .rcp-items-table th { text-align: right; font-size: 13px; color: #555; padding: 4px 6px; }
+  .rcp-items-table td { padding: 4px 6px; }
+  .rcp-items-table input[type="text"] { width: 100%; height: 38px; padding: 0 8px; border: 1px solid #ccc; border-radius: 8px; }
+  .rcp-items-table input.rcp-amount { width: 130px; height: 38px; padding: 0 8px; border: 1px solid #ccc; border-radius: 8px; }
+  .rcp-remove-row { background: none; border: none; color: #b3261e; cursor: pointer; font-size: 18px; padding: 0 6px; }
+  .rcp-add-row { margin: 4px 0 20px; background: #eef3f6; border: 1px solid #c9d6dd; border-radius: 8px; padding: 8px 14px; cursor: pointer; font-size: 14px; }
+  .rcp-total-row { display: flex; justify-content: space-between; font-size: 17px; font-weight: 700; margin: 4px 0 22px; padding-top: 8px; border-top: 1px solid #eee; }
+  .rcp-methods { display: flex; flex-wrap: wrap; gap: 10px 18px; margin-bottom: 14px; }
+  .rcp-methods label { display: flex; align-items: center; gap: 6px; font-weight: 500; color: #2c3e50; cursor: pointer; }
+  .rcp-cheque-fields { display: none; gap: 12px; margin-bottom: 16px; }
+  .rcp-cheque-fields.is-visible { display: flex; flex-wrap: wrap; }
+  .rcp-cheque-fields .rcp-field { flex: 1 1 160px; margin-bottom: 0; }
+  .rcp-submit { background: #2e7d32; color: #fff; border: none; border-radius: 8px; padding: 12px 28px; font-size: 16px; font-weight: 600; cursor: pointer; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="rcp-form">
+  <div class="rcp-card">
+    <div class="rcp-title">הנפקת קבלה ידנית</div>
+
+    <form method="POST" id="rcp-form">
+      {% csrf_token %}
+
+      <div class="rcp-field">
+        <label for="customer_name">שם הלקוח</label>
+        <input type="text" id="customer_name" name="customer_name" required>
+      </div>
+
+      <div class="rcp-field">
+        <label for="customer_email">כתובת מייל (הקבלה תישלח לכתובת זו)</label>
+        <input type="email" id="customer_email" name="customer_email" required>
+      </div>
+
+      <table class="rcp-items-table" id="rcp-items-table">
+        <thead>
+          <tr>
+            <th>פירוט</th>
+            <th>סכום (₪)</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody id="rcp-items-body">
+          <tr class="rcp-item-row">
+            <td><input type="text" name="item_description" placeholder="לדוגמה: רכיבה זוגית" required></td>
+            <td><input type="text" inputmode="decimal" class="rcp-amount" name="item_amount" placeholder="0.00" required></td>
+            <td><button type="button" class="rcp-remove-row" title="הסרת שורה">✕</button></td>
+          </tr>
+        </tbody>
+      </table>
+      <button type="button" class="rcp-add-row" id="rcp-add-row">+ הוספת שורת פריט</button>
+
+      <div class="rcp-total-row">
+        <span>סה"כ:</span>
+        <span id="rcp-total">₪0.00</span>
+      </div>
+
+      <div class="rcp-field">
+        <label>אמצעי תשלום</label>
+        <div class="rcp-methods">
+          {% for code, label in payment_methods %}
+            <label>
+              <input type="radio" name="payment_method" value="{{ code }}" class="rcp-method-radio" {% if code == "credit" %}checked{% endif %}>
+              {{ label }}
+            </label>
+          {% endfor %}
+        </div>
+      </div>
+
+      <div class="rcp-cheque-fields" id="rcp-cheque-fields">
+        <div class="rcp-field">
+          <label for="cheque_bank">בנק</label>
+          <input type="text" id="cheque_bank" name="cheque_bank">
+        </div>
+        <div class="rcp-field">
+          <label for="cheque_branch">סניף</label>
+          <input type="text" id="cheque_branch" name="cheque_branch">
+        </div>
+        <div class="rcp-field">
+          <label for="cheque_due_date">זמן פירעון</label>
+          <input type="text" id="cheque_due_date" name="cheque_due_date" placeholder="לדוגמה: 01.09.2026">
+        </div>
+      </div>
+
+      <button type="submit" class="rcp-submit">צור ושלח קבלה</button>
+    </form>
+  </div>
+</div>
+
+<script>
+(function () {
+  var itemsBody = document.getElementById("rcp-items-body");
+  var addRowBtn = document.getElementById("rcp-add-row");
+  var totalEl = document.getElementById("rcp-total");
+  var chequeFields = document.getElementById("rcp-cheque-fields");
+
+  function recalcTotal() {
+    var amounts = itemsBody.querySelectorAll(".rcp-amount");
+    var total = 0;
+    amounts.forEach(function (input) {
+      var v = parseFloat((input.value || "0").replace(",", "."));
+      if (!isNaN(v)) total += v;
+    });
+    totalEl.textContent = "₪" + total.toFixed(2);
+  }
+
+  function addRow() {
+    var row = document.createElement("tr");
+    row.className = "rcp-item-row";
+    row.innerHTML =
+      '<td><input type="text" name="item_description" placeholder="לדוגמה: רכיבה זוגית" required></td>' +
+      '<td><input type="text" inputmode="decimal" class="rcp-amount" name="item_amount" placeholder="0.00" required></td>' +
+      '<td><button type="button" class="rcp-remove-row" title="הסרת שורה">✕</button></td>';
+    itemsBody.appendChild(row);
+  }
+
+  addRowBtn.addEventListener("click", addRow);
+
+  itemsBody.addEventListener("click", function (e) {
+    if (e.target.classList.contains("rcp-remove-row")) {
+      if (itemsBody.querySelectorAll(".rcp-item-row").length > 1) {
+        e.target.closest("tr").remove();
+        recalcTotal();
+      }
+    }
+  });
+
+  itemsBody.addEventListener("input", function (e) {
+    if (e.target.classList.contains("rcp-amount")) recalcTotal();
+  });
+
+  document.querySelectorAll(".rcp-method-radio").forEach(function (radio) {
+    radio.addEventListener("change", function () {
+      chequeFields.classList.toggle("is-visible", radio.value === "cheque" && radio.checked);
+    });
+  });
+})();
+</script>
+{% endblock %}

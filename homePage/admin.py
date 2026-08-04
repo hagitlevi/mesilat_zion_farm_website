@@ -6,7 +6,7 @@ from .models import (
     BusinessHours, ActivityRule, Instructor, TreatmentSession,
     MonthlySummary, Payment, Receipt,
 )
-from homePage.services.receipts import render_receipt_pdf
+from homePage.services.receipts import render_receipt_pdf, create_manual_receipt, send_manual_receipt_email
 from homePage.services.ntfy_gateway import (
     format_session_sms, format_booking_sms, send_treatment_email,
     send_booking_email, get_treatment_amount_nis, ltr_text,
@@ -3441,9 +3441,11 @@ class PaymentAdmin(admin.ModelAdmin):
 
 @admin.register(Receipt)
 class ReceiptAdmin(admin.ModelAdmin):
-    """קבלות נוצרות רק אוטומטית עם תשלום מוצלח — אין הוספה/עריכה/מחיקה ידנית, כדי לשמור על אי-הפיכות."""
-    list_display = ("receipt_number", "customer_name", "activity_name", "amount", "created_at")
-    search_fields = ("receipt_number", "customer_name", "activity_name")
+    """קבלות נוצרות אוטומטית עם תשלום PayPlus מוצלח, או ידנית דרך 'הנפקת קבלה ידנית' (לתשלומי
+    מזומן/ביט/פייבוקס/העברה/שיק). בשני המקרים אי אפשר לערוך/למחוק אחרי היצירה, כדי לשמור על אי-הפיכות."""
+    change_list_template = "admin/homePage/receipt_changelist.html"
+    list_display = ("receipt_number", "customer_name", "get_payment_method_display", "amount", "created_at")
+    search_fields = ("receipt_number", "customer_name", "customer_email")
     actions = ("download_pdf",)
 
     def has_add_permission(self, request):
@@ -3454,6 +3456,68 @@ class ReceiptAdmin(admin.ModelAdmin):
 
     def has_delete_permission(self, request, obj=None):
         return False
+
+    def get_urls(self):
+        urls = super().get_urls()
+        extra = [
+            path("create/", self.admin_site.admin_view(self.issue_receipt_view), name="homePage_receipt_create"),
+            path("<int:pk>/download/", self.admin_site.admin_view(self.download_pdf_direct), name="homePage_receipt_download"),
+        ]
+        return extra + urls
+
+    def issue_receipt_view(self, request):
+        """טופס פשוט להנפקת קבלה ידנית: שם+מייל לקוח, שורות פריט (תיאור+סכום), אמצעי תשלום."""
+        if request.method == "POST":
+            descriptions = request.POST.getlist("item_description")
+            amounts = request.POST.getlist("item_amount")
+            items = [{"description": d, "amount": a} for d, a in zip(descriptions, amounts)]
+
+            payment_method = request.POST.get("payment_method", "")
+            if payment_method not in dict(Receipt.PAYMENT_METHOD_CHOICES):
+                messages.error(request, "יש לבחור אמצעי תשלום")
+                return redirect(reverse("admin:homePage_receipt_create"))
+
+            try:
+                receipt = create_manual_receipt(
+                    customer_name=request.POST.get("customer_name", ""),
+                    customer_email=request.POST.get("customer_email", ""),
+                    items=items,
+                    payment_method=payment_method,
+                    cheque_bank=request.POST.get("cheque_bank", ""),
+                    cheque_branch=request.POST.get("cheque_branch", ""),
+                    cheque_due_date=request.POST.get("cheque_due_date", ""),
+                    created_by=request.user,
+                )
+            except ValueError as e:
+                messages.error(request, str(e))
+                return redirect(reverse("admin:homePage_receipt_create"))
+
+            sent = send_manual_receipt_email(receipt)
+            download_url = reverse("admin:homePage_receipt_download", args=[receipt.pk])
+            if sent:
+                msg = f'קבלה {receipt.receipt_number} נוצרה ונשלחה במייל ל-{receipt.customer_email}. <a href="{download_url}">הורדת PDF</a>'
+                messages.success(request, mark_safe(msg))
+            else:
+                msg = f'קבלה {receipt.receipt_number} נוצרה, אך שליחת המייל נכשלה. <a href="{download_url}">הורדת PDF</a> כדי לשלוח ידנית.'
+                messages.warning(request, mark_safe(msg))
+            return redirect(reverse("admin:homePage_receipt_changelist"))
+
+        ctx = {
+            "opts": self.model._meta,
+            "payment_methods": Receipt.PAYMENT_METHOD_CHOICES,
+        }
+        return TemplateResponse(request, "admin/homePage/receipt_issue.html", ctx)
+
+    def download_pdf_direct(self, request, pk):
+        receipt = get_object_or_404(Receipt, pk=pk)
+        try:
+            pdf_bytes = render_receipt_pdf(receipt)
+        except Exception:
+            messages.error(request, "יצירת ה-PDF נכשלה")
+            return redirect(reverse("admin:homePage_receipt_changelist"))
+        response = HttpResponse(pdf_bytes, content_type="application/pdf")
+        response["Content-Disposition"] = f'attachment; filename="{receipt.receipt_number}.pdf"'
+        return response
 
     def download_pdf(self, request, queryset):
         if queryset.count() != 1:
