@@ -113,9 +113,11 @@ def send_manual_receipt_email(receipt: Receipt) -> bool:
     return False
 
   subject = f"קבלה – חוות מסילת ציון · {receipt.receipt_number}"
-  text_body = (
+  rlm = "‏"
+  text_body = rlm + (
       f"שלום {receipt.customer_name},\n\n"
-      f"מצורפת קבלה מספר {receipt.receipt_number} על סך ₪{receipt.amount}.\n\n"
+      f"מצורפת קבלה מספר {receipt.receipt_number} "
+      f"על סך ₪{receipt.amount}.\n\n"
       "זהו מייל אוטומטי – אין להשיב אליו."
   )
 
