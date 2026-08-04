@@ -116,10 +116,32 @@ def send_manual_receipt_email(receipt: Receipt) -> bool:
   rlm = "‏"
   text_body = rlm + (
       f"שלום {receipt.customer_name},\n\n"
-      f"מצורפת קבלה מספר {receipt.receipt_number} "
+      f"מצורפת קבלה מספר {receipt.receipt_number} \n\n"
       f"על סך ₪{receipt.amount}.\n\n"
       "זהו מייל אוטומטי – אין להשיב אליו."
   )
+
+  html_body = f"""<!doctype html>
+      <html lang="he" dir="rtl">
+        <body style="margin:0;background:#f6f7f9;font-family:Arial,Helvetica,'Segoe UI',sans-serif;direction:rtl;">
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="padding:24px 0;">
+            <tr>
+              <td align="center">
+                <table role="presentation" width="500" cellpadding="0" cellspacing="0"
+                       style="width:100%;max-width:500px;background:#ffffff;border-radius:12px;padding:24px;
+                              direction:rtl;text-align:right;">
+                  <tr><td style="font-size:15px;color:#222;line-height:1.7;">
+                    <p style="margin:0 0 12px 0;">שלום {receipt.customer_name},</p>
+                    <p style="margin:0 0 12px 0;">מצורפת קבלה מספר {receipt.receipt_number} על סך ₪{receipt.amount}.</p>
+                    <p style="margin:16px 0 0 0;font-size:12.5px;color:#888;">זהו מייל אוטומטי – אין להשיב אליו.</p>
+                  </td></tr>
+                </table>
+              </td>
+            </tr>
+          </table>
+        </body>
+      </html>
+      """
 
   email = EmailMultiAlternatives(
       subject,
@@ -127,6 +149,7 @@ def send_manual_receipt_email(receipt: Receipt) -> bool:
       getattr(settings, "DEFAULT_FROM_EMAIL", None),
       [receipt.customer_email],
   )
+  email.attach_alternative(html_body, "text/html")
 
   try:
     pdf_bytes = render_receipt_pdf(receipt)

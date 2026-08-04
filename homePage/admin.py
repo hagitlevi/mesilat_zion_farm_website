@@ -3443,13 +3443,18 @@ class PaymentAdmin(admin.ModelAdmin):
 class ReceiptAdmin(admin.ModelAdmin):
     """קבלות נוצרות אוטומטית עם תשלום PayPlus מוצלח, או ידנית דרך 'הנפקת קבלה ידנית' (לתשלומי
     מזומן/ביט/פייבוקס/העברה/שיק). בשני המקרים אי אפשר לערוך/למחוק אחרי היצירה, כדי לשמור על אי-הפיכות."""
-    change_list_template = "admin/homePage/receipt_changelist.html"
     list_display = ("receipt_number", "customer_name", "get_payment_method_display", "amount", "created_at")
     search_fields = ("receipt_number", "customer_name", "customer_email")
     actions = ("download_pdf",)
 
     def has_add_permission(self, request):
-        return False
+        # True רק כדי שכפתור/קישור "הוספה" יופיע בעמודי האדמין (כמו בכל מודל אחר) —
+        # בפועל add_view למטה מפנה לטופס "הנפקת קבלה ידנית" ולא לטופס ברירת המחדל,
+        # כדי לשמור על אותה ולידציה/מספור כמו תמיד.
+        return True
+
+    def add_view(self, request, form_url="", extra_context=None):
+        return redirect(reverse("admin:homePage_receipt_create"))
 
     def has_change_permission(self, request, obj=None):
         return False
