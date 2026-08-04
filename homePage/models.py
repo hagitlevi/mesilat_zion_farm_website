@@ -507,6 +507,24 @@ class Payment(models.Model):
     def __str__(self):
         return f"Payment#{self.id} {(self.amount_agorot/100):.2f} {self.currency} [{self.status}]"
 
+
+class Receipt(models.Model):
+    """קבלה דיגיטלית שנוצרת אוטומטית עבור תשלום PayPlus שהצליח. אי אפשר לערוך/למחוק (ראו ReceiptAdmin) — מספור וסכום הם תמונת מצב קבועה מרגע היצירה."""
+    receipt_number = models.CharField(max_length=20, unique=True, editable=False)
+    payment = models.OneToOneField('Payment', on_delete=models.PROTECT, related_name='receipt')
+    customer_name = models.CharField(max_length=150)
+    activity_name = models.CharField(max_length=150)
+    amount = models.DecimalField(max_digits=8, decimal_places=2)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "קבלה"
+        verbose_name_plural = "קבלות"
+
+    def __str__(self):
+        return self.receipt_number or f"Receipt#{self.pk}"
+
+
 class ScheduleBoard(Appointment):
     class Meta:
         proxy = True

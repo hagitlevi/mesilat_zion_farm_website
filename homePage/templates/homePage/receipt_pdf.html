@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+  <head>
+    <meta charset="utf-8">
+    <title>קבלה {{ receipt.receipt_number }}</title>
+    <style>
+      @page { size: A4; margin: 20mm 16mm; }
+      body {
+        direction: rtl;
+        font-family: "Noto Sans Hebrew", "Noto Sans", Arial, sans-serif;
+        color: #1a1a1a;
+        font-size: 13px;
+      }
+      .header {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        border-bottom: 2px solid #2f2a27;
+        padding-bottom: 12px;
+        margin-bottom: 18px;
+      }
+      .header h1 { margin: 0; font-size: 20px; color: #2f2a27; }
+      .header .business { font-size: 13px; color: #555; margin-top: 4px; }
+      .meta { text-align: left; font-size: 13px; }
+      .meta div { margin-bottom: 4px; }
+      .row {
+        display: flex;
+        margin-bottom: 10px;
+        font-size: 14px;
+      }
+      .row .label { font-weight: bold; margin-left: 6px; }
+      table.items {
+        width: 100%;
+        border-collapse: collapse;
+        margin: 16px 0;
+      }
+      table.items th, table.items td {
+        border: 1px solid #ccc;
+        padding: 8px 10px;
+        text-align: right;
+        font-size: 13px;
+      }
+      table.items th { background: #fafafa; }
+      .total-row {
+        text-align: left;
+        font-size: 15px;
+        font-weight: bold;
+        margin: 10px 0 22px 0;
+      }
+      .payment-methods {
+        display: flex;
+        gap: 22px;
+        margin-bottom: 14px;
+        font-size: 13px;
+      }
+      .payment-methods .method { display: flex; align-items: center; }
+      .checkbox {
+        display: inline-block;
+        width: 12px;
+        height: 12px;
+        border: 1px solid #333;
+        margin-left: 6px;
+        text-align: center;
+        line-height: 12px;
+        font-size: 10px;
+      }
+      .cheque-fields {
+        font-size: 12px;
+        color: #555;
+        margin-bottom: 18px;
+      }
+      .footer {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-end;
+        margin-top: 40px;
+        border-top: 1px solid #eee;
+        padding-top: 16px;
+      }
+      .footer .date { font-size: 13px; }
+      .footer .signature { text-align: center; font-size: 12px; }
+      .footer .signature img { max-height: 60px; display: block; margin-bottom: 4px; }
+    </style>
+  </head>
+  <body>
+    <div class="header">
+      <div>
+        <h1>קבלה</h1>
+        <div class="business">חוות מסילת ציון</div>
+      </div>
+      <div class="meta">
+        <div>מס' קבלה: {{ receipt.receipt_number }}</div>
+        <div>תאריך: {{ receipt.created_at|date:"d.m.Y" }}</div>
+      </div>
+    </div>
+
+    <div class="row">
+      <span class="label">נתקבל מאת:</span>
+      <span>{{ receipt.customer_name }}</span>
+    </div>
+
+    <table class="items">
+      <thead>
+        <tr>
+          <th>פירוט</th>
+          <th>סכום</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>{{ receipt.activity_name }}</td>
+          <td>₪{{ receipt.amount }}</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div class="total-row">סה"כ נתקבל: ₪{{ receipt.amount }}</div>
+
+    <div class="payment-methods">
+      <span class="method"><span class="checkbox"></span> מזומן</span>
+      <span class="method"><span class="checkbox">✓</span> אשראי</span>
+      <span class="method"><span class="checkbox"></span> העברה בנקאית</span>
+      <span class="method"><span class="checkbox"></span> שיק</span>
+    </div>
+    <div class="cheque-fields">בנק: ______ &nbsp; סניף: ______ &nbsp; זמן פירעון: ______</div>
+
+    <div class="footer">
+      <div class="date">תאריך: {{ receipt.created_at|date:"d.m.Y" }}</div>
+      <div class="signature">
+        {% if signature_uri %}<img src="{{ signature_uri }}" alt="חתימה">{% endif %}
+        <div>חתימה</div>
+      </div>
+    </div>
+  </body>
+</html>

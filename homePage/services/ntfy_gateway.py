@@ -9,6 +9,7 @@ from decimal import Decimal
 from datetime import datetime, timedelta
 from django.utils import timezone
 from homePage.models import Activity, Booking, TreatmentSession
+from homePage.services.receipts import render_receipt_pdf
 from types import SimpleNamespace
 from decimal import InvalidOperation
 from django.db import IntegrityError
@@ -293,7 +294,7 @@ def format_booking_sms(payment, booking) -> str:
     lines.append("(יש לשמור את מספר ההזמנה לביטולים והחזרים כספיים)")
     return "\n".join(lines)
 
-def notify_booking_success(payment, booking):
+def notify_booking_success(payment, booking, receipt=None):
   """פונקציה עזר לשליחת התראות (מייל + SMS) לאחר יצירת Booking חדש בהצלחה."""
   logger.debug("notify_booking_success called with payment: %s, booking: %s", payment, booking)
 
@@ -301,7 +302,7 @@ def notify_booking_success(payment, booking):
   # הלוג היא WARNING, אז הודעות ברמה נמוכה יותר פשוט לא היו נראות בכלל בלוגים של Render.
   if getattr(settings, "SEND_EMAIL", False):
     try:
-      sent = send_booking_email(payment, booking)
+      sent = send_booking_email(payment, booking, receipt=receipt)
       if sent:
         logger.warning("notify_booking_success: email SENT OK for payment #%s (booking #%s)", payment.id, booking.id)
       else:
@@ -480,7 +481,7 @@ def send_treatment_email(session, amount: Decimal | None = None) -> bool:
     return False
   return sent >= 1
 
-def send_booking_email(payment, booking):
+def send_booking_email(payment, booking, receipt=None):
   """שולח מייל עם פרטי הזמנה ללקוח עבור Booking, כולל פורמט טוב לשעת המפגש, סכום, ומידע נוסף. מחזיר True אם נשלח לפחות מייל אחד (לא משנה אם SMS הצליח או לא)."""
   logger.debug("send_booking_email called with payment: %s, booking: %s", payment, booking)
 
@@ -496,6 +497,7 @@ def send_booking_email(payment, booking):
   participants = getattr(booking, "participants", 1)
   start_dt = getattr(booking, "start_dt", None)
   end_dt = getattr(booking, "end_dt", None)
+  activity_name = getattr(getattr(booking, "activity", None), "name", "") or ""
 
   # כותרת ייחודית (מפחית קיפול "טקסט מצוטט")
   subject = f"אישור הזמנה – חוות מסילת ציון · {charge_id}"
@@ -561,6 +563,10 @@ def send_booking_email(payment, booking):
                             <td align="right" style="padding:12px 16px;font-size:14px;color:#111;text-align:right;word-break:break-word;overflow-wrap:anywhere;">{charge_id}</td>
                           </tr>
                           <tr>
+                            <td align="right" style="padding:12px 16px;background:#fafafa;font-size:14px;color:#666;text-align:right">פעילות</td>
+                            <td align="right" style="padding:12px 16px;font-size:14px;color:#111;text-align:right;word-break:break-word;overflow-wrap:anywhere;">{activity_name}</td>
+                          </tr>
+                          <tr>
                             <td align="right" style="padding:12px 16px;background:#fafafa;font-size:14px;color:#666;text-align:right">סכום ששולם</td>
                             <td align="right" style="padding:12px 16px;font-size:14px;color:#111;text-align:right">₪{amount_nis:.2f}</td>
                           </tr>
@@ -605,6 +611,15 @@ def send_booking_email(payment, booking):
   )
   if html_body:
     email.attach_alternative(html_body, "text/html")
+
+  if receipt is not None:
+    try:
+      pdf_bytes = render_receipt_pdf(receipt)
+      email.attach(f"{receipt.receipt_number}.pdf", pdf_bytes, "application/pdf")
+    except Exception:
+      logger.exception("send_booking_email: receipt PDF rendering failed for receipt %s "
+                        "(payment #%s) — sending confirmation email without the receipt attached",
+                        getattr(receipt, "receipt_number", None), getattr(payment, "id", None))
 
   try:
     sent = email.send(fail_silently=False)

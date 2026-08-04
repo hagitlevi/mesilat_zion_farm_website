@@ -19,6 +19,7 @@ from django.contrib import messages
 from django_ratelimit.decorators import ratelimit
 from homePage.utils import assign_unique_ref
 from homePage.services.ntfy_gateway import normalize_phone_il, notify_booking_success
+from homePage.services.receipts import create_receipt_for_payment
 from ..services.booking_service import _finalize_booking_after_payment, _pick_booking_status
 from ..views.consent import _has_consent_by_phone, _save_consent_by_phone
 import logging
@@ -190,7 +191,15 @@ def _apply_payment_outcome(request, payment, new_status: str, charge_ref: str | 
                 except Exception:
                     booking.save()
 
-            notify_booking_success(payment, booking)
+            receipt = None
+            try:
+                receipt = create_receipt_for_payment(payment, booking)
+            except Exception:
+                logger.exception("payment #%s (booking #%s): receipt creation failed — "
+                                  "booking confirmation email will still be sent without a receipt",
+                                  payment.id, booking.id)
+
+            notify_booking_success(payment, booking, receipt=receipt)
         else:
             payment.status = new_status
             payment.webhook_received_at = timezone.now()

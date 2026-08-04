@@ -4,8 +4,9 @@ from .models import (
     Activity, Appointment, CustomSchedule, Booking, SiteReview,
     CancellationRequest, TermsConsent, ScheduleBoard, Weekday,
     BusinessHours, ActivityRule, Instructor, TreatmentSession,
-    MonthlySummary, Payment,
+    MonthlySummary, Payment, Receipt,
 )
+from homePage.services.receipts import render_receipt_pdf
 from homePage.services.ntfy_gateway import (
     format_session_sms, format_booking_sms, send_treatment_email,
     send_booking_email, get_treatment_amount_nis, ltr_text,
@@ -3436,6 +3437,38 @@ class MarketingConsentAdmin(admin.ModelAdmin):
 @admin.register(Payment)
 class PaymentAdmin(admin.ModelAdmin):
     list_display = ("__str__",)
+
+
+@admin.register(Receipt)
+class ReceiptAdmin(admin.ModelAdmin):
+    """קבלות נוצרות רק אוטומטית עם תשלום מוצלח — אין הוספה/עריכה/מחיקה ידנית, כדי לשמור על אי-הפיכות."""
+    list_display = ("receipt_number", "customer_name", "activity_name", "amount", "created_at")
+    search_fields = ("receipt_number", "customer_name", "activity_name")
+    actions = ("download_pdf",)
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False
+
+    def download_pdf(self, request, queryset):
+        if queryset.count() != 1:
+            self.message_user(request, "יש לבחור קבלה אחת בלבד להורדה", level=messages.ERROR)
+            return
+        receipt = queryset.first()
+        try:
+            pdf_bytes = render_receipt_pdf(receipt)
+        except Exception:
+            self.message_user(request, "יצירת ה-PDF נכשלה", level=messages.ERROR)
+            return
+        response = HttpResponse(pdf_bytes, content_type="application/pdf")
+        response["Content-Disposition"] = f'attachment; filename="{receipt.receipt_number}.pdf"'
+        return response
+    download_pdf.short_description = "הורדת קבלה כ-PDF"
 
 # ---------- עזרי זמן/חלונות ----------
 def _iter_slot_times(date_obj, start_t: dtime, end_t: dtime, minutes: int = MINUTES_PER_SLOT):
