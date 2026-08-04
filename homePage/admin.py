@@ -385,8 +385,8 @@ def find_free_start_times(chosen_date, minutes, activity_name, variant=None):
     for appt in appts_list:
         start_dt = datetime.combine(appt.date, appt.time)
 
-        #if appt.date == today and start_dt < now_naive:
-            #continue
+        if appt.date == today and start_dt < now_naive:
+            continue
 
         # חלון התחלה
         if apply_window and win_start_dt and start_dt < win_start_dt:
