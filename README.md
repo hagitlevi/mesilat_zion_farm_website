@@ -153,7 +153,7 @@ mesilat_zion_farm_website/
    python manage.py runserver
    ```
 
-   The application will be available at `http://127.0.0.1:8000`.
+   The application will be available at `https://mesilatzionfarm.co.il`.
 
 ### Docker
 

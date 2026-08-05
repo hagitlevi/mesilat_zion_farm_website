@@ -62,6 +62,20 @@
   }
   .mz-actions button[disabled]{ opacity:.55; cursor:not-allowed; }
 
+  /* בחירת אופן תשלום - שלושה כפתורים מאותו סוג, זה ליד זה */
+  .mz-pay-toggle{ display:flex; gap:8px; flex-wrap:wrap; }
+  .mz-pay-btn{
+    display:flex; align-items:center; gap:6px;
+    border:1px solid #cfd6dc; border-radius:10px;
+    padding:10px 16px; cursor:pointer; font-weight:600; color:#2c3e50;
+    background:#f5f9ff; transition:background .15s,color .15s,border-color .15s;
+  }
+  .mz-pay-btn input{ accent-color:#6a879b; }
+  .mz-pay-btn.is-active,
+  .mz-pay-btn:has(input:checked){
+    background:#6a879b; color:#fff; border-color:#6a879b;
+  }
+
   /* מובייל: הכותרת נשארת בצד ימין של השדה (לא מעליו), רק בעמודה צרה יותר */
   @media (max-width: 860px){
     .mz-card{ padding: 16px 14px 14px; }
@@ -267,12 +281,31 @@
       <div class="mz-row" style="margin-top:14px" id="summary-row"></div>
       <div class="mz-row" id="price-row" style="margin-top:6px"></div>
 
-      <div class="mz-row" style="margin-top:14px; align-items:center; gap:10px">
-        <label style="display:flex; align-items:center; gap:8px; cursor:pointer; font-weight:600; color:#c0392b;">
-          <input type="checkbox" id="skip_payment" name="skip_payment" value="1"
-                 style="width:18px; height:18px; cursor:pointer; accent-color:#c0392b;">
-          ללא תשלום – צור הזמנה ישירות
-        </label>
+      <div class="mz-row" style="margin-top:14px">
+        <div class="mz-pay-toggle" id="payment-mode-toggle" role="group" aria-label="אופן תשלום">
+          <label class="mz-pay-btn">
+            <input type="radio" name="payment_mode" value="checkout" checked>
+            <span>תשלום בסליקה</span>
+          </label>
+          <label class="mz-pay-btn">
+            <input type="radio" name="payment_mode" value="paid">
+            <span>שולם</span>
+          </label>
+          <label class="mz-pay-btn">
+            <input type="radio" name="payment_mode" value="none">
+            <span>ללא תשלום</span>
+          </label>
+        </div>
+      </div>
+
+      <label for="payment_method" id="payment_method_label" style="display:none">איך שולם?</label>
+      <div class="mz-row" id="payment-method-wrap" style="display:none; margin-top:8px">
+        <select id="payment_method" name="payment_method" style="height:44px; border-radius:10px; border:1px solid #cfd6dc; background:#f5f9ff; padding:0 12px; font-size:16px;">
+          <option value="cash">מזומן</option>
+          <option value="bit">ביט</option>
+          <option value="paybox">פייבוקס</option>
+          <option value="bank_transfer">העברה בנקאית</option>
+        </select>
       </div>
 
       <div class="mz-actions">
@@ -313,6 +346,12 @@
   const elPrice  = $('price-row');
   const elManual = $('manual_total');
   const submitBtn = $('submit-btn');
+
+  const elPayModeToggle = $('payment-mode-toggle');
+  const elPayModeInputs = elPayModeToggle ? Array.from(elPayModeToggle.querySelectorAll('input[name="payment_mode"]')) : [];
+  const elPayMethodLbl  = $('payment_method_label');
+  const elPayMethodWrap = $('payment-method-wrap');
+  const elPayMethod     = $('payment_method');
 
   const elWine      = $('wine');
   const elWineLbl   = $('wine_label');
@@ -807,6 +846,36 @@ function syncParticipantsField(){
     if (elHoldToken && elHoldToken.value) releaseHoldToken(elHoldToken.value);
   });
 
+  // ----- אופן תשלום -----
+  function currentPaymentMode(){
+    const checked = elPayModeInputs.find(i => i.checked);
+    return checked ? checked.value : 'checkout';
+  }
+
+  function syncPaymentMode(){
+    const mode = currentPaymentMode();
+
+    // הדגשת הכפתור הפעיל (בנוסף ל-CSS :has, לתמיכה רחבה יותר בדפדפנים)
+    elPayModeInputs.forEach(i => {
+      const btn = i.closest('.mz-pay-btn');
+      if (btn) btn.classList.toggle('is-active', i.checked);
+    });
+
+    const showMethod = (mode === 'paid');
+    if (elPayMethodLbl)  elPayMethodLbl.style.display  = showMethod ? '' : 'none';
+    if (elPayMethodWrap) elPayMethodWrap.style.display = showMethod ? '' : 'none';
+    if (elPayMethod){
+      if (showMethod) elPayMethod.setAttribute('required', 'required');
+      else elPayMethod.removeAttribute('required');
+    }
+
+    if (submitBtn){
+      submitBtn.textContent = (mode === 'checkout') ? 'לתשלום' : 'צור הזמנה';
+    }
+  }
+
+  elPayModeInputs.forEach(i => i.addEventListener('change', syncPaymentMode));
+
   // ----- אתחול -----
   // ודאי שברירת המחדל של הרדיו היא preset
   if (elModePreset && !elModePreset.checked && elModeCustom && !elModeCustom.checked){
@@ -815,6 +884,7 @@ function syncParticipantsField(){
   fillDurations();
   syncDurationMode();
   syncParticipantsField();
+  syncPaymentMode();
   updateSummary();
   loadQuote();
 })();

@@ -2426,8 +2426,15 @@ class BookingAdmin(admin.ModelAdmin):
         date_str = (request.POST.get("date") or "").strip()
         start_str = (request.POST.get("start_time") or "").strip()
         participants = max(1, int(request.POST.get("participants") or 1))
-        mark_paid = str(request.POST.get("mark_paid", "")).lower() in {"1", "true", "on", "yes"}
-        skip_payment = str(request.POST.get("skip_payment", "")).lower() in {"1", "true", "on", "yes"}
+        payment_mode = (request.POST.get("payment_mode") or "checkout").strip().lower()
+        if payment_mode not in {"checkout", "paid", "none"}:
+            payment_mode = "checkout"
+        skip_payment = (payment_mode == "none")
+        paid_manually = (payment_mode == "paid")
+        manual_payment_method = (request.POST.get("payment_method") or "").strip().lower()
+        if paid_manually and manual_payment_method not in {"cash", "bit", "paybox", "bank_transfer"}:
+            messages.error(request, "יש לבחור איך שולם.")
+            return redirect(reverse("admin:homePage_appointment_book"))
 
         # פרטי הלקוח
         first_name = (request.POST.get("first_name") or "").strip()
@@ -2592,8 +2599,8 @@ class BookingAdmin(admin.ModelAdmin):
         if manual_total is not None:
             total_price = manual_total
 
-        # --- מסלול ללא תשלום: יצירה ישירה ללא draft/pay ---
-        if skip_payment:
+        # --- מסלולים ללא PayPlus: "שולם ידנית" (עם קבלה) או "ללא תשלום" - יצירה ישירה ללא draft/pay ---
+        if skip_payment or paid_manually:
             from homePage.services.admin_booking import _gen_unique_mz_ref
             try:
                 with transaction.atomic():
@@ -2608,17 +2615,17 @@ class BookingAdmin(admin.ModelAdmin):
                         customer_email=email,
                         participants=participants,
                         total_price=total_price,
-                        payment_method="admin",
+                        payment_method=manual_payment_method if paid_manually else "admin",
                         payment_ref=ref,
-                        status="pending",
+                        status="paid" if paid_manually else "pending",
                         start_dt=start_dt,
                         end_dt=start_dt + timedelta(minutes=minutes),
-                        details=details_txt or "נקבע באדמין – ללא תשלום",
+                        details=details_txt or ("נקבע באדמין – שולם ידנית" if paid_manually else "נקבע באדמין – ללא תשלום"),
                     )
                     for a in qs_lock:
                         a.booking = booking
                         a.is_booked = True
-                        a.is_paid = False
+                        a.is_paid = paid_manually
                         a.is_break = False
                         a.hold_token = None
                         a.hold_until = None
@@ -2661,6 +2668,24 @@ class BookingAdmin(admin.ModelAdmin):
                 messages.error(request, f"שגיאה ביצירת הזמנה: {e}")
                 return redirect(reverse("admin:homePage_appointment_book"))
 
+            # "שולם ידנית" - מייצרים קבלה אמיתית (מספר רץ, לא ניתנת למחיקה/עריכה)
+            receipt = None
+            if paid_manually:
+                try:
+                    receipt = create_manual_receipt(
+                        customer_name=booking.customer_name,
+                        customer_email=booking.customer_email,
+                        items=[{"description": activity.name, "amount": str(total_price or 0)}],
+                        payment_method=manual_payment_method,
+                        created_by=request.user,
+                    )
+                except Exception as e:
+                    messages.warning(
+                        request,
+                        f"ההזמנה #{booking.id} נוצרה ושולמה, אך יצירת הקבלה נכשלה ({e}). "
+                        "אפשר ליצור קבלה ידנית ממסך הקבלות.",
+                    )
+
             try:
                 agorot = int(Decimal(booking.total_price or 0) * 100)
                 payment_like = SimpleNamespace(
@@ -2669,7 +2694,7 @@ class BookingAdmin(admin.ModelAdmin):
                     amount_agorot=agorot,
                     charge_id=booking.payment_ref,
                 )
-                send_booking_email(payment_like, booking)
+                send_booking_email(payment_like, booking, receipt=receipt)
                 if getattr(settings, "SEND_SMS", False) and (booking.customer_phone or "").strip():
                     sms_text = format_booking_sms(payment_like, booking)
                     try:
@@ -2681,7 +2706,13 @@ class BookingAdmin(admin.ModelAdmin):
 
             # נקה hold מה-session
             request.session.pop("admin_hold_token", None)
-            messages.success(request, f"הזמנה #{booking.id} נוצרה (ללא תשלום). אסמכתא: {ref}")
+            if paid_manually:
+                if receipt:
+                    messages.success(request, f"הזמנה #{booking.id} נוצרה ושולמה. אסמכתא: {ref}. קבלה: {receipt.receipt_number}")
+                else:
+                    messages.success(request, f"הזמנה #{booking.id} נוצרה ושולמה. אסמכתא: {ref}")
+            else:
+                messages.success(request, f"הזמנה #{booking.id} נוצרה (ללא תשלום). אסמכתא: {ref}")
             return redirect(reverse("admin:homePage_booking_change", args=[booking.id]))
 
         # שומר טיוטה ב-session
