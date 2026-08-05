@@ -62,10 +62,25 @@
   }
   .mz-actions button[disabled]{ opacity:.55; cursor:not-allowed; }
 
-  /* מובייל: עמודה אחת */
+  /* מובייל: הכותרת נשארת בצד ימין של השדה (לא מעליו), רק בעמודה צרה יותר */
   @media (max-width: 860px){
-    .mz-grid{ grid-template-columns: 1fr; }
-    .mz-grid label{ justify-self:start; }
+    .mz-card{ padding: 16px 14px 14px; }
+    .mz-title{ font-size:17px; padding:10px 14px; }
+
+    .mz-grid{
+      grid-template-columns: 88px 1fr;
+      gap: 10px 10px;
+    }
+    .mz-grid label{
+      min-height:auto;
+      font-size: 13.5px;
+      line-height: 1.25;
+      text-align: end;
+    }
+    .mz-grid .field > *{
+      font-size: 15px;
+      padding: 0 8px;
+    }
   }
   /* להסתיר שורת עזרה/סיכום זמינות */
     .mz-help,
