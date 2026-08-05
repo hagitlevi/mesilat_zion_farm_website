@@ -2192,6 +2192,13 @@ class BookingAdmin(admin.ModelAdmin):
     def add_view(self, request, form_url="", extra_context=None):
         return redirect(reverse("admin:homePage_appointment_book"))
 
+    def change_view(self, request, object_id, form_url="", extra_context=None):
+        extra_context = extra_context or {}
+        booking = self.get_object(request, object_id)
+        if booking and str(booking.status).strip().lower() not in {"paid", "שולם"}:
+            extra_context["mark_paid_url"] = reverse("admin:homePage_booking_mark_paid", args=[booking.id])
+        return super().change_view(request, object_id, form_url, extra_context=extra_context)
+
     def get_urls(self):
         urls = super().get_urls()
         extra = [

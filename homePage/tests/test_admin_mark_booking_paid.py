@@ -94,3 +94,15 @@ class MarkBookingPaidTests(TestCase):
 
         self.assertFalse(Receipt.objects.filter(customer_email="dana@example.com").exists())
         self.assertRedirects(resp, reverse("admin:homePage_booking_change", args=[self.booking.id]))
+
+    def test_mark_paid_button_shown_on_unpaid_booking_change_page(self):
+        resp = self.client.get(reverse("admin:homePage_booking_change", args=[self.booking.id]))
+        self.assertContains(resp, self.url)
+        self.assertContains(resp, "סמן כשולם")
+
+    def test_mark_paid_button_hidden_on_paid_booking_change_page(self):
+        self.booking.status = "paid"
+        self.booking.save(update_fields=["status"])
+
+        resp = self.client.get(reverse("admin:homePage_booking_change", args=[self.booking.id]))
+        self.assertNotContains(resp, self.url)
