@@ -7,8 +7,10 @@
 import uuid
 from datetime import date, time, timedelta, datetime
 from decimal import Decimal
+from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
+from django.core import mail
 from django.test import TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
@@ -102,3 +104,22 @@ class AdminManualPaidBookingTests(TestCase):
             self.assertFalse(a.is_paid)
 
         self.assertFalse(Receipt.objects.filter(customer_email="dana@example.com").exists())
+
+    @override_settings(SEND_EMAIL=True, SEND_SMS=True)
+    def test_silent_import_skips_receipt_email_and_sms(self):
+        with patch("homePage.admin.send_sms_via_ntfy") as mock_sms:
+            resp = self._post(payment_mode="paid", payment_method="cash", silent_import="1")
+
+        booking = Booking.objects.get(customer_email="dana@example.com")
+        self.assertEqual(booking.status, "paid")
+        self.assertEqual(booking.payment_method, "cash")
+
+        for a in self.slots:
+            a.refresh_from_db()
+            self.assertTrue(a.is_paid)
+
+        self.assertFalse(Receipt.objects.filter(customer_email="dana@example.com").exists())
+        self.assertEqual(len(mail.outbox), 0)
+        mock_sms.assert_not_called()
+
+        self.assertRedirects(resp, reverse("admin:homePage_booking_change", args=[booking.id]))

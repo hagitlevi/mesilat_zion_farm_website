@@ -2435,6 +2435,8 @@ class BookingAdmin(admin.ModelAdmin):
         if paid_manually and manual_payment_method not in {"cash", "bit", "paybox", "bank_transfer"}:
             messages.error(request, "יש לבחור איך שולם.")
             return redirect(reverse("admin:homePage_appointment_book"))
+        # TODO זמני: להסרה אחרי סיום יבוא ההזמנות הישנות
+        silent_import = str(request.POST.get("silent_import", "")).lower() in {"1", "true", "on", "yes"}
 
         # פרטי הלקוח
         first_name = (request.POST.get("first_name") or "").strip()
@@ -2669,8 +2671,9 @@ class BookingAdmin(admin.ModelAdmin):
                 return redirect(reverse("admin:homePage_appointment_book"))
 
             # "שולם ידנית" - מייצרים קבלה אמיתית (מספר רץ, לא ניתנת למחיקה/עריכה)
+            # TODO זמני: silent_import מדלג על קבלה/מייל/SMS - להסרה אחרי סיום יבוא ההזמנות הישנות
             receipt = None
-            if paid_manually:
+            if paid_manually and not silent_import:
                 try:
                     receipt = create_manual_receipt(
                         customer_name=booking.customer_name,
@@ -2686,28 +2689,31 @@ class BookingAdmin(admin.ModelAdmin):
                         "אפשר ליצור קבלה ידנית ממסך הקבלות.",
                     )
 
-            try:
-                agorot = int(Decimal(booking.total_price or 0) * 100)
-                payment_like = SimpleNamespace(
-                    email=booking.customer_email,
-                    customer_name=booking.customer_name,
-                    amount_agorot=agorot,
-                    charge_id=booking.payment_ref,
-                )
-                send_booking_email(payment_like, booking, receipt=receipt)
-                if getattr(settings, "SEND_SMS", False) and (booking.customer_phone or "").strip():
-                    sms_text = format_booking_sms(payment_like, booking)
-                    try:
-                        send_sms_via_ntfy(booking.customer_phone, sms_text)
-                    except Exception:
-                        pass
-            except Exception:
-                pass
+            if not silent_import:
+                try:
+                    agorot = int(Decimal(booking.total_price or 0) * 100)
+                    payment_like = SimpleNamespace(
+                        email=booking.customer_email,
+                        customer_name=booking.customer_name,
+                        amount_agorot=agorot,
+                        charge_id=booking.payment_ref,
+                    )
+                    send_booking_email(payment_like, booking, receipt=receipt)
+                    if getattr(settings, "SEND_SMS", False) and (booking.customer_phone or "").strip():
+                        sms_text = format_booking_sms(payment_like, booking)
+                        try:
+                            send_sms_via_ntfy(booking.customer_phone, sms_text)
+                        except Exception:
+                            pass
+                except Exception:
+                    pass
 
             # נקה hold מה-session
             request.session.pop("admin_hold_token", None)
             if paid_manually:
-                if receipt:
+                if silent_import:
+                    messages.success(request, f"הזמנה #{booking.id} נוצרה ושולמה (יבוא היסטורי - ללא קבלה/מייל/SMS). אסמכתא: {ref}")
+                elif receipt:
                     messages.success(request, f"הזמנה #{booking.id} נוצרה ושולמה. אסמכתא: {ref}. קבלה: {receipt.receipt_number}")
                 else:
                     messages.success(request, f"הזמנה #{booking.id} נוצרה ושולמה. אסמכתא: {ref}")
