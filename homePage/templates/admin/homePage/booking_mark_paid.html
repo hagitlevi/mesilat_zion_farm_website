@@ -1,0 +1,59 @@
+{% extends "admin/base_site.html" %}
+{% load static %}
+
+{% block extrastyle %}
+<style>
+  .mzp-form { direction: rtl; max-width: 560px; margin: 0 auto; }
+  .mzp-card {
+    background: #fff;
+    border: 1px solid #dfe3e6;
+    border-radius: 12px;
+    padding: 22px;
+    box-shadow: 0 1px 0 rgba(0,0,0,.02);
+  }
+  .mzp-title {
+    background: #4f6f84; color: #fff;
+    padding: 12px 18px; border-radius: 10px;
+    margin: -6px -6px 18px; font-size: 20px; font-weight: 600;
+  }
+  .mzp-summary { color: #2c3e50; margin-bottom: 18px; line-height: 1.7; }
+  .mzp-summary strong { color: #000; }
+  .mzp-field { margin-bottom: 18px; }
+  .mzp-field > label { display: block; font-weight: 600; margin-bottom: 8px; color: #2c3e50; }
+  .mzp-methods { display: flex; flex-wrap: wrap; gap: 10px 18px; }
+  .mzp-methods label { display: flex; align-items: center; gap: 6px; font-weight: 500; color: #2c3e50; cursor: pointer; }
+  .mzp-submit { background: #2e7d32; color: #fff; border: none; border-radius: 8px; padding: 12px 28px; font-size: 16px; font-weight: 600; cursor: pointer; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="mzp-form">
+  <div class="mzp-card">
+    <div class="mzp-title">סימון הזמנה כשולם</div>
+
+    <div class="mzp-summary">
+      הזמנה #{{ booking.id }} — <strong>{{ booking.customer_name }}</strong>,
+      {{ booking.activity.name }}, ₪{{ booking.total_price }}.<br>
+      ללקוח כבר נשלחו פרטי ההזמנה במייל/SMS כשההזמנה נוצרה — כאן יישלח רק מייל עם הקבלה.
+    </div>
+
+    <form method="POST">
+      {% csrf_token %}
+
+      <div class="mzp-field">
+        <label>איך שולם?</label>
+        <div class="mzp-methods">
+          {% for code, label in payment_methods %}
+            <label>
+              <input type="radio" name="payment_method" value="{{ code }}" {% if forloop.first %}checked{% endif %}>
+              {{ label }}
+            </label>
+          {% endfor %}
+        </div>
+      </div>
+
+      <button type="submit" class="mzp-submit">סמן כשולם ושלח קבלה</button>
+    </form>
+  </div>
+</div>
+{% endblock %}

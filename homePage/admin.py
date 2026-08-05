@@ -1992,7 +1992,8 @@ class BookingAdmin(admin.ModelAdmin):
     actions = [delete_selected]
     form = BookingAdminForm
     list_display  = ("id", "activity", "start_dt", "end_dt",
-                     "customer_name", "customer_phone", "status", "payment_ref", "total_price", "participants", "created_at")
+                     "customer_name", "customer_phone", "status", "payment_ref", "total_price", "participants", "created_at",
+                     "mark_paid_action")
     list_filter   = ("activity", "status","created_at", "start_dt")
     search_fields = ("customer_name", "customer_phone", "customer_email", "payment_ref")
     readonly_fields = ("total_price", "payment_method", "payment_ref", "status")
@@ -2199,8 +2200,72 @@ class BookingAdmin(admin.ModelAdmin):
             path("pay/", self.admin_site.admin_view(admin_pay_stub), name="homePage_admin_pay_stub"),
             path("hold/", self.admin_site.admin_view(self.hold_api), name="homePage_appointment_hold"),
             path("hold/release/", self.admin_site.admin_view(self.release_hold_api), name="homePage_appointment_hold_release"),
+            path("<int:booking_id>/mark-paid/", self.admin_site.admin_view(self.mark_paid_view), name="homePage_booking_mark_paid"),
         ]
         return extra + urls
+
+    def mark_paid_action(self, obj):
+        if str(obj.status).strip().lower() in {"paid", "שולם"}:
+            return "—"
+        url = reverse("admin:homePage_booking_mark_paid", args=[obj.id])
+        return format_html('<a class="button" href="{}">סמן כשולם</a>', url)
+    mark_paid_action.short_description = "תשלום ידני"
+
+    def mark_paid_view(self, request, booking_id):
+        """
+        הזמנה שנוצרה כ"ללא תשלום" ושולם עליה בפועל בדיעבד (מזומן/ביט/פייבוקס/העברה):
+        מסמנים כשולם, מנפיקים קבלה אמיתית, ושולחים ללקוח רק את הקבלה במייל - בלי לחזור
+        ולשלוח שוב את מייל/SMS פרטי ההזמנה שכבר נשלחו כשההזמנה נוצרה.
+        """
+        booking = get_object_or_404(Booking, pk=booking_id)
+        if str(booking.status).strip().lower() in {"paid", "שולם"}:
+            messages.info(request, "ההזמנה כבר מסומנת כשולם.")
+            return redirect(reverse("admin:homePage_booking_change", args=[booking.id]))
+
+        if request.method == "POST":
+            payment_method = (request.POST.get("payment_method") or "").strip().lower()
+            if payment_method not in {"cash", "bit", "paybox", "bank_transfer"}:
+                messages.error(request, "יש לבחור איך שולם.")
+                return redirect(reverse("admin:homePage_booking_mark_paid", args=[booking.id]))
+
+            try:
+                with transaction.atomic():
+                    receipt = create_manual_receipt(
+                        customer_name=booking.customer_name,
+                        customer_email=booking.customer_email,
+                        items=[{"description": booking.activity.name, "amount": str(booking.total_price or 0)}],
+                        payment_method=payment_method,
+                        created_by=request.user,
+                    )
+                    booking.status = "paid"
+                    booking.payment_method = payment_method
+                    booking.save(update_fields=["status", "payment_method"])
+                    Appointment.objects.filter(booking=booking).update(is_paid=True)
+            except ValueError as e:
+                messages.error(request, str(e))
+                return redirect(reverse("admin:homePage_booking_mark_paid", args=[booking.id]))
+            except Exception as e:
+                messages.error(request, f"שגיאה בסימון ההזמנה כשולם: {e}")
+                return redirect(reverse("admin:homePage_booking_change", args=[booking.id]))
+
+            sent = send_manual_receipt_email(receipt)
+            download_url = reverse("admin:homePage_receipt_download", args=[receipt.pk])
+            if sent:
+                msg = (f'הזמנה #{booking.id} סומנה כשולם. קבלה {receipt.receipt_number} נשלחה במייל ל-{booking.customer_email}. '
+                       f'<a href="{download_url}">הורדת PDF</a>')
+                messages.success(request, mark_safe(msg))
+            else:
+                msg = (f'הזמנה #{booking.id} סומנה כשולם, אך שליחת מייל הקבלה נכשלה. '
+                       f'<a href="{download_url}">הורדת PDF</a> כדי לשלוח ידנית.')
+                messages.warning(request, mark_safe(msg))
+            return redirect(reverse("admin:homePage_booking_change", args=[booking.id]))
+
+        ctx = {
+            "opts": self.model._meta,
+            "booking": booking,
+            "payment_methods": [("cash", "מזומן"), ("bit", "ביט"), ("paybox", "פייבוקס"), ("bank_transfer", "העברה בנקאית")],
+        }
+        return TemplateResponse(request, "admin/homePage/booking_mark_paid.html", ctx)
 
     def book_wizard(self, request):
         """
