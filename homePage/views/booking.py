@@ -609,16 +609,19 @@ def available_appointment_view(request, activity_id):
       if not ok:
         continue
 
-      # אם המפגש ארוך מ-30 דק׳ – נדרשת גם "הפסקה" של 15 דק׳ בסוף
+      # אם המפגש ארוך מ-30 דק׳ – נדרשת גם "הפסקה" של 15 דק׳ בסוף,
+      # אבל רק אם יום הפעילות ממשיך אחרי סיום המפגש (בסוף היום אין צורך בהפסקה)
       if d > 30:
         buffer_start_dt = start_dt + timedelta(minutes=15 * slots_needed)  # מיד אחרי סוף המפגש
-        # אם יש חלון, ודאי שגם ההפסקה נכנסת לתוכו
-        if apply_window and win_end_dt and (buffer_start_dt + timedelta(minutes=15)) > win_end_dt:
-          continue
-        buffer_time = buffer_start_dt.time()
-        # ההפסקה חייבת להיות סלוט פנוי (כלומר קיימת ב-appts_qs ולא תפוסה/הפסקה)
-        if buffer_time not in free_set:
-          continue
+        day_ends_here = apply_window and win_end_dt and buffer_start_dt >= win_end_dt
+        if not day_ends_here:
+          # אם יש חלון, ודאי שגם ההפסקה נכנסת לתוכו
+          if apply_window and win_end_dt and (buffer_start_dt + timedelta(minutes=15)) > win_end_dt:
+            continue
+          buffer_time = buffer_start_dt.time()
+          # ההפסקה חייבת להיות סלוט פנוי (כלומר קיימת ב-appts_qs ולא תפוסה/הפסקה)
+          if buffer_time not in free_set:
+            continue
 
       # אם הגענו לכאן – יש רצף תקין וגם הפסקת 15 דק׳ (אם צריך)
       grouped_appointments[d].append({
@@ -782,7 +785,9 @@ def hold_appointment(request):
     need_break = duration > 30
     if need_break:
         break_time = (base_dt + timedelta(minutes=15*slot_count)).time()
-        times_needed.append(break_time)
+        # אם זה סוף היום (אין סלוט בכלל אחרי המפגש) - אין צורך בהפסקה
+        if Appointment.objects.filter(date=base.date, time=break_time).exists():
+            times_needed.append(break_time)
 
     qs = (Appointment.objects.select_for_update()
           .filter(date=base.date, time__in=times_needed, is_break=False))

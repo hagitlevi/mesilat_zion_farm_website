@@ -422,14 +422,17 @@ def find_free_start_times(chosen_date, minutes, activity_name, variant=None):
         if apply_window and win_end_dt and end_dt > win_end_dt:
             continue
 
-        # הפסקה 15 ד׳ אם צריך — גם היא מותרת להיות מכל סלוט פנוי ביום
+        # הפסקה 15 ד׳ אם צריך — גם היא מותרת להיות מכל סלוט פנוי ביום,
+        # אבל רק אם יום הפעילות ממשיך אחרי סיום המפגש (בסוף היום אין צורך בהפסקה)
         if needs_buffer:
             buffer_start_dt = start_dt + timedelta(minutes=15 * slots_needed)
-            buffer_end_dt = buffer_start_dt + timedelta(minutes=15)
-            if apply_window and win_end_dt and buffer_end_dt > win_end_dt:
-                continue
-            if buffer_start_dt.time() not in allowed_set:
-                continue
+            day_ends_here = apply_window and win_end_dt and buffer_start_dt >= win_end_dt
+            if not day_ends_here:
+                buffer_end_dt = buffer_start_dt + timedelta(minutes=15)
+                if apply_window and win_end_dt and buffer_end_dt > win_end_dt:
+                    continue
+                if buffer_start_dt.time() not in allowed_set:
+                    continue
 
         start_times.append(appt.time.strftime("%H:%M"))
 
@@ -1990,8 +1993,13 @@ class BookingAdmin(admin.ModelAdmin):
 
         start_dt = datetime.combine(d, t)
 
-        # שימי לב: אנחנו תופסים גם buffer אם minutes>30 כמו במערכת שלך
-        minutes_total = minutes_real + (15 if minutes_real > 30 else 0)
+        # שימי לב: אנחנו תופסים גם buffer אם minutes>30 כמו במערכת שלך,
+        # אבל רק אם יש בכלל סלוט אחרי המפגש (לא סוף היום - אז אין צורך בהפסקה)
+        minutes_total = minutes_real
+        if minutes_real > 30:
+            buffer_start_dt = start_dt + timedelta(minutes=minutes_real)
+            if Appointment.objects.filter(date=d, time=buffer_start_dt.time()).exists():
+                minutes_total = minutes_real + 15
 
         token = request.session.get("admin_hold_token")
         if not token:
