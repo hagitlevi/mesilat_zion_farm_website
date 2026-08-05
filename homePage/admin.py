@@ -1787,8 +1787,19 @@ class BookingAdminForm(forms.ModelForm):
         # לא משחרר כלום – רק מוסיף לרשימה של ה-selector.
         try:
             from datetime import datetime, timedelta
+            from .views import get_rules_for
 
             slot_cnt_q = max(1, (minutes_for_query + 14) // 15)
+            slot_cnt_real = max(1, (minutes_real + 14) // 15)
+
+            # שעות סגירה של הפעילות (אותו rules_activity שמשמש את find_free_start_times)
+            rules_activity = inst.activity
+            if name == "רכיבה זוגית":
+                if variant == "night":
+                    rules_activity = Activity.objects.filter(name="רכיבת לילה").first() or inst.activity
+                elif variant == "sunrise":
+                    rules_activity = Activity.objects.filter(name="רכיבה בזריחה").first() or inst.activity
+            _, _cutoff_min, _win_start_dt, win_end_dt = get_rules_for(rules_activity, day)
 
             # כל הסלוטים של אותו יום
             day_rows = list(
@@ -1804,9 +1815,22 @@ class BookingAdminForm(forms.ModelForm):
 
             def chain_ok(start_t):
                 """אפשר להתחיל ב-start_t אם כל השרשרת זמינה או שייכת להזמנה הזו,
-                   וחייבת להיות חפיפה כלשהי עם סלוטים של ההזמנה הנוכחית."""
+                   וחייבת להיות חפיפה כלשהי עם סלוטים של ההזמנה הנוכחית.
+                   מכבד גם את שעת הסגירה של הפעילות (כמו find_free_start_times)."""
+                meeting_end_dt = datetime.combine(day, start_t) + timedelta(minutes=minutes_real)
+                if win_end_dt and meeting_end_dt > win_end_dt:
+                    return False  # המפגש עצמו חורג משעת הסגירה
+
+                # אם המפגש מסתיים בדיוק עם סגירת הפעילות - אין צורך בהפסקה אחריו
+                day_ends_here = bool(win_end_dt) and meeting_end_dt >= win_end_dt
+                need_buffer = (minutes_real > 30) and not day_ends_here
+                if need_buffer and win_end_dt and (meeting_end_dt + timedelta(minutes=15)) > win_end_dt:
+                    return False  # אין מקום להפסקה לפני הסגירה
+
+                slot_cnt_needed = slot_cnt_q if need_buffer else slot_cnt_real
+
                 overlap = False
-                for i in range(slot_cnt_q):
+                for i in range(slot_cnt_needed):
                     tt = t_add(start_t, i)
                     row = slot_map.get(tt)
                     if not row:
@@ -2023,7 +2047,9 @@ class BookingAdmin(admin.ModelAdmin):
 
     @require_POST
     def release_hold_api(self, request):
-        token = request.session.get("admin_hold_token") or (request.POST.get("token") or "")
+        # מעדיפים טוקן מפורש מה-POST (למשל מהוויזארד) על פני זה שבסשן,
+        # כדי לא לשחרר בטעות HOLD אחר לגמרי שרץ באותו סשן.
+        token = (request.POST.get("token") or "").strip() or request.session.get("admin_hold_token")
         if token:
             release_hold(token)
         # לא חייבים למחוק מה-session, אבל עדיף:
@@ -2384,6 +2410,7 @@ class BookingAdmin(admin.ModelAdmin):
                 "durations_couple_json": json.dumps(durations_couple, ensure_ascii=False),
                 "today": timezone.localdate().isoformat(),
                 "ajax_times_url": reverse("admin:homePage_appointment_book"),
+                "hold_release_url": reverse("admin:homePage_appointment_hold_release"),
             }
             return TemplateResponse(
                 request,

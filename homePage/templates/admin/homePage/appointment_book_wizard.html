@@ -287,6 +287,7 @@
   const DURATIONS        = JSON.parse('{{ durations_map_json|escapejs }}');
   const DURATIONS_COUPLE = JSON.parse('{{ durations_couple_json|escapejs }}');
   const AJAX_URL  = "{{ ajax_times_url }}";
+  const HOLD_RELEASE_URL = "{{ hold_release_url }}";
 
   // ----- refs -----
   const $ = id => document.getElementById(id);
@@ -521,11 +522,24 @@ function syncParticipantsField(){
   }
 
     // ----- HOLD -----
+    // משחררת בשרת HOLD שכבר לא רלוונטי (למשל כי בחרו שעה אחרת, או עזבו את הדף)
+    function releaseHoldToken(token){
+      if (!token || !HOLD_RELEASE_URL) return;
+      try{
+        const csrfEl = document.querySelector('#mz-form [name=csrfmiddlewaretoken]');
+        const body = new URLSearchParams({
+          token: token,
+          csrfmiddlewaretoken: csrfEl ? csrfEl.value : ''
+        });
+        fetch(HOLD_RELEASE_URL, { method: 'POST', body, credentials: 'same-origin', keepalive: true });
+      }catch(e){}
+    }
+
     async function requestHold(){
       if (!elHoldToken) return false;
 
-      // כל שינוי בבחירות צריך לאפס טוקן קודם
-      elHoldToken.value = '';
+      // כל שינוי בבחירות צריך לשחרר את ה-HOLD הקודם (אם היה) ולאפס טוקן
+      clearHoldLocal();
       toggleSubmit(false);
 
       const name    = elName.value || '';
@@ -594,7 +608,10 @@ function syncParticipantsField(){
       }
     }
   function clearHoldLocal(){
-    if (elHoldToken) elHoldToken.value = '';
+    if (elHoldToken && elHoldToken.value){
+      releaseHoldToken(elHoldToken.value);
+      elHoldToken.value = '';
+    }
   }
 
   // ----- זמני התחלה -----
@@ -766,6 +783,7 @@ function syncParticipantsField(){
   });
 
   // ולידציה לפני שליחה + שיגור המשך בפועל לשדה החבוי
+  let mzSubmitting = false;
   elForm && elForm.addEventListener('submit', (e)=>{
     const mChosen = chosenMinutes();
     if (!elName.value || !mChosen || !elDate.value || !elStart.value){
@@ -780,6 +798,13 @@ function syncParticipantsField(){
     }
     if (elOverride) elOverride.value = String(mChosen);
     if (!elParticipants.value) elParticipants.value = '1';
+    mzSubmitting = true; // עוזבים את הדף בגלל שליחה אמיתית - לא לשחרר את ה-HOLD
+  });
+
+  // עזיבת הדף בלי לשלוח (סגירת טאב/ניווט הצידה) - משחררים את ה-HOLD הפעיל כדי שלא יישאר תפוס לריק
+  window.addEventListener('pagehide', ()=>{
+    if (mzSubmitting) return;
+    if (elHoldToken && elHoldToken.value) releaseHoldToken(elHoldToken.value);
   });
 
   // ----- אתחול -----
