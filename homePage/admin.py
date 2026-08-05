@@ -3452,6 +3452,13 @@ class ReceiptAdmin(admin.ModelAdmin):
     def add_view(self, request, form_url="", extra_context=None):
         return redirect(reverse("admin:homePage_receipt_create"))
 
+    def has_view_permission(self, request, obj=None):
+        # בלי זה, משתמש staff שאין לו הרשאת view_receipt/change_receipt מפורשת
+        # (רק add_receipt) מקבל 403 מיד אחרי יצירת קבלה, כי הוא מנותב לרשימת
+        # הקבלות ו-Django בודק הרשאת view נפרדת שם (has_change_permission למטה
+        # תמיד False בכוונה, כדי שאי אפשר יהיה לערוך/למחוק קבלה שהונפקה).
+        return True
+
     def has_change_permission(self, request, obj=None):
         return False
 
