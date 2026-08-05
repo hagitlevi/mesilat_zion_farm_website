@@ -39,6 +39,7 @@ from django.contrib.admin.widgets import AdminDateWidget, AdminTimeWidget, Filte
 from django.http import HttpResponse
 from django.utils.html import format_html
 from .models import MarketingConsent
+from .models import SiteSettings
 import csv
 from django.views.decorators.http import require_POST
 from django.utils.crypto import get_random_string
@@ -1572,6 +1573,20 @@ class ScheduleBoardAdmin(admin.ModelAdmin):
             "opts": self.model._meta,
         }
         return render(request, "admin/homePage/schedule/change_list.html", ctx)
+
+@admin.register(SiteSettings)
+class SiteSettingsAdmin(admin.ModelAdmin):
+    """שורה יחידה (singleton) — קליק ברשימה קופץ ישר לעריכה, בלי מסך רשימה מיותר."""
+
+    def has_add_permission(self, request):
+        return not SiteSettings.objects.exists()
+
+    def has_delete_permission(self, request, obj=None):
+        return False
+
+    def changelist_view(self, request, extra_context=None):
+        obj = SiteSettings.load()
+        return redirect(reverse("admin:homePage_sitesettings_change", args=[obj.pk]))
 
 @admin.register(Activity)
 class ActivityAdmin(admin.ModelAdmin):

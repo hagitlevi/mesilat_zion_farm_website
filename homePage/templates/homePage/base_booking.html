@@ -19,7 +19,7 @@
 
     <div class="top-image-container">
         <img src="{% block image_src %}{% endblock %}" alt="{% block image_alt %}{% endblock %}">
-        {% if activity.name != "שיעורי רכיבה/ טיפולית" and activity.name != "צילומים" %}
+        {% if online_booking_enabled and activity.name != "שיעורי רכיבה/ טיפולית" and activity.name != "צילומים" %}
           <a href="#booking-notice" class="cta-on-image" aria-label="לעבור להזמנה">להזמנה</a>
         {% endif %}
         <p class="text_on_picture">
@@ -59,7 +59,7 @@
             </ul>
     </div>
 
-    {% if activity.name != "שיעורי רכיבה/ טיפולית" and activity.name != "צילומים"%}
+    {% if online_booking_enabled and activity.name != "שיעורי רכיבה/ טיפולית" and activity.name != "צילומים"%}
         {% block appointment_title %}
         <div class="appointment_title">הזמנת רכיבה</div>
         {% endblock %}
@@ -96,7 +96,7 @@
 
 {% block scripts %}
     <script>
-    {% if activity.name != "שיעורי רכיבה/ טיפולית" and activity.name != "צילומים" %}
+    {% if online_booking_enabled and activity.name != "שיעורי רכיבה/ טיפולית" and activity.name != "צילומים" %}
         document.addEventListener("DOMContentLoaded", function () {
           const loader       = document.getElementById("appointments-loader");
           const content      = document.getElementById("appointments-content");

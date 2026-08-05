@@ -242,6 +242,11 @@ def pay_start(request):
     if request.method != "POST":
         return HttpResponseBadRequest("Method not allowed. Expected POST.")
 
+    from homePage.models import SiteSettings
+    if not SiteSettings.load().online_booking_enabled:
+        messages.error(request, "הזמנת תורים דרך האתר סגורה זמנית. לקביעת תור צרו קשר בטלפון/וואטסאפ 0558859569.")
+        return redirect("home")
+
     appointment_id   = request.POST.get("appointment_id")
     activity_id      = request.POST.get("activity_id")
     duration_minutes = int(request.POST.get("duration_minutes", "60"))

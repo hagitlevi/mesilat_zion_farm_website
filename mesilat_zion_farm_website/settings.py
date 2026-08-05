@@ -91,6 +91,7 @@ TEMPLATES = [
                 'django.template.context_processors.request',
                 'django.contrib.auth.context_processors.auth',
                 'django.contrib.messages.context_processors.messages',
+                'homePage.context_processors.site_settings',
 
             ],
         },
@@ -133,7 +134,7 @@ AUTH_PASSWORD_VALIDATORS = [
 ADMIN_MODEL_ORDER = {
     "homePage": {
         "object_name": [
-            "ScheduleBoard", "Booking", "Receipt", "CancellationRequest",
+            "SiteSettings", "ScheduleBoard", "Booking", "Receipt", "CancellationRequest",
         ],
     }
 }
@@ -142,7 +143,7 @@ ADMIN_MODEL_ORDER = {
 # מודל שלא רשום כאן נופל לקבוצת "אחר" בסוף.
 ADMIN_MODEL_GROUPS = {
     "homePage": [
-        ("הזמנות ולוח זמנים", ["ScheduleBoard", "Booking", "CancellationRequest", "Appointment",
+        ("הזמנות ולוח זמנים", ["SiteSettings", "ScheduleBoard", "Booking", "CancellationRequest", "Appointment",
                                 "CustomSchedule", "BusinessHours", "Weekday", "ActivityRule"]),
         ("כספים", ["Receipt", "Payment", "MonthlySummary"]),
         ("פעילויות ומדריכים", ["Activity", "Instructor", "TreatmentSession"]),

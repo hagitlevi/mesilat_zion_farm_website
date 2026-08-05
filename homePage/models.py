@@ -694,3 +694,32 @@ def release_slots_for_booking(booking, using='default'):
 def release_on_booking_delete(sender, instance, using, **kwargs):
     # לפני מחיקת ההזמנה – משחררים את כל הסלוטים שלה
     release_slots_for_booking(instance, using=using)
+
+
+class SiteSettings(models.Model):
+    """שורה יחידה (singleton) – מתג גלובלי להפעלה/כיבוי של הזמנת תורים עצמאית באתר."""
+    online_booking_enabled = models.BooleanField(
+        "אפשר הזמנת תורים דרך האתר",
+        default=False,
+        help_text=(
+            "כשהתיבה לא מסומנת — כל דפי הפעילויות באתר יציגו רק פרטים ותמונות "
+            "(כמו עמוד 'צילומים' היום), בלי לוח תורים להזמנה עצמאית. "
+            "מיועד לסגירה זמנית של הזמנות אונליין."
+        ),
+    )
+
+    class Meta:
+        verbose_name = "הגדרות אתר"
+        verbose_name_plural = "הגדרות אתר"
+
+    def __str__(self):
+        return "הגדרות אתר"
+
+    def save(self, *args, **kwargs):
+        self.pk = 1
+        super().save(*args, **kwargs)
+
+    @classmethod
+    def load(cls):
+        obj, _ = cls.objects.get_or_create(pk=1)
+        return obj

@@ -194,6 +194,11 @@ def booking_form(request):
 
         return JsonResponse({"show_checkbox": show_checkbox})
 
+    from homePage.models import SiteSettings
+    if not SiteSettings.load().online_booking_enabled:
+        messages.error(request, "הזמנת תורים דרך האתר סגורה זמנית. לקביעת תור צרו קשר בטלפון/וואטסאפ 0558859569.")
+        return redirect("home")
+
     appointment_id   = request.GET.get('appointment_id')
     activity_id      = request.GET.get('activity_id')
     duration_minutes = request.GET.get('duration_minutes')      # מחרוזת או None
