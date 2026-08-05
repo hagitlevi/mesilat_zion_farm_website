@@ -22,14 +22,7 @@
     <div class="mz-row"><div class="mz-label">סטטוס</div>
       <div class="mz-val" id="wait-status">ממתינים לאישור התשלום מהלקוח...</div></div>
     <div class="mz-row"><div class="mz-label">סכום</div><div class="mz-val">{{ waiting_amount }}</div></div>
-    {% if waiting_open_here %}
-      <div class="mz-row"><div class="mz-label">דף סליקה</div>
-        <div class="mz-val">
-          <a id="open-payplus" class="button" href="{{ waiting_link }}" target="_blank" rel="noopener">פתחי את דף הסליקה של PayPlus</a>
-          <div style="margin-top:6px;color:#6b7280">נפתח בכרטיסייה חדשה. מקלידים שם את פרטי הכרטיס בדיוק כמו שלקוח עושה באתר.</div>
-        </div></div>
-      <script>window.open("{{ waiting_link|escapejs }}", "_blank", "noopener");</script>
-    {% elif waiting_sms_sent %}
+    {% if waiting_sms_sent %}
       <div class="mz-row"><div class="mz-label">קישור</div>
         <div class="mz-val">נשלח ב-SMS למספר {{ waiting_phone }}</div></div>
     {% else %}

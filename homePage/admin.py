@@ -692,9 +692,11 @@ def admin_pay_stub(request):
             }
 
             if action == "charge_here":
-                # המנהלת פותחת בעצמה את דף הסליקה המתארח של PayPlus (בדיוק כמו שלקוח
-                # רואה באתר) כדי להקליד שם פרטי כרטיס - אין SMS ואין צורך בטלפון.
-                return render(request, "admin/homePage/pay_stub.html", {**base_ctx, "waiting_open_here": True})
+                # המנהלת מקלידה בעצמה את פרטי הכרטיס - עוברים ישר לדף הסליקה המתארח
+                # של PayPlus (בדיוק כמו שלקוח רואה באתר), באותה כרטיסייה, בלי דף
+                # ביניים/כרטיסייה נוספת. אחרי התשלום, pay_return כבר יודעת (לפי
+                # raw_metadata.source) להחזיר אותה ישירות לעמוד ההזמנה באדמין.
+                return redirect(link)
 
             sms_text = f"שלום {full_name}, לתשלום עבור ההזמנה במסילת ציון:\n{link}\nסכום לתשלום: {_fmt_ils(amount)}"
             sent = False
