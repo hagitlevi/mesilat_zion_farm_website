@@ -2235,15 +2235,20 @@ class BookingAdmin(admin.ModelAdmin):
                 messages.error(request, "יש לבחור איך שולם.")
                 return redirect(reverse("admin:homePage_booking_mark_paid", args=[booking.id]))
 
+            # "כבר קיבל/ה קבלה" - מעדכנים רק את סטטוס ההזמנה, בלי להנפיק/לשלוח קבלה חדשה
+            no_receipt = str(request.POST.get("no_receipt", "")).lower() in {"1", "true", "on", "yes"}
+
+            receipt = None
             try:
                 with transaction.atomic():
-                    receipt = create_manual_receipt(
-                        customer_name=booking.customer_name,
-                        customer_email=booking.customer_email,
-                        items=[{"description": booking.activity.name, "amount": str(booking.total_price or 0)}],
-                        payment_method=payment_method,
-                        created_by=request.user,
-                    )
+                    if not no_receipt:
+                        receipt = create_manual_receipt(
+                            customer_name=booking.customer_name,
+                            customer_email=booking.customer_email,
+                            items=[{"description": booking.activity.name, "amount": str(booking.total_price or 0)}],
+                            payment_method=payment_method,
+                            created_by=request.user,
+                        )
                     booking.status = "paid"
                     booking.payment_method = payment_method
                     booking.save(update_fields=["status", "payment_method"])
@@ -2253,6 +2258,10 @@ class BookingAdmin(admin.ModelAdmin):
                 return redirect(reverse("admin:homePage_booking_mark_paid", args=[booking.id]))
             except Exception as e:
                 messages.error(request, f"שגיאה בסימון ההזמנה כשולם: {e}")
+                return redirect(reverse("admin:homePage_booking_change", args=[booking.id]))
+
+            if no_receipt:
+                messages.success(request, f"הזמנה #{booking.id} סומנה כשולם (בלי הנפקת קבלה - הלקוח כבר קיבל קבלה).")
                 return redirect(reverse("admin:homePage_booking_change", args=[booking.id]))
 
             sent = send_manual_receipt_email(receipt)

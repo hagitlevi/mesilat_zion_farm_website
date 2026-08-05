@@ -86,6 +86,24 @@ class MarkBookingPaidTests(TestCase):
         self.assertFalse(Receipt.objects.filter(customer_email="dana@example.com").exists())
         self.assertRedirects(resp, self.url)
 
+    def test_mark_paid_with_no_receipt_skips_receipt_and_email(self):
+        with patch("homePage.admin.send_sms_via_ntfy") as mock_sms:
+            resp = self.client.post(self.url, {"payment_method": "bank_transfer", "no_receipt": "1"})
+
+        self.booking.refresh_from_db()
+        self.assertEqual(self.booking.status, "paid")
+        self.assertEqual(self.booking.payment_method, "bank_transfer")
+
+        for a in self.slots:
+            a.refresh_from_db()
+            self.assertTrue(a.is_paid)
+
+        self.assertFalse(Receipt.objects.filter(customer_email="dana@example.com").exists())
+        self.assertEqual(len(mail.outbox), 0)
+        mock_sms.assert_not_called()
+
+        self.assertRedirects(resp, reverse("admin:homePage_booking_change", args=[self.booking.id]))
+
     def test_already_paid_booking_is_left_alone(self):
         self.booking.status = "paid"
         self.booking.save(update_fields=["status"])
