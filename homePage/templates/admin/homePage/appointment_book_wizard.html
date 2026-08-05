@@ -74,20 +74,6 @@
       display: none !important;
     }
 
-    /* הצ'קבוקס בשורה אחת, בעמודה הימנית של ה-grid */
-    .mz-grid .col-2 { grid-column: 2 / 3; }
-
-    #consent-wrap{
-      display:flex;
-      gap:.5rem;
-      align-items:center;
-      white-space:nowrap; /* שורה אחת */
-    }
-
-    @media (max-width: 860px){
-      #consent-wrap{ white-space:normal; } /* במובייל כן נאפשר ירידת שורה */
-    }
-
     .mz-policy{
       list-style: none;
       padding: 0;
@@ -261,17 +247,6 @@
                  placeholder="לא חובה">
         </div>
 
-
-          <!-- הצ'קבוקס – תא בעמודה הימנית בלבד -->
-        <div class="field col-2" id="consent-cell" style="display:none">
-          <label class="checkbox" id="consent-wrap">
-            <input type="checkbox" name="accept_terms" value="1">
-            קראתי ואני מאשר/ת את
-            <a href="{% url 'terms' %}" target="_blank">תנאי השימוש</a>
-            ו־<a href="{% url 'privacy' %}" target="_blank">מדיניות הפרטיות</a>
-          </label>
-        </div>
-
       </div>
 
       <div class="mz-row" style="margin-top:14px" id="summary-row"></div>
@@ -336,7 +311,7 @@
 
 function syncParticipantsField(){
   const name = (elName.value || '').trim();
-  const HIDE_FOR = new Set(['רכיבת ילדים', 'צילומים']); // ← חדש
+  const HIDE_FOR = new Set(['צילומים']);
   const isCouple = (name === 'רכיבה זוגית');
 
   if (!elParticipants) return;
@@ -802,44 +777,6 @@ function syncParticipantsField(){
   syncParticipantsField();
   updateSummary();
   loadQuote();
-
-
-  // ----- הסכמת תנאים לפי טלפון (כמו שהיה) -----
-  const phone    = document.querySelector('input[name="phone"]');
-  const wrapCell = document.getElementById('consent-cell');
-  const wrap     = document.getElementById('consent-wrap');
-
-  if (!phone || !wrap) return;
-
-  const ADMIN_CONSENT_URL = "{% url 'booking_form' %}?ajax=consent&phone=";
-
-  function normIL(p){
-    let d = (p||'').replace(/\D/g,'');
-    if (d.startsWith('972')) d = '0' + d.slice(3);
-    return d;
-  }
-
-  function check(){
-    const p = normIL(phone.value||'');
-    if (!/^0(5\d{8}|[2-9]\d{7})$/.test(p)){
-      wrap.style.display = 'none';
-      wrap.querySelector('input[type="checkbox"]').checked = false;
-      return;
-    }
-    fetch(ADMIN_CONSENT_URL + encodeURIComponent(p), {credentials:'same-origin'})
-      .then(r => r.json())
-      .then(data => {
-        const needs = data && data.needs_consent === true;
-        wrapCell.style.display = needs ? '' : 'none';
-        if (!needs) wrap.querySelector('input[type="checkbox"]').checked = false;
-      })
-      .catch(() => { wrap.style.display = 'none'; });
-  }
-
-  phone.addEventListener('input', () => {
-    clearTimeout(phone._t); phone._t = setTimeout(check, 250);
-  });
-  if ((phone.value||'').trim()) check();
 })();
 </script>
 {% endblock %}

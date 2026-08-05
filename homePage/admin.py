@@ -2408,25 +2408,6 @@ class BookingAdmin(admin.ModelAdmin):
         except Exception:
             manual_total = None
 
-        # הסכמה לתנאים/פרטיות
-        sid = normalize_phone_il(phone)
-        has_consent = has_consent_by_phone(sid)
-        if (not has_consent) and (not request.POST.get("accept_terms")):
-            messages.error(request, "יש לאשר את תנאי השימוש ומדיניות הפרטיות לפני יצירת הזמנה.")
-            return redirect(reverse("admin:homePage_appointment_book"))
-
-        if request.POST.get("accept_terms") and sid:
-            tv = getattr(settings, "TERMS_VERSION", "1.0")
-            pv = getattr(settings, "PRIVACY_VERSION", "1.0")
-            TermsConsent.objects.get_or_create(
-                policy="terms", version=tv, subject_id=sid,
-                defaults={"accepted_at": timezone.now()}
-            )
-            TermsConsent.objects.get_or_create(
-                policy="privacy", version=pv, subject_id=sid,
-                defaults={"accepted_at": timezone.now()}
-            )
-
         # שדות מיוחדים
         wine = (request.POST.get("wine") or "").strip().lower()
         if wine not in ("white", "red", "none", ""):
