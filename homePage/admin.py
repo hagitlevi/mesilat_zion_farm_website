@@ -3439,9 +3439,10 @@ class PaymentAdmin(admin.ModelAdmin):
 class ReceiptAdmin(admin.ModelAdmin):
     """קבלות נוצרות אוטומטית עם תשלום PayPlus מוצלח, או ידנית דרך 'הנפקת קבלה ידנית' (לתשלומי
     מזומן/ביט/פייבוקס/העברה/שיק). בשני המקרים אי אפשר לערוך/למחוק אחרי היצירה, כדי לשמור על אי-הפיכות."""
-    list_display = ("receipt_number", "customer_name", "get_payment_method_display", "amount", "created_at")
+    list_display = ("receipt_number", "customer_name", "get_payment_method_display", "amount", "created_at", "is_void")
+    list_filter = ("is_void",)
     search_fields = ("receipt_number", "customer_name", "customer_email")
-    actions = ("download_pdf",)
+    actions = ("download_pdf", "mark_void", "unmark_void")
 
     def has_add_permission(self, request):
         # True רק כדי שכפתור/קישור "הוספה" יופיע בעמודי האדמין (כמו בכל מודל אחר) —
@@ -3541,6 +3542,17 @@ class ReceiptAdmin(admin.ModelAdmin):
         response["Content-Disposition"] = f'attachment; filename="{receipt.receipt_number}.pdf"'
         return response
     download_pdf.short_description = "הורדת קבלה כ-PDF"
+
+    def mark_void(self, request, queryset):
+        # לא מוחקים ולא נוגעים במספור — רק מסמנים כמבוטלת, כדי לשמור רצף מספרים תקין.
+        updated = queryset.update(is_void=True)
+        self.message_user(request, f"{updated} קבלות סומנו כמבוטלות.")
+    mark_void.short_description = "סמן כמבוטלת"
+
+    def unmark_void(self, request, queryset):
+        updated = queryset.update(is_void=False)
+        self.message_user(request, f"{updated} קבלות בוטל הסימון שלהן כמבוטלות.")
+    unmark_void.short_description = "בטל סימון מבוטלת"
 
 # ---------- עזרי זמן/חלונות ----------
 def _iter_slot_times(date_obj, start_t: dtime, end_t: dtime, minutes: int = MINUTES_PER_SLOT):

@@ -533,6 +533,10 @@ class Receipt(models.Model):
     cheque_due_date = models.CharField(max_length=50, blank=True)
     created_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL)
     created_at = models.DateTimeField(auto_now_add=True)
+    is_void = models.BooleanField(
+        "קבלה מבוטלת", default=False,
+        help_text="לסימון קבלה שגויה/כפולה כמבוטלת. המספור לא משתנה — כך נשמר רצף תקין."
+    )
 
     class Meta:
         verbose_name = "קבלה"
