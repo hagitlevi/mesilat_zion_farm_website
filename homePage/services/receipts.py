@@ -105,6 +105,23 @@ def render_receipt_pdf(receipt: Receipt) -> bytes:
   return HTML(string=html_string).write_pdf()
 
 
+def render_receipts_pdf(receipts) -> bytes:
+  """מרנדר כמה קבלות כ-PDF אחד, כל קבלה בעמוד נפרד (לשליחה נוחה לרואה חשבון בסוף חודש)."""
+  from weasyprint import HTML
+
+  signature_path = finders.find("homePage/images/sign.png")
+  signature_uri = Path(signature_path).as_uri() if signature_path else None
+
+  logo_path = finders.find("homePage/images/logo.png")
+  logo_uri = Path(logo_path).as_uri() if logo_path else None
+
+  html_string = render_to_string(
+      "homePage/receipt_pdf_multi.html",
+      {"receipts": receipts, "signature_uri": signature_uri, "logo_uri": logo_uri},
+  )
+  return HTML(string=html_string).write_pdf()
+
+
 def send_manual_receipt_email(receipt: Receipt) -> bool:
   """שולח קבלה ידנית ללקוח במייל, עם ה-PDF מצורף. מחזיר True אם נשלח בפועל."""
   if not getattr(settings, "SEND_EMAIL", False):
@@ -116,7 +133,10 @@ def send_manual_receipt_email(receipt: Receipt) -> bool:
   rlm = "‏"
   text_body = rlm + (
       f"שלום {receipt.customer_name},\n\n"
-      f"מצורפת קבלה מספר {receipt.receipt_number} \n\n"
+      f"מצורפת קבלה מספר {receipt.receipt_number} "
+      f""
+      f"\n\n"
+      f""
       f"על סך ₪{receipt.amount}.\n\n"
       "זהו מייל אוטומטי – אין להשיב אליו."
   )

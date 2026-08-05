@@ -6,7 +6,7 @@ from .models import (
     BusinessHours, ActivityRule, Instructor, TreatmentSession,
     MonthlySummary, Payment, Receipt,
 )
-from homePage.services.receipts import render_receipt_pdf, create_manual_receipt, send_manual_receipt_email
+from homePage.services.receipts import render_receipt_pdf, render_receipts_pdf, create_manual_receipt, send_manual_receipt_email
 from homePage.services.ntfy_gateway import (
     format_session_sms, format_booking_sms, send_treatment_email,
     send_booking_email, get_treatment_amount_nis, ltr_text,
@@ -3529,19 +3529,26 @@ class ReceiptAdmin(admin.ModelAdmin):
         return response
 
     def download_pdf(self, request, queryset):
-        if queryset.count() != 1:
-            self.message_user(request, "יש לבחור קבלה אחת בלבד להורדה", level=messages.ERROR)
-            return
-        receipt = queryset.first()
-        try:
-            pdf_bytes = render_receipt_pdf(receipt)
-        except Exception:
-            self.message_user(request, "יצירת ה-PDF נכשלה", level=messages.ERROR)
-            return
+        if queryset.count() == 1:
+            receipt = queryset.first()
+            try:
+                pdf_bytes = render_receipt_pdf(receipt)
+            except Exception:
+                self.message_user(request, "יצירת ה-PDF נכשלה", level=messages.ERROR)
+                return
+            filename = f"{receipt.receipt_number}.pdf"
+        else:
+            receipts = list(queryset.order_by("pk"))
+            try:
+                pdf_bytes = render_receipts_pdf(receipts)
+            except Exception:
+                self.message_user(request, "יצירת ה-PDF נכשלה", level=messages.ERROR)
+                return
+            filename = f"קבלות_{timezone.localdate().isoformat()}.pdf"
         response = HttpResponse(pdf_bytes, content_type="application/pdf")
-        response["Content-Disposition"] = f'attachment; filename="{receipt.receipt_number}.pdf"'
+        response["Content-Disposition"] = f'attachment; filename="{filename}"'
         return response
-    download_pdf.short_description = "הורדת קבלה כ-PDF"
+    download_pdf.short_description = "הורדת קבלה/קבלות שנבחרו כ-PDF אחד"
 
     def mark_void(self, request, queryset):
         # לא מוחקים ולא נוגעים במספור — רק מסמנים כמבוטלת, כדי לשמור רצף מספרים תקין.

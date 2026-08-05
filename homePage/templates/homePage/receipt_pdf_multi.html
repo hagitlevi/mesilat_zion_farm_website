@@ -2,12 +2,14 @@
 <html lang="he" dir="rtl">
   <head>
     <meta charset="utf-8">
-    <title>קבלה {{ receipt.receipt_number }}</title>
+    <title>קבלות</title>
     <style>
       {% include "homePage/_receipt_pdf_style.css" %}
     </style>
   </head>
   <body>
-    {% include "homePage/_receipt_pdf_body.html" %}
+    {% for receipt in receipts %}
+      {% include "homePage/_receipt_pdf_body.html" %}
+    {% endfor %}
   </body>
 </html>
