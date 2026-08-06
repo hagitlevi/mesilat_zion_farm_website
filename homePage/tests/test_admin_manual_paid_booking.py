@@ -15,7 +15,7 @@ from django.test import TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
 
-from homePage.models import Activity, Appointment, Booking, Receipt
+from homePage.models import Activity, Appointment, Booking, Receipt, SiteSettings
 
 _DATE = date(2026, 9, 1)
 _TIME = time(10, 0)
@@ -123,3 +123,26 @@ class AdminManualPaidBookingTests(TestCase):
         mock_sms.assert_not_called()
 
         self.assertRedirects(resp, reverse("admin:homePage_booking_change", args=[booking.id]))
+
+    def test_no_notify_checkbox_shown_by_default(self):
+        resp = self.client.get(self.url)
+        self.assertContains(resp, 'name="silent_import"')
+
+    def test_no_notify_checkbox_hidden_when_setting_disabled(self):
+        settings_obj = SiteSettings.load()
+        settings_obj.show_no_notify_checkbox = False
+        settings_obj.save(update_fields=["show_no_notify_checkbox"])
+
+        resp = self.client.get(self.url)
+        self.assertNotContains(resp, 'name="silent_import"')
+
+    def test_silent_import_still_honored_when_checkbox_hidden(self):
+        # הסתרת התיבה משפיעה רק על התצוגה - אם מגיע silent_import=1 בכל זאת
+        # (למשל POST ידני), ההתנהגות בפועל (דילוג על קבלה/מייל/SMS) לא משתנה.
+        settings_obj = SiteSettings.load()
+        settings_obj.show_no_notify_checkbox = False
+        settings_obj.save(update_fields=["show_no_notify_checkbox"])
+
+        self._post(payment_mode="paid", payment_method="cash", silent_import="1")
+
+        self.assertFalse(Receipt.objects.filter(customer_email="dana@example.com").exists())

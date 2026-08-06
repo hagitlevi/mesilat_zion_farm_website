@@ -2282,6 +2282,7 @@ class BookingAdmin(admin.ModelAdmin):
             "opts": self.model._meta,
             "booking": booking,
             "payment_methods": [("cash", "מזומן"), ("bit", "ביט"), ("paybox", "פייבוקס"), ("bank_transfer", "העברה בנקאית")],
+            "show_no_receipt_checkbox": SiteSettings.load().show_no_receipt_checkbox,
         }
         return TemplateResponse(request, "admin/homePage/booking_mark_paid.html", ctx)
 
@@ -2494,6 +2495,7 @@ class BookingAdmin(admin.ModelAdmin):
                 "today": timezone.localdate().isoformat(),
                 "ajax_times_url": reverse("admin:homePage_appointment_book"),
                 "hold_release_url": reverse("admin:homePage_appointment_hold_release"),
+                "show_no_notify_checkbox": SiteSettings.load().show_no_notify_checkbox,
             }
             return TemplateResponse(
                 request,
@@ -2518,7 +2520,8 @@ class BookingAdmin(admin.ModelAdmin):
         if paid_manually and manual_payment_method not in {"cash", "bit", "paybox", "bank_transfer"}:
             messages.error(request, "יש לבחור איך שולם.")
             return redirect(reverse("admin:homePage_appointment_book"))
-        # TODO זמני: להסרה אחרי סיום יבוא ההזמנות הישנות
+        # מדלג על שליחת קבלה/מייל/SMS ("ללא שליחת מייל, SMS וללא קבלה" בטופס) - שימושי
+        # למשל ליבוא הזמנות ישנות, אבל זה פיצ'ר קבוע ולא זמני.
         silent_import = str(request.POST.get("silent_import", "")).lower() in {"1", "true", "on", "yes"}
 
         # פרטי הלקוח
@@ -2753,8 +2756,8 @@ class BookingAdmin(admin.ModelAdmin):
                 messages.error(request, f"שגיאה ביצירת הזמנה: {e}")
                 return redirect(reverse("admin:homePage_appointment_book"))
 
-            # "שולם ידנית" - מייצרים קבלה אמיתית (מספר רץ, לא ניתנת למחיקה/עריכה)
-            # TODO זמני: silent_import מדלג על קבלה/מייל/SMS - להסרה אחרי סיום יבוא ההזמנות הישנות
+            # "שולם ידנית" - מייצרים קבלה אמיתית (מספר רץ, לא ניתנת למחיקה/עריכה),
+            # אלא אם סומן "ללא שליחת מייל, SMS וללא קבלה" (silent_import)
             receipt = None
             if paid_manually and not silent_import:
                 try:
@@ -2795,7 +2798,7 @@ class BookingAdmin(admin.ModelAdmin):
             request.session.pop("admin_hold_token", None)
             if paid_manually:
                 if silent_import:
-                    messages.success(request, f"הזמנה #{booking.id} נוצרה ושולמה (יבוא היסטורי - ללא קבלה/מייל/SMS). אסמכתא: {ref}")
+                    messages.success(request, f"הזמנה #{booking.id} נוצרה ושולמה (ללא שליחת מייל/SMS וללא קבלה). אסמכתא: {ref}")
                 elif receipt:
                     messages.success(request, f"הזמנה #{booking.id} נוצרה ושולמה. אסמכתא: {ref}. קבלה: {receipt.receipt_number}")
                 else:

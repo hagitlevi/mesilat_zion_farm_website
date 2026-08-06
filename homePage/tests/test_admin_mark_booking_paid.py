@@ -12,7 +12,7 @@ from django.core import mail
 from django.test import TestCase, override_settings
 from django.urls import reverse
 
-from homePage.models import Activity, Appointment, Booking, Receipt
+from homePage.models import Activity, Appointment, Booking, Receipt, SiteSettings
 
 _DATE = date(2026, 9, 1)
 _TIME = time(10, 0)
@@ -124,3 +124,26 @@ class MarkBookingPaidTests(TestCase):
 
         resp = self.client.get(reverse("admin:homePage_booking_change", args=[self.booking.id]))
         self.assertNotContains(resp, self.url)
+
+    def test_no_receipt_checkbox_shown_by_default(self):
+        resp = self.client.get(self.url)
+        self.assertContains(resp, 'name="no_receipt"')
+
+    def test_no_receipt_checkbox_hidden_when_setting_disabled(self):
+        settings_obj = SiteSettings.load()
+        settings_obj.show_no_receipt_checkbox = False
+        settings_obj.save(update_fields=["show_no_receipt_checkbox"])
+
+        resp = self.client.get(self.url)
+        self.assertNotContains(resp, 'name="no_receipt"')
+
+    def test_no_receipt_still_honored_when_checkbox_hidden(self):
+        # הסתרת התיבה משפיעה רק על התצוגה - אם מגיע no_receipt=1 בכל זאת
+        # (למשל POST ידני), ההתנהגות בפועל (דילוג על הנפקת קבלה) לא משתנה.
+        settings_obj = SiteSettings.load()
+        settings_obj.show_no_receipt_checkbox = False
+        settings_obj.save(update_fields=["show_no_receipt_checkbox"])
+
+        self.client.post(self.url, {"payment_method": "bank_transfer", "no_receipt": "1"})
+
+        self.assertFalse(Receipt.objects.filter(customer_email="dana@example.com").exists())

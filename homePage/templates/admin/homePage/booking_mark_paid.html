@@ -54,12 +54,14 @@
         </div>
       </div>
 
+      {% if show_no_receipt_checkbox %}
       <div class="mzp-field">
         <label class="mzp-no-receipt">
           <input type="checkbox" id="no_receipt" name="no_receipt" value="1">
-          הלקוח כבר קיבל קבלה – אל תפיק קבלה חדשה
+            ביטול יצירת קבלה חדשה
         </label>
       </div>
+      {% endif %}
 
       <button type="submit" class="mzp-submit" id="mzp-submit-btn">סמן כשולם ושלח קבלה</button>
     </form>
@@ -70,9 +72,11 @@
 (function(){
   var noReceipt = document.getElementById("no_receipt");
   var submitBtn = document.getElementById("mzp-submit-btn");
-  noReceipt.addEventListener("change", function(){
-    submitBtn.textContent = noReceipt.checked ? "סמן כשולם (בלי קבלה)" : "סמן כשולם ושלח קבלה";
-  });
+  if (noReceipt) {
+    noReceipt.addEventListener("change", function(){
+      submitBtn.textContent = noReceipt.checked ? "סמן כשולם (בלי קבלה)" : "סמן כשולם ושלח קבלה";
+    });
+  }
 })();
 </script>
 {% endblock %}

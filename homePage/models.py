@@ -711,6 +711,16 @@ class SiteSettings(models.Model):
             "מיועד לסגירה זמנית של הזמנות אונליין."
         ),
     )
+    show_no_notify_checkbox = models.BooleanField(
+        "הצג באשף יצירת הזמנה אפשרות \"ללא שליחת מייל, SMS וללא קבלה\"",
+        default=True,
+        help_text="כשהתיבה לא מסומנת — האפשרות הזו לא תופיע באשף יצירת ההזמנה באדמין.",
+    )
+    show_no_receipt_checkbox = models.BooleanField(
+        "הצג במסך \"סמן כשולם\" אפשרות \"ביטול יצירת קבלה חדשה\"",
+        default=True,
+        help_text="כשהתיבה לא מסומנת — האפשרות הזו לא תופיע במסך סימון הזמנה כשולם.",
+    )
 
     class Meta:
         verbose_name = "הגדרות אתר"
