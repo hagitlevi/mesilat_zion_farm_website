@@ -1872,6 +1872,11 @@ class BookingAdminForm(forms.ModelForm):
                 "data-times": json.dumps(times, ensure_ascii=False),
                 "data-day": day.isoformat(),
                 "data-duration": str(minutes_real),  # משך אמיתי (בלי ההפסקה)
+                # לשימוש כשבוחרים תאריך אחר מזה שההזמנה נמצאת בו: מרעננים את רשימת
+                # השעות דרך אותה נקודת קצה קיימת ששרת האשף (?ajax=times) כבר חושף.
+                "data-activity-name": name,
+                "data-variant": variant or "",
+                "data-ajax-times-url": reverse("admin:homePage_appointment_book"),
             })
         else:  # שדה יחיד
             w.attrs.update({
@@ -1928,29 +1933,35 @@ class BookingAdminForm(forms.ModelForm):
     function addMinutes(d, m){ return new Date(d.getTime()+m*60000); }
     function roundUp15(d){ var step=15*60000,t=d.getTime(); return new Date(Math.ceil(t/step)*step); }
 
-    (function fill(){
-      var times = [];
-      try { times = JSON.parse(timeStart.dataset.times || "[]"); } catch(e){}
-      var dayStr = dateStart.value || timeStart.dataset.day || "";
-      var durMin = parseInt(timeStart.dataset.duration || "0") || 0;
-      var wantSeconds = needsSeconds(timeStart);
+    var origDay      = timeStart.dataset.day || "";
+    var origTimes    = [];
+    try { origTimes = JSON.parse(timeStart.dataset.times || "[]"); } catch(e){}
+    var durMin       = parseInt(timeStart.dataset.duration || "0") || 0;
+    var activityName = timeStart.dataset.activityName || "";
+    var variant      = timeStart.dataset.variant || "";
+    var ajaxTimesUrl = timeStart.dataset.ajaxTimesUrl || "";
 
-      // אם זה היום – מתחילים מהשעה הפנויה הקרובה (מעוגל לרבע שעה)
+    function filterPastIfToday(dayStr, times){
       try{
         var today = new Date(); today.setHours(0,0,0,0);
         var formDay = new Date(dayStr+"T00:00:00");
         if (today.getTime() === formDay.getTime()){
           var nowHM = toHM(roundUp15(new Date()));
-          times = times.filter(function(t){ return t >= nowHM; });
+          return times.filter(function(t){ return t >= nowHM; });
         }
       }catch(e){}
+      return times;
+    }
 
-      // --- כאן ההוספה של ה-placeholder ושל ברירת המחדל ---
+    // בונה מחדש את רשימת ה-select לפי (times, dayStr) נתונים, וקושר את מאזין השינוי
+    // מחדש בכל קריאה (במקום addEventListener מצטבר) כדי ש-dayStr בסגירה תמיד יהיה עדכני.
+    function populate(times, dayStr){
+      var wantSeconds = needsSeconds(timeStart);
       sel.innerHTML = "";
 
       var optPlaceholder = document.createElement("option");
-      optPlaceholder.value = "";             // נשארת אופציה חוקית
-      optPlaceholder.textContent = "------"; // הטקסט שביקשת
+      optPlaceholder.value = "";
+      optPlaceholder.textContent = times.length ? "------" : "אין שעות פנויות בתאריך זה";
       sel.appendChild(optPlaceholder);
 
       times.forEach(function(t){
@@ -1960,28 +1971,74 @@ class BookingAdminForm(forms.ModelForm):
         sel.appendChild(opt);
       });
 
-      sel.value = ""; // ברירת מחדל: ה-placeholder מוצג
-      // -----------------------------------------------------
+      sel.value = "";
 
       // שינוי שעה → עדכון start/end (אם בחרו זמן אמיתי)
-      sel.addEventListener("change", function(){
+      sel.onchange = function(){
         var t = sel.value || "";
         if (!t) return; // אם נבחר "------" לא עושים כלום
 
         var tWith = wantSeconds ? (t + ":00") : t;
 
-        // עדכון start_dt
-        timeStart.value = tWith;
-
-        // חישוב end_dt בהתאם למשך הפעילות (בלי ההפסקה)
         var hh = parseInt(t.split(":")[0]||"0"), mm = parseInt(t.split(":")[1]||"0");
         var startDate = new Date(dayStr+"T00:00:00"); startDate.setHours(hh, mm, 0, 0);
         var endDate = addMinutes(startDate, durMin);
 
+        dateStart.value = dayStr;
+        timeStart.value = tWith;
         dateEnd.value = dayStr;
         timeEnd.value = toHM(endDate) + (wantSeconds ? ":00" : "");
-      });
-    })();
+      };
+    }
+
+    populate(filterPastIfToday(origDay, origTimes), origDay);
+
+    function onDateChanged(newDay){
+      if (newDay === origDay){
+        populate(filterPastIfToday(origDay, origTimes), origDay);
+        return;
+      }
+      if (!ajaxTimesUrl || !activityName){
+        populate([], newDay);
+        return;
+      }
+
+      var minutesForQuery = durMin + (durMin > 30 ? 15 : 0);
+      var url = ajaxTimesUrl + "?ajax=times"
+        + "&name=" + encodeURIComponent(activityName)
+        + "&minutes=" + encodeURIComponent(minutesForQuery)
+        + "&date=" + encodeURIComponent(newDay)
+        + "&variant=" + encodeURIComponent(variant);
+
+      sel.disabled = true;
+      fetch(url, {credentials: "same-origin"})
+        .then(function(r){ return r.json(); })
+        .then(function(data){
+          sel.disabled = false;
+          populate(filterPastIfToday(newDay, Array.isArray(data.times) ? data.times : []), newDay);
+        })
+        .catch(function(){
+          sel.disabled = false;
+          populate([], newDay);
+        });
+    }
+
+    // שינוי תאריך → אם זה עדיין אותו יום מקורי של ההזמנה, חוזרים לרשימה המקורית
+    // (שכוללת גם "פנויות עבורך" — הסלוטים של ההזמנה עצמה). אחרת שולפים שעות פנויות
+    // לתאריך החדש מאותה נקודת קצה ששרת אשף ההזמנות (book_wizard) כבר חושף ל-?ajax=times,
+    // עם אותו minutes "מנופח" בהפסקה שחושב פה בטופס (משך+15 אם משך>30) — בדיוק כמו
+    // שה-server חישב עבור הרשימה של היום המקורי.
+    //
+    // בכוונה polling ולא addEventListener("change", ...): ה-datepicker המובנה של
+    // האדמין (הלינק "בחירת תאריך" ליד השדה) קובע את value של השדה ישירות ב-JS בלי
+    // לירות אירוע change/input — אז מאזין רגיל פשוט לא היה נקרא כשמשנים תאריך דרכו.
+    var lastSeenDay = origDay;
+    setInterval(function(){
+      var newDay = (dateStart.value || "").trim();
+      if (!newDay || newDay === lastSeenDay) return;
+      lastSeenDay = newDay;
+      onDateChanged(newDay);
+    }, 400);
   });
 })();
 </script>
