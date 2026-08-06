@@ -508,7 +508,7 @@ def send_booking_email(payment, booking, receipt=None):
       f"שלום {customer},\n\n"
       f"התשלום עבר בהצלחה!\n\n"
       f"מספר עסקה: {charge_id}\n"
-      f"סכום ששולם: ₪{amount_nis:.2f}\n"
+      f"מחיר: ₪{amount_nis:.2f}\n"
       f"מספר משתתפים: {participants}\n"
       + (f"תאריך: {start_dt:%d.%m.%Y} בשעה {start_dt:%H:%M}"
          + (f"–{end_dt:%H:%M}" if end_dt else "") + "\n" if start_dt else "")
@@ -567,7 +567,7 @@ def send_booking_email(payment, booking, receipt=None):
                             <td align="right" style="padding:12px 16px;font-size:14px;color:#111;text-align:right;word-break:break-word;overflow-wrap:anywhere;">{activity_name}</td>
                           </tr>
                           <tr>
-                            <td align="right" style="padding:12px 16px;background:#fafafa;font-size:14px;color:#666;text-align:right">סכום ששולם</td>
+                            <td align="right" style="padding:12px 16px;background:#fafafa;font-size:14px;color:#666;text-align:right">מחיר</td>
                             <td align="right" style="padding:12px 16px;font-size:14px;color:#111;text-align:right">₪{amount_nis:.2f}</td>
                           </tr>
                           <tr>
