@@ -2,7 +2,7 @@
 {% load static %}
 
 {% block specific_title %}רכיבת שטח על סוסים | מסילת ציון, ליד בית שמש ושער הגיא{% endblock %}
-{% block meta_description %}רכיבת שטח קבוצתית על סוסים במסילת ציון, ליד בית שמש ושער הגיא. מותאם ל-2 עד 5 רוכבים, החל מ-150 ₪ לאדם.{% endblock %}
+{% block meta_description %}רכיבת שטח קבוצתית על סוסים במסילת ציון, ליד בית שמש ושער הגיא. מותאם ל-2 עד {{ activity.max_participants }} רוכבים, החל מ-150 ₪ לאדם.{% endblock %}
 
 {% block image_src %}{% static 'homePage/images/group-riding.jpg' %}{% endblock %}
 
@@ -15,7 +15,7 @@
   "@context": "https://schema.org",
   "@type": "Service",
   "name": "רכיבת שטח על סוסים",
-  "description": "רכיבת שטח קבוצתית על סוסים במסילת ציון, מותאמת ל-2 עד 5 רוכבים.",
+  "description": "רכיבת שטח קבוצתית על סוסים במסילת ציון, מותאמת ל-2 עד {{ activity.max_participants }} רוכבים.",
   "provider": {
     "@type": "LocalBusiness",
     "name": "חוות מסילת ציון",
@@ -34,7 +34,7 @@
 {% endblock %}
 
 {% block description_text %}
-הרכיבה מותנית בהשתתפות של 2 עד 5 רוכבים<br>
+הרכיבה מותנית בהשתתפות של 2 עד {{ activity.max_participants }} רוכבים<br>
 
 <u>מחירים (לאדם)</u>
 חצי שעה — 150 ₪<br>

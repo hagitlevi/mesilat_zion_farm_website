@@ -23,6 +23,7 @@ SEND_SMS = os.getenv("SEND_SMS", "False") == "True"
 NTFY_URL = os.getenv("NTFY_URL", "https://ntfy.sh").rstrip("/")
 NTFY_TOPIC = os.getenv("NTFY_TOPIC", "")
 NTFY_PRIORITY = int(os.getenv("NTFY_PRIORITY", "5"))
+NUMBER_OF_HORSES = int(os.getenv("NUMBER_OF_HORSES", "5"))
 
 GOOGLE_PLACE_ID = os.getenv("GOOGLE_PLACE_ID", "PASTE_YOUR_PLACE_ID_HERE")
 GOOGLE_PLACES_API_KEY = os.getenv("GOOGLE_PLACES_API_KEY", "")
