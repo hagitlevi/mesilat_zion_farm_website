@@ -2,6 +2,7 @@ from django.urls import path
 from . import views
 from .views import cancel_request_view
 from django.views.generic import TemplateView
+from django.views.generic import RedirectView
 from django.conf import settings
 
 urlpatterns = [
@@ -10,10 +11,10 @@ urlpatterns = [
     path('night-riding/', views.night_riding_view, name='night_riding'),
     path('couple-riding/', views.couple_riding_view, name='couple_riding'),
     path('sunrise-riding/', views.sunrise_riding_view, name='sunrise_riding'),
-    path('group-riding/', views.group_riding_view, name='group_riding'),
+    path('trail-riding/', views.group_riding_view, name='group_riding'),
     path('carriage-trip/', views.carriage_trip_view, name='carriage_trip'),
     path('photographs/', views.photographs_view, name='photographs'),
-    path('children_riding/', views.children_riding_view, name='children_riding'),
+    path('children-riding/', views.children_riding_view, name='children_riding'),
     path('gallery/', views.gallery_view, name='gallery'),
     path('available-appointment/<int:activity_id>/', views.available_appointment_view, name='available_appointment'),
     path('confirm-booking/', views.confirm_booking, name='confirm_booking'),
@@ -34,6 +35,13 @@ urlpatterns = [
     path("appointments/snapshot/", views.appointments_snapshot, name="appointments_snapshot"),
 
     path("appointments/renew/", views.renew_hold, name="renew_hold"),
+]
+
+# הפניית 301 קבועה מהכתובת הישנה (עם קו תחתון) לכתובת החדשה,
+# כדי לא לשבור קישורים/סימניות/דירוג קיים בגוגל
+urlpatterns += [
+    path('children_riding/', RedirectView.as_view(pattern_name='children_riding', permanent=True)),
+    path('group-riding/', RedirectView.as_view(pattern_name='group_riding', permanent=True)),
 ]
 
 # URLs של מוק — זמינות רק בפיתוח

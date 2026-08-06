@@ -1,16 +1,51 @@
 {% extends "homePage/base.html" %}
 {% load static %}
 
-{% block title %}חוות סוסים מסילת ציון{% endblock %}
+{% block title %}רכיבה על סוסים במסילת ציון | חוות סוסים ליד בית שמש ושער הגיא{% endblock %}
+
+{% block meta_description %}חוות רכיבה על סוסים במסילת ציון, בין שער הגיא לבית שמש. שיעורי רכיבה, טיולי רכיבה, רכיבת לילה וזריחה, טיול כרכרה וצילומים — הזמנת תור אונליין.{% endblock %}
 
 {% block extra_css %}
 <link rel="stylesheet" href="{% static 'homePage/home_style.css' %}">
 {% endblock %}
 
+{% block structured_data %}
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "LocalBusiness",
+  "name": "חוות מסילת ציון",
+  "url": "https://mesilatzionfarm.co.il/",
+  "telephone": "+972-55-885-9569",
+  "image": "https://mesilatzionfarm.co.il/static/homePage/images/favicon.png",
+  "address": {
+    "@type": "PostalAddress",
+    "addressLocality": "מסילת ציון",
+    "addressCountry": "IL"
+  },
+  "geo": {
+    "@type": "GeoCoordinates",
+    "latitude": 31.805655,
+    "longitude": 35.005960
+  },
+  "openingHoursSpecification": [
+    {% for row in schema_hours_rows %}
+    {
+      "@type": "OpeningHoursSpecification",
+      "dayOfWeek": "https://schema.org/{{ row.day_en }}",
+      "opens": "{{ row.start|time:'H:i' }}",
+      "closes": "{{ row.end|time:'H:i' }}"
+    }{% if not forloop.last %},{% endif %}
+    {% endfor %}
+  ]
+}
+</script>
+{% endblock %}
+
 
 {% block content %}
     <div class="container">
-        <h1 class="sr-only">חוות סוסים מסילת ציון - רכיבה על סוסים במסילת ציון</h1>
+        <h1 class="sr-only">חוות רכיבה על סוסים במסילת ציון — ליד בית שמש ושער הגיא</h1>
         <div class="about-wrapper reveal">
             <section class="about">
               <div class="frame-text">קצת עלינו</div>
@@ -58,7 +93,7 @@
                 <li class="reveal">
                     <div class="activity-button" >
                         <a href="{% url 'group_riding' %}" class="details-link"> <h4> לפרטים והזמנות</h4></a>
-                        <img src="{% static 'homePage/images/group-riding.jpg' %}" alt="רכיבה קבוצתית">
+                        <img src="{% static 'homePage/images/group-riding.jpg' %}" alt="רכיבת שטח">
                         <span class="title-text">רכיבת שטח</span>
                     </div>
                 </li>

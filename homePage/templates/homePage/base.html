@@ -5,8 +5,11 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}חוות סוסים מסילת ציון{% endblock %}</title>
+    <meta name="description" content="{% block meta_description %}חוות רכיבה על סוסים במסילת ציון, בין שער הגיא לבית שמש — שיעורי רכיבה, טיולי רכיבה, רכיבת לילה וזריחה, טיול כרכרה וצילומים.{% endblock %}">
+    {% block robots %}{% endblock %}
+    {% block structured_data %}{% endblock %}
 
-    <link rel="icon" type="image/jpeg" href="{% static 'homePage/images/logo.png' %}?v=1">
+    <link rel="icon" type="image/png" href="{% static 'homePage/images/favicon.png' %}?v=1">
     <link rel="stylesheet" href="{% static 'homePage/base.css' %}">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 

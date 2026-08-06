@@ -17,6 +17,9 @@ Including another URLconf
 from django.contrib import admin # הוספה של שורת ייבוא זו
 from django.contrib.sitemaps.views import sitemap
 from django.urls import path, include
+from django.templatetags.static import static
+from django.shortcuts import redirect
+from django.http import HttpResponse
 
 from homePage.sitemaps import StaticViewSitemap
 
@@ -24,8 +27,36 @@ sitemaps = {
     "static": StaticViewSitemap,
 }
 
+
+def favicon_redirect(request):
+    return redirect(static('homePage/images/favicon.ico'))
+
+
+ROBOTS_TXT = """User-agent: *
+Allow: /
+
+Disallow: /mzf-admin/
+Disallow: /cancel-request/
+Disallow: /booking-form/
+Disallow: /confirm-booking/
+Disallow: /available-appointment/
+Disallow: /pay/
+Disallow: /appointments/
+Disallow: /children_riding/
+Disallow: /group-riding/
+
+Sitemap: https://mesilatzionfarm.co.il/sitemap.xml
+"""
+
+
+def robots_txt(request):
+    return HttpResponse(ROBOTS_TXT, content_type="text/plain")
+
+
 urlpatterns = [
     path('mzf-admin/', admin.site.urls),
+    path('favicon.ico', favicon_redirect),
+    path('robots.txt', robots_txt),
     path('sitemap.xml', sitemap, {'sitemaps': sitemaps}, name='sitemap'),
     path('', include('homePage.urls')),
 ]

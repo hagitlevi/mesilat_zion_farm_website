@@ -1,6 +1,6 @@
 from homePage.models import Activity, SiteReview
 from django.http import Http404
-from django.db.models import Avg
+from django.db.models import Avg, Min, Max
 from ..utils import group_consecutive_hours
 from ..services.booking_service import build_business_hours_rows
 import json
@@ -15,8 +15,9 @@ def home(request):
   """דף הבית - מציג שעות פעילות, ביקורות אחרונות, ומידע כללי"""
   logger.debug("home view called")
 
-  hours_rows = build_business_hours_rows()  # שלך, מחזיר ראשון..שבת
-  hours_rows = group_consecutive_hours(hours_rows)  # קיבוץ רצפים זהים
+  raw_hours_rows = build_business_hours_rows()  # שלך, מחזיר ראשון..שבת
+  hours_rows = group_consecutive_hours(raw_hours_rows)  # קיבוץ רצפים זהים לתצוגה
+  schema_hours_rows = [r for r in raw_hours_rows if not r["closed"]]  # ל-Schema (JSON-LD) בלבד
   popup_payload = request.session.pop('payment_popup', None)  # קריאה חד-פעמית
   is_winter = ((timezone.localtime().dst() or timedelta(0)) == timedelta(0))
   latest_reviews = list(SiteReview.objects.order_by('-created_at')[:4])  # ← 4 אחרונות
@@ -24,6 +25,7 @@ def home(request):
   reviews_avg = SiteReview.objects.aggregate(avg=Avg('rating'))['avg'] or 0
   return render(request, "homePage/home.html", {
     "hours_rows": hours_rows,  # שם המפתח לא משתנה → אין שינוי בתבנית
+    "schema_hours_rows": schema_hours_rows,
     "is_winter": is_winter,
     "payment_popup_json": json.dumps(popup_payload) if popup_payload else None,
     "latest_reviews": latest_reviews,
@@ -70,7 +72,17 @@ def couple_riding_view(request):
     activity = Activity.objects.filter(name="רכיבה זוגית").order_by("id").first()
   if not activity:
     raise Http404("לא נמצאה פעילות 'רכיבה זוגית'")
-  return render(request, 'homePage/couple_riding.html', {'activity': activity})
+
+  price_range = Activity.objects.filter(name="רכיבה זוגית").aggregate(min_price=Min('price'), max_price=Max('price'))
+  # ה-DB שומר מחיר לאדם; העמוד מציג את הסכום הכולל לזוג (כפול 2)
+  price_min = price_range['min_price'] * 2 if price_range['min_price'] is not None else None
+  price_max = price_range['max_price'] * 2 if price_range['max_price'] is not None else None
+
+  return render(request, 'homePage/couple_riding.html', {
+    'activity': activity,
+    'price_min': price_min,
+    'price_max': price_max,
+  })
 
 def group_riding_view(request):
   """דף רכיבת שטח - זמין רק בקיץ"""
@@ -80,7 +92,14 @@ def group_riding_view(request):
   activity = qs.first()
   if not activity:
     raise Http404("לא נמצאה פעילות 'רכיבת שטח'")
-  return render(request, 'homePage/group_riding.html', {'activity': activity})
+
+  price_range = qs.aggregate(min_price=Min('price'), max_price=Max('price'))
+
+  return render(request, 'homePage/group_riding.html', {
+    'activity': activity,
+    'price_min': price_range['min_price'],
+    'price_max': price_range['max_price'],
+  })
 
 def carriage_trip_view(request):
   """דף טיול כרכרה - זמין רק בקיץ"""
@@ -90,7 +109,14 @@ def carriage_trip_view(request):
   activity = qs.first()  # תחזירי אחת – הראשונה
   if not activity:
     raise Http404("לא נמצאה פעילות 'טיול כירכרה'")
-  return render(request, 'homePage/carriage_trip.html', {'activity': activity})
+
+  price_range = qs.aggregate(min_price=Min('price'), max_price=Max('price'))
+
+  return render(request, 'homePage/carriage_trip.html', {
+    'activity': activity,
+    'price_min': price_range['min_price'],
+    'price_max': price_range['max_price'],
+  })
 
 def photographs_view(request):
   """דף צילומים - זמין רק בקיץ"""
@@ -100,7 +126,14 @@ def photographs_view(request):
   activity = qs.first()  # תחזירי אחת – הראשונה
   if not activity:
     raise Http404("לא נמצאה פעילות 'צילומים'")
-  return render(request, 'homePage/photographs.html', {'activity': activity})
+
+  price_range = qs.aggregate(min_price=Min('price'), max_price=Max('price'))
+
+  return render(request, 'homePage/photographs.html', {
+    'activity': activity,
+    'price_min': price_range['min_price'],
+    'price_max': price_range['max_price'],
+  })
 
 def children_riding_view(request):
   """דף רכיבת ילדים - זמין רק בקיץ"""

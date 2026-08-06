@@ -1,7 +1,8 @@
 {% extends "homePage/base.html" %}
 {% load static %}
 
-{% block title %}חוות דעת — חוות מסילת ציון{% endblock %}
+{% block title %}חוות דעת של לקוחות | חוות סוסים מסילת ציון, ליד בית שמש{% endblock %}
+{% block meta_description %}מה אומרים הלקוחות על חוות הסוסים מסילת ציון, ליד בית שמש ושער הגיא — ביקורות אמיתיות על רכיבה, טיולי כרכרה וצילומים.{% endblock %}
 
 {% block extra_css %}
 <link rel="stylesheet" href="{% static 'homePage/reviews_page.css' %}">
@@ -9,7 +10,7 @@
 
 {% block content %}
 <div class="reviews-wrap">
-  <h1 class="sr-only">חוות דעת — חוות מסילת ציון</h1>
+  <h1 class="sr-only">חוות דעת של לקוחות — חוות סוסים מסילת ציון</h1>
 
   <div class="reviews-header">
     {% if rating_count %}

@@ -1,12 +1,37 @@
 {% extends "homePage/base_booking.html" %}
 {% load static %}
 
-{% block specific_title %}צילומים - חוות מסילת ציון{% endblock %}
+{% block specific_title %}צילומים עם סוסים | מסילת ציון, יער בורמה, ליד בית שמש{% endblock %}
+{% block meta_description %}צילומים עם סוסים וחיות נוספות — פרה, כלב פודל, חמור ואפרוחים — ביער בורמה, במסילת ציון ליד בית שמש. פינת צילום עם ביקתות וקיר גרפיטי. מתאים לחלאקה, ימי הולדת וחתונות. החל מ-200 ₪.{% endblock %}
 
 {% block image_src %}{% static 'homePage/images/photographs.jpg' %}{% endblock %}
 
 {% block image_alt %}צילומים{% endblock %}
 {% block page_title %}צילומים{% endblock %}
+
+{% block structured_data %}
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "Service",
+  "name": "צילומים עם סוסים",
+  "description": "בוק צילומים עם סוסים וחיות נוספות ביער בורמה, במסילת ציון, כולל פינת צילום עם ביקתות וקיר גרפיטי.",
+  "provider": {
+    "@type": "LocalBusiness",
+    "name": "חוות מסילת ציון",
+    "url": "https://mesilatzionfarm.co.il/",
+    "telephone": "+972-55-885-9569"
+  },
+  "areaServed": ["מסילת ציון", "בית שמש", "שער הגיא"],
+  "offers": {
+    "@type": "AggregateOffer",
+    "lowPrice": "{{ price_min|floatformat:'0' }}",
+    "highPrice": "{{ price_max|floatformat:'0' }}",
+    "priceCurrency": "ILS"
+  }
+}
+</script>
+{% endblock %}
 
 {% block description_text %}
 <span style="font-weight:700;">

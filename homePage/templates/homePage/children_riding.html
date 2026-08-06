@@ -1,12 +1,36 @@
 {% extends "homePage/base_booking.html" %}
 {% load static %}
 
-{% block specific_title %}רכיבת ילדים - חוות מסילת ציון{% endblock %}
+{% block specific_title %}רכיבת ילדים על סוסים | מסילת ציון, ליד בית שמש ושער הגיא{% endblock %}
+{% block meta_description %}רכיבת ילדים על סוסים במסילת ציון, ליד בית שמש ושער הגיא. 10 דקות רכיבה בשטח פתוח בליווי צמוד של מדריך מקצועי, 50 ₪ בלבד.{% endblock %}
 
 {% block image_src %}{% static 'homePage/images/children-riding.jpg' %}{% endblock %}
 
 {% block image_alt %}רכיבת ילדים{% endblock %}
 {% block page_title %}רכיבת ילדים{% endblock %}
+
+{% block structured_data %}
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "Service",
+  "name": "רכיבת ילדים על סוסים",
+  "description": "רכיבת ילדים על סוסים במסילת ציון, 10 דקות רכיבה בשטח פתוח בליווי צמוד של מדריך מקצועי.",
+  "provider": {
+    "@type": "LocalBusiness",
+    "name": "חוות מסילת ציון",
+    "url": "https://mesilatzionfarm.co.il/",
+    "telephone": "+972-55-885-9569"
+  },
+  "areaServed": ["מסילת ציון", "בית שמש", "שער הגיא"],
+  "offers": {
+    "@type": "Offer",
+    "price": "{{ activity.price|floatformat:'0' }}",
+    "priceCurrency": "ILS"
+  }
+}
+</script>
+{% endblock %}
 
 {% block description_text %}
 חווית רכיבה לילדים<br>

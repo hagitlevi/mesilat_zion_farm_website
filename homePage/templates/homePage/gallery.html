@@ -1,7 +1,8 @@
 {% extends "homePage/base.html" %}
 {% load static %}
 
-{% block title %}גלריה - חוות מסילת ציון{% endblock %}
+{% block title %}גלריית תמונות | חוות סוסים מסילת ציון, ליד בית שמש{% endblock %}
+{% block meta_description %}גלריית תמונות מחוות הסוסים במסילת ציון, ליד בית שמש ושער הגיא — רכיבה, טיולי כרכרה, צילומים ורגעים מהחווה.{% endblock %}
 
 {% block extra_css %}
 <link rel="stylesheet" href="{% static 'homePage/gallery.css' %}">
@@ -52,7 +53,7 @@
 
 {% block content %}
 <div class="gallery-section">
-  <h1 class="sr-only">גלריה - חוות מסילת ציון</h1>
+  <h1 class="sr-only">גלריית תמונות — חוות סוסים מסילת ציון</h1>
 
   <div class="gallery-grid" id="galleryGrid">
     {% comment %} עטיפת כל תמונה בלינק לפתיחה בלייטבוקס {% endcomment %}

@@ -1,12 +1,37 @@
 {% extends "homePage/base_booking.html" %}
 {% load static %}
 
-{% block specific_title %}רכיבת שטח - חוות מסילת ציון{% endblock %}
+{% block specific_title %}רכיבת שטח על סוסים | מסילת ציון, ליד בית שמש ושער הגיא{% endblock %}
+{% block meta_description %}רכיבת שטח קבוצתית על סוסים במסילת ציון, ליד בית שמש ושער הגיא. מותאם ל-2 עד 5 רוכבים, החל מ-150 ₪ לאדם.{% endblock %}
 
 {% block image_src %}{% static 'homePage/images/group-riding.jpg' %}{% endblock %}
 
 {% block image_alt %}רכיבת שטח{% endblock %}
 {% block page_title %}רכיבת שטח{% endblock %}
+
+{% block structured_data %}
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "Service",
+  "name": "רכיבת שטח על סוסים",
+  "description": "רכיבת שטח קבוצתית על סוסים במסילת ציון, מותאמת ל-2 עד 5 רוכבים.",
+  "provider": {
+    "@type": "LocalBusiness",
+    "name": "חוות מסילת ציון",
+    "url": "https://mesilatzionfarm.co.il/",
+    "telephone": "+972-55-885-9569"
+  },
+  "areaServed": ["מסילת ציון", "בית שמש", "שער הגיא"],
+  "offers": {
+    "@type": "AggregateOffer",
+    "lowPrice": "{{ price_min|floatformat:'0' }}",
+    "highPrice": "{{ price_max|floatformat:'0' }}",
+    "priceCurrency": "ILS"
+  }
+}
+</script>
+{% endblock %}
 
 {% block description_text %}
 הרכיבה מותנית בהשתתפות של 2 עד 5 רוכבים<br>

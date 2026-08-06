@@ -1,12 +1,36 @@
 {% extends "homePage/base_booking.html" %}
 {% load static %}
 
-{% block specific_title %}שיעורי רכיבה - חוות מסילת ציון{% endblock %}
+{% block specific_title %}שיעורי רכיבה וטיפולים רגשיים | מסילת ציון, ליד בית שמש ושער הגיא{% endblock %}
+{% block meta_description %}שיעורי רכיבה טיפולית ורכיבה רגילה במסילת ציון, ליד בית שמש ושער הגיא. שיעור פרטני של 30 דק' עם מדריך/ה מוסמך/ת, 200 ₪ לשיעור. קבעו תור עוד היום.{% endblock %}
 
 {% block image_src %}{% static 'homePage/images/riding-lessons.jpg' %}{% endblock %}
 
-{% block image_alt %}רכיבת ילדים{% endblock %}
+{% block image_alt %}שיעורי רכיבה וטיפולים רגשיים{% endblock %}
 {% block page_title %}שיעורי רכיבה וטיפולים רגשיים{% endblock %}
+
+{% block structured_data %}
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "Service",
+  "name": "שיעורי רכיבה וטיפולים רגשיים",
+  "description": "שיעורי רכיבה טיפולית ורכיבה רגילה במסילת ציון, שיעור פרטני של 30 דק' עם מדריך/ה מוסמך/ת.",
+  "provider": {
+    "@type": "LocalBusiness",
+    "name": "חוות מסילת ציון",
+    "url": "https://mesilatzionfarm.co.il/",
+    "telephone": "+972-55-885-9569"
+  },
+  "areaServed": ["מסילת ציון", "בית שמש", "שער הגיא"],
+  "offers": {
+    "@type": "Offer",
+    "price": "{{ activity.price|floatformat:'0' }}",
+    "priceCurrency": "ILS"
+  }
+}
+</script>
+{% endblock %}
 
 {% block description_text %}
 עלות: 200 ₪ לשיעור<br>

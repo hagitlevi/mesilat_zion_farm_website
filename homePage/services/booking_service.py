@@ -336,15 +336,16 @@ def build_business_hours_rows(season=None):
         day_map[wd.code] = (min(s0, bh.start_time), max(e0, bh.end_time))
 
   heb = {6: "ראשון", 0: "שני", 1: "שלישי", 2: "רביעי", 3: "חמישי", 4: "שישי", 5: "שבת"}
+  en  = {6: "Sunday", 0: "Monday", 1: "Tuesday", 2: "Wednesday", 3: "Thursday", 4: "Friday", 5: "Saturday"}
   order = [6, 0, 1, 2, 3, 4, 5]
 
   rows = []
   for code in order:
     rng = day_map[code]
     if rng is None:
-      rows.append({"label": heb[code], "closed": True, "start": None, "end": None})
+      rows.append({"label": heb[code], "day_en": en[code], "closed": True, "start": None, "end": None})
     else:
-      rows.append({"label": heb[code], "closed": False, "start": rng[0], "end": rng[1]})
+      rows.append({"label": heb[code], "day_en": en[code], "closed": False, "start": rng[0], "end": rng[1]})
   return rows
 
 def detect_season(d=None):

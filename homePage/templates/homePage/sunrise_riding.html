@@ -1,12 +1,36 @@
 {% extends "homePage/base_booking.html" %}
 {% load static %}
 
-{% block specific_title %}רכיבה בזריחה - חוות מסילת ציון{% endblock %}
+{% block specific_title %}רכיבה בזריחה על סוסים | מסילת ציון, ליד בית שמש ושער הגיא{% endblock %}
+{% block meta_description %}רכיבה בזריחה על סוסים במסילת ציון, ליד בית שמש ושער הגיא. שעה וחצי רכיבה בין 5:00-8:00, עצירת קפה בדרך, 350 ₪ לאדם.{% endblock %}
 
 {% block image_src %}{% static 'homePage/images/sunrise-riding.jpg' %}{% endblock %}
 
 {% block image_alt %}רכיבה בזריחה{% endblock %}
 {% block page_title %}רכיבה בזריחה{% endblock %}
+
+{% block structured_data %}
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "Service",
+  "name": "רכיבה בזריחה על סוסים",
+  "description": "רכיבה בזריחה על סוסים במסילת ציון, שעה וחצי בין 5:00-8:00 כולל עצירת קפה בדרך.",
+  "provider": {
+    "@type": "LocalBusiness",
+    "name": "חוות מסילת ציון",
+    "url": "https://mesilatzionfarm.co.il/",
+    "telephone": "+972-55-885-9569"
+  },
+  "areaServed": ["מסילת ציון", "בית שמש", "שער הגיא"],
+  "offers": {
+    "@type": "Offer",
+    "price": "{{ activity.price|floatformat:'0' }}",
+    "priceCurrency": "ILS"
+  }
+}
+</script>
+{% endblock %}
 
 {% block description_text %}
 הרכיבה מותנית בהשתתפות של 3 עד 5 רוכבים<br>

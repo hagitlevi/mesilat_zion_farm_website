@@ -1,12 +1,37 @@
 {% extends "homePage/base_booking.html" %}
 {% load static %}
 
-{% block specific_title %}רכיבה זוגית - חוות מסילת ציון{% endblock %}
+{% block specific_title %}רכיבה זוגית רומנטית | מסילת ציון, ליד בית שמש ושער הגיא{% endblock %}
+{% block meta_description %}רכיבה זוגית רומנטית על סוסים במסילת ציון, ליד בית שמש ושער הגיא. אפשרות לפיקניק, יין וגבינות, רכיבת זריחה/לילה זוגית. החל מ-300 ₪ לזוג.{% endblock %}
 
 {% block image_src %}{% static 'homePage/images/couple-riding.jpg' %}{% endblock %}
 
 {% block image_alt %}רכיבה זוגית{% endblock %}
 {% block page_title %}רכיבה זוגית{% endblock %}
+{% block structured_data %}
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "Service",
+  "name": "רכיבה זוגית רומנטית",
+  "description": "רכיבה זוגית רומנטית על סוסים במסילת ציון, עם אפשרות לפיקניק, יין וגבינות, ורכיבת זריחה/לילה זוגית.",
+  "provider": {
+    "@type": "LocalBusiness",
+    "name": "חוות מסילת ציון",
+    "url": "https://mesilatzionfarm.co.il/",
+    "telephone": "+972-55-885-9569"
+  },
+  "areaServed": ["מסילת ציון", "בית שמש", "שער הגיא"],
+  "offers": {
+    "@type": "AggregateOffer",
+    "lowPrice": "{{ price_min|floatformat:'0' }}",
+    "highPrice": "{{ price_max|floatformat:'0' }}",
+    "priceCurrency": "ILS"
+  }
+}
+</script>
+{% endblock %}
+
 {% block description_text %}
 <u>המחירים (לזוג)</u>
 רכיבה ביום:<br>
