@@ -3594,10 +3594,10 @@ class PaymentAdmin(admin.ModelAdmin):
 class ReceiptAdmin(admin.ModelAdmin):
     """קבלות נוצרות אוטומטית עם תשלום PayPlus מוצלח, או ידנית דרך 'הנפקת קבלה ידנית' (לתשלומי
     מזומן/ביט/פייבוקס/העברה/שיק). בשני המקרים אי אפשר לערוך/למחוק אחרי היצירה, כדי לשמור על אי-הפיכות."""
-    list_display = ("receipt_number", "customer_name", "get_payment_method_display", "amount", "created_at", "is_void")
+    list_display = ("receipt_number", "customer_name", "customer_email", "get_payment_method_display", "amount", "created_at", "is_void")
     list_filter = ("is_void",)
     search_fields = ("receipt_number", "customer_name", "customer_email")
-    actions = ("download_pdf", "mark_void", "unmark_void")
+    actions = ("download_pdf", "mark_void", "unmark_void", "resend_receipt_email")
 
     def has_add_permission(self, request):
         # True רק כדי שכפתור/קישור "הוספה" יופיע בעמודי האדמין (כמו בכל מודל אחר) —
@@ -3616,10 +3616,16 @@ class ReceiptAdmin(admin.ModelAdmin):
         return True
 
     def has_change_permission(self, request, obj=None):
-        return False
+        # True (בניגוד למה שהשם מרמז) רק כדי לאפשר גישה לעמוד הקבלה עם כפתור "שמירה" —
+        # get_readonly_fields למטה הופך את כל השדות חוץ מ-customer_email לבלתי-ניתנים
+        # לעריכה, כך שבפועל אי אפשר לשנות שום דבר בקבלה מלבד כתובת המייל.
+        return True
 
     def has_delete_permission(self, request, obj=None):
         return False
+
+    def get_readonly_fields(self, request, obj=None):
+        return [f.name for f in self.model._meta.fields if f.name != "customer_email"]
 
     def get_urls(self):
         urls = super().get_urls()
@@ -3628,6 +3634,25 @@ class ReceiptAdmin(admin.ModelAdmin):
             path("<int:pk>/download/", self.admin_site.admin_view(self.download_pdf_direct), name="homePage_receipt_download"),
         ]
         return extra + urls
+
+    def resend_receipt_email(self, request, queryset):
+        sent_count = 0
+        failed = []
+        for receipt in queryset:
+            if send_manual_receipt_email(receipt):
+                sent_count += 1
+            else:
+                failed.append(receipt.receipt_number)
+
+        if sent_count:
+            self.message_user(request, f"נשלחו {sent_count} קבלות במייל.")
+        if failed:
+            self.message_user(
+                request,
+                "שליחה נכשלה עבור: " + ", ".join(failed) + " (בדקו שיש כתובת מייל ושהשליחה מופעלת).",
+                level=messages.WARNING,
+            )
+    resend_receipt_email.short_description = "שליחת הקבלה מחדש במייל"
 
     def issue_receipt_view(self, request):
         """טופס פשוט להנפקת קבלה ידנית: שם+מייל לקוח, שורות פריט (תיאור+סכום), אמצעי תשלום."""
