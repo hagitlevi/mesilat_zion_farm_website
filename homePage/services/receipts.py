@@ -26,11 +26,13 @@ def create_receipt_for_payment(payment, booking) -> Receipt:
   """יוצר קבלה דיגיטלית (snapshot) עבור תשלום שהצליח. לא נועד להיקרא יותר מפעם אחת לאותו payment."""
   activity_name = getattr(getattr(booking, "activity", None), "name", "") or ""
   customer_name = (getattr(payment, "customer_name", "") or getattr(booking, "customer_name", "") or "").strip()
+  customer_email = (getattr(payment, "email", "") or getattr(booking, "customer_email", "") or "").strip().lower()
   amount = Decimal(getattr(payment, "amount_agorot", 0) or 0) / 100
 
   receipt = Receipt(
       payment=payment,
       customer_name=customer_name,
+      customer_email=customer_email,
       items=[{"description": activity_name, "amount": str(amount)}],
       amount=amount,
       payment_method="credit",

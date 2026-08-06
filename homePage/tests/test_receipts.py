@@ -45,6 +45,7 @@ class CreateReceiptForPaymentTests(TestCase):
         self.assertEqual(receipt.receipt_number, f"A-{receipt.pk:06d}")
         self.assertEqual(receipt.items, [{"description": "רכיבה זוגית", "amount": "250"}])
         self.assertEqual(receipt.customer_name, "ישראל ישראלי")
+        self.assertEqual(receipt.customer_email, "test@example.com")
         self.assertEqual(receipt.amount, 250)
         self.assertEqual(receipt.payment, payment)
         self.assertEqual(receipt.payment_method, "credit")
@@ -76,6 +77,23 @@ class CreateReceiptForPaymentTests(TestCase):
         receipt = create_receipt_for_payment(payment, booking)
 
         self.assertEqual(receipt.customer_name, "ישראל ישראלי")
+
+    def test_falls_back_to_booking_customer_email_when_payment_email_blank(self):
+        activity = _activity()
+        booking = _booking(activity)
+        booking.customer_email = "from-booking@example.com"
+        booking.save(update_fields=["customer_email"])
+        payment = Payment.objects.create(
+            amount_agorot=10000,
+            status="succeeded",
+            customer_name="ישראל ישראלי",
+            email="",
+            booking=booking,
+        )
+
+        receipt = create_receipt_for_payment(payment, booking)
+
+        self.assertEqual(receipt.customer_email, "from-booking@example.com")
 
     def test_receipt_number_is_unique_constrained(self):
         activity = _activity()
