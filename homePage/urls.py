@@ -20,6 +20,7 @@ urlpatterns = [
     path('confirm-booking/', views.confirm_booking, name='confirm_booking'),
     path('booking-form/', views.booking_form, name='booking_form'),
     path('reviews/', views.site_reviews, name='site_reviews'),
+    path('shabbat-preview/', views.shabbat_preview_view, name='shabbat_preview'),
     path("cancel-request/", cancel_request_view, name="cancel_request"),
     path("terms/", TemplateView.as_view(template_name="homePage/terms.html"), name="terms"),
     path("privacy/", TemplateView.as_view(template_name="homePage/privacy.html"), name="privacy"),

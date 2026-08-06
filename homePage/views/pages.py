@@ -4,6 +4,7 @@ from django.db.models import Avg, Min, Max
 from ..utils import group_consecutive_hours
 from ..services.booking_service import build_business_hours_rows
 import json
+from django.contrib.admin.views.decorators import staff_member_required
 from django.shortcuts import render, get_object_or_404
 from datetime import timedelta
 from django.utils import timezone
@@ -32,6 +33,11 @@ def home(request):
     "reviews_total": reviews_total,
     "reviews_avg": reviews_avg,
   })
+
+@staff_member_required
+def shabbat_preview_view(request):
+  """תצוגה מקדימה של עמוד 'האתר סגור' - תמיד מציגה אותו, בלי קשר לזמן בפועל."""
+  return render(request, "homePage/shabbat_closed.html", status=200)
 
 def riding_lessons_view(request):
   """דף שיעורי רכיבה וטיפולית"""

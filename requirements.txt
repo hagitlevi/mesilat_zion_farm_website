@@ -28,3 +28,6 @@ dj-database-url
 psycopg2-binary
 django-ratelimit==4.1.0
 weasyprint==69.0
+hdate==1.2.1
+num2words==0.5.14
+docopt==0.6.2

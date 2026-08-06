@@ -721,6 +721,14 @@ class SiteSettings(models.Model):
         default=True,
         help_text="כשהתיבה לא מסומנת — האפשרות הזו לא תופיע במסך סימון הזמנה כשולם.",
     )
+    shabbat_closure_enabled = models.BooleanField(
+        "חסום את האתר בשבתות וחגים",
+        default=True,
+        help_text=(
+            "כשהתיבה מסומנת — האתר ייסגר אוטומטית ללקוחות בכניסת שבת/חג (לפי זמני ירושלים) "
+            "ועד צאתם, ויוצג עמוד \"האתר סגור\"."
+        ),
+    )
 
     class Meta:
         verbose_name = "הגדרות אתר"

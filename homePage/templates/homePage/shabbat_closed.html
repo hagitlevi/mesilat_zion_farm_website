@@ -1,0 +1,31 @@
+{% extends "homePage/base.html" %}
+
+{% block title %}האתר סגור לשבת/חג – חוות מסילת ציון{% endblock %}
+{% block meta_description %}האתר סגור זמנית לכבוד שבת/חג. נשמח לראותכם שוב עם צאת השבת/החג.{% endblock %}
+{% block robots %}<meta name="robots" content="noindex">{% endblock %}
+
+{% block extra_css %}
+<style>
+  .shabbat-closed{
+    max-width: 640px; margin: 40px auto; padding: 28px 22px;
+    background: var(--main-white, #faf7f2);
+    border: 1px solid var(--main-border, #faf0dc);
+    border-radius: 18px;
+    text-align: center;
+    box-shadow: 0 14px 30px rgba(0,0,0,.08);
+  }
+  .shabbat-closed h1{
+    margin: 0 0 14px; color: var(--main-color, #704a22);
+    font-size: clamp(1.3rem, 4.6vw, 1.8rem); font-weight: 900;
+  }
+  .shabbat-closed p{ margin: 8px 0; font-size: 1.05rem; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="shabbat-closed">
+  <h1>האתר סגור זמנית לכבוד שבת/חג</h1>
+  <p>נשמח לראותכם שוב מיד עם צאת השבת/החג.</p>
+  <p>לעניינים דחופים ניתן לפנות אלינו בוואטסאפ (קישור בראש העמוד).</p>
+</div>
+{% endblock %}
