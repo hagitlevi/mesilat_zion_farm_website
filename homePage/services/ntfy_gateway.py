@@ -481,7 +481,7 @@ def send_treatment_email(session, amount: Decimal | None = None) -> bool:
     return False
   return sent >= 1
 
-def send_booking_email(payment, booking, receipt=None):
+def send_booking_email(payment, booking, receipt=None, paid=True):
   """שולח מייל עם פרטי הזמנה ללקוח עבור Booking, כולל פורמט טוב לשעת המפגש, סכום, ומידע נוסף. מחזיר True אם נשלח לפחות מייל אחד (לא משנה אם SMS הצליח או לא)."""
   logger.debug("send_booking_email called with payment: %s, booking: %s", payment, booking)
 
@@ -501,12 +501,13 @@ def send_booking_email(payment, booking, receipt=None):
 
   # כותרת ייחודית (מפחית קיפול "טקסט מצוטט")
   subject = f"אישור הזמנה – חוות מסילת ציון · {charge_id}"
+  success_line = "התשלום עבר בהצלחה!" if paid else "ההזמנה בוצעה בהצלחה!"
 
   # --- טקסט גיבוי RTL (RLM) ---
   rlm = "\u200F"
   text_body_core = (
       f"שלום {customer},\n\n"
-      f"התשלום עבר בהצלחה!\n\n"
+      f"{success_line}\n\n"
       f"מספר עסקה: {charge_id}\n"
       f"מחיר: ₪{amount_nis:.2f}\n"
       f"מספר משתתפים: {participants}\n"
@@ -554,7 +555,7 @@ def send_booking_email(payment, booking, receipt=None):
                     <tr>
                       <td style="padding:22px;word-break:break-word;overflow-wrap:anywhere;">
                         <h1 style="margin:0 0 12px 0;font-size:20px;color:#222;line-height:1.35;">שלום {customer},</h1>
-                        <p style="margin:0 0 16px 0;font-size:15px;color:#333;line-height:1.6;">התשלום עבר בהצלחה!</p>
+                        <p style="margin:0 0 16px 0;font-size:15px;color:#333;line-height:1.6;">{success_line}</p>
 
                         <table role="presentation" cellpadding="0" cellspacing="0"
                                style="width:100%;border:1px solid #eee;border-radius:10px;overflow:hidden;border-collapse:separate;">

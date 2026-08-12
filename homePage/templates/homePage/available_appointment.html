@@ -7,7 +7,9 @@
 
 {% block content %}
 
-    {% if not has_slots %}
+    {% if phone_only %}
+      <p class="no-appointments">ההזמנות לתאריך זה מתבצעות טלפונית בלבד</p>
+    {% elif not has_slots %}
       <p class="no-appointments">אין תורים זמינים לתאריך זה</p>
     {% else %}
       <div class="appointments-columns">

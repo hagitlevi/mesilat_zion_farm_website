@@ -4,7 +4,7 @@ from .models import (
     Activity, Appointment, CustomSchedule, Booking, SiteReview,
     CancellationRequest, TermsConsent, ScheduleBoard, Weekday,
     BusinessHours, ActivityRule, Instructor, TreatmentSession,
-    MonthlySummary, Payment, Receipt,
+    MonthlySummary, Payment, Receipt, PhoneOnlyDate,
 )
 from homePage.services.receipts import render_receipt_pdf, render_receipts_pdf, create_manual_receipt, send_manual_receipt_email
 from homePage.services.ntfy_gateway import (
@@ -1673,6 +1673,69 @@ class CustomScheduleAdmin(admin.ModelAdmin):
         g = obj.to_gregorian_for_year(date.today().year)
         return g.strftime("%d.%m.%Y") if g else "—"
 
+class PhoneOnlyDateForm(forms.ModelForm):
+    class Meta:
+        model = PhoneOnlyDate
+        fields = "__all__"
+
+    # מציגים את h_day/h_end_day כשדה טקסט כדי שאפשר יהיה להקליד גם אותיות (כמו ב-CustomScheduleForm)
+    h_day = forms.CharField(
+        label="יום בחודש עברי", required=False,
+        help_text='אפשר לכתוב מספר (1–30) או אותיות (למשל: כ״ה, ט״ו).',
+        widget=forms.TextInput(attrs={"placeholder": 'כ״ה / 25', "dir": "rtl"})
+    )
+    h_end_day = forms.CharField(
+        label="יום בחודש עברי - עד (לא חובה)", required=False,
+        help_text='אותו פורמט. השאירו ריק אם זה יום עברי בודד.',
+        widget=forms.TextInput(attrs={"placeholder": 'כ״ה / 25', "dir": "rtl"})
+    )
+
+    @staticmethod
+    def _parse_hebrew_day(val):
+        if val in (None, ""):
+            return None
+        s = str(val).strip()
+        if s.isdigit():
+            n = int(s)
+        else:
+            s = s.replace('״', '').replace('"', '').replace("'", "").replace("׳", "").replace(" ", "")
+            map_ = {"א": 1, "ב": 2, "ג": 3, "ד": 4, "ה": 5, "ו": 6, "ז": 7, "ח": 8, "ט": 9, "י": 10, "כ": 20, "ך": 20, "ל": 30}
+            total = 0
+            for ch in s:
+                if ch not in map_:
+                    raise forms.ValidationError("יום עברי לא חוקי. כתבי למשל כ״ה או מספר 25.")
+                total += map_[ch]
+            n = total
+        if not (1 <= n <= 30):
+            raise forms.ValidationError("היום חייב להיות בין 1 ל-30.")
+        return n
+
+    def clean_h_day(self):
+        if self.cleaned_data.get("kind") != "HEBREW":
+            return None
+        return self._parse_hebrew_day(self.cleaned_data.get("h_day"))
+
+    def clean_h_end_day(self):
+        if self.cleaned_data.get("kind") != "HEBREW":
+            return None
+        return self._parse_hebrew_day(self.cleaned_data.get("h_end_day"))
+
+@admin.register(PhoneOnlyDate)
+class PhoneOnlyDateAdmin(admin.ModelAdmin):
+    form = PhoneOnlyDateForm
+
+    list_display = ("kind", "date", "end_date", "h_month", "h_day", "repeat_every_year", "is_active", "note")
+    list_filter = ("kind", "repeat_every_year", "is_active")
+    ordering = ("-repeat_every_year", "date")
+    date_hierarchy = "date"
+    search_fields = ("note",)
+
+    fieldsets = (
+        ("כללי", {"fields": ("kind", "is_active", "note")}),
+        ("הגדרה לועזית", {"fields": ("date", "end_date", "repeat_every_year")}),
+        ("הגדרה עברית (חוזרת כל שנה)", {"fields": ("h_month", "h_day", "h_end_month", "h_end_day", "adar_policy")}),
+    )
+
 @admin.register(Weekday)
 class WeekdayAdmin(admin.ModelAdmin):
     list_display = ("code", "name")
@@ -2841,7 +2904,7 @@ class BookingAdmin(admin.ModelAdmin):
                         amount_agorot=agorot,
                         charge_id=booking.payment_ref,
                     )
-                    send_booking_email(payment_like, booking, receipt=receipt)
+                    send_booking_email(payment_like, booking, receipt=receipt, paid=paid_manually)
                     if getattr(settings, "SEND_SMS", False) and (booking.customer_phone or "").strip():
                         sms_text = format_booking_sms(payment_like, booking)
                         try:

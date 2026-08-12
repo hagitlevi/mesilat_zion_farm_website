@@ -211,6 +211,133 @@ class CustomSchedule(models.Model):
 
         return self.MONTH_NAME_TO_NUM[base]
 
+def _resolve_hebrew_month_for_year(month_code: str, adar_policy: str, hebrew_year: int) -> int:
+    """ממיר קוד חודש עברי (למשל 'ADAR') למספר החודש בפועל בשנה עברית נתונה, כולל טיפול בשנה מעוברת. שימוש קריאה-בלבד ב-CustomSchedule.MONTH_NAME_TO_NUM (לא נוגע בלוגיקה של CustomSchedule עצמו)."""
+    if not month_code:
+        return 0
+    is_leap = hcal.leap(hebrew_year)
+    if month_code == "ADAR":
+        if adar_policy == "ALWAYS_A1":
+            return 12
+        return 13 if is_leap else 12  # AUTO_ADAR2 / ALWAYS_A2
+    if month_code == "ADAR_I":
+        return 12
+    if month_code == "ADAR_II":
+        return 13 if is_leap else 12
+    return CustomSchedule.MONTH_NAME_TO_NUM[month_code]
+
+
+class PhoneOnlyDate(models.Model):
+    """טווח תאריכים (לועזי או עברי חוזר) שבו הזמנות מהאתר חסומות ללקוחות (מוצג הסבר להזמין טלפונית), אך אדמין עדיין יכול/ה ליצור הזמנה דרך הניהול."""
+
+    KIND_CHOICES = [
+        ("GREGORIAN", "תאריך לועזי"),
+        ("HEBREW", "תאריך עברי חוזר"),
+    ]
+
+    kind = models.CharField("סוג תאריך", max_length=10, choices=KIND_CHOICES, default="GREGORIAN")
+
+    # ==== לועזי ====
+    date = models.DateField(
+        "מתאריך (לועזי)",
+        null=True, blank=True,
+        help_text="לתאריך חד-פעמי – התאריך המדויק. לתאריך חוזר כל שנה – רק היום והחודש נלקחים בחשבון.",
+    )
+    end_date = models.DateField(
+        "עד תאריך לועזי (כולל) – לא חובה",
+        null=True, blank=True,
+        help_text="השאירו ריק ליום בודד. למילוי – הכלל חל על כל הימים בין 'מתאריך' ל'עד תאריך' (כולל שני הקצוות).",
+    )
+    repeat_every_year = models.BooleanField("לחזור כל שנה? (לועזי)", default=False)
+
+    # ==== עברי (חוזר כל שנה תמיד) ====
+    h_month = models.CharField("חודש עברי", max_length=10, choices=CustomSchedule.HEB_MONTH_CHOICES, blank=True)
+    h_day = models.PositiveSmallIntegerField("יום בחודש עברי", null=True, blank=True)
+    h_end_month = models.CharField("חודש עברי - עד (לא חובה)", max_length=10, choices=CustomSchedule.HEB_MONTH_CHOICES, blank=True)
+    h_end_day = models.PositiveSmallIntegerField("יום בחודש עברי - עד (לא חובה)", null=True, blank=True)
+    adar_policy = models.CharField("מדיניות אדר", max_length=12, choices=CustomSchedule.ADAR_POLICY_CHOICES,
+                                    default="AUTO_ADAR2", blank=True)
+
+    is_active = models.BooleanField("פעיל?", default=True)
+    note = models.CharField("הערה (לא חובה)", max_length=200, blank=True, default="")
+
+    class Meta:
+        verbose_name = "תאריך להזמנות טלפוניות בלבד"
+        verbose_name_plural = "תאריכים להזמנות טלפוניות בלבד"
+        ordering = ("-repeat_every_year", "date")
+
+    def __str__(self):
+        if self.kind == "HEBREW":
+            base = f"{self.get_h_month_display()} {self.h_day}"
+            if self.h_end_month and self.h_end_day:
+                base += f"–{self.get_h_end_month_display()} {self.h_end_day}"
+            base += " (עברי, כל שנה)"
+        else:
+            is_range = self.end_date and self.end_date != self.date
+            if self.repeat_every_year:
+                base = self.date.strftime("%d.%m") if self.date else "?"
+                if is_range:
+                    base += f"–{self.end_date.strftime('%d.%m')}"
+                base += " (כל שנה)"
+            else:
+                base = self.date.strftime("%d.%m.%Y") if self.date else "?"
+                if is_range:
+                    base += f"–{self.end_date.strftime('%d.%m.%Y')}"
+        note_part = f" – {self.note}" if self.note else ""
+        return f"{base}{note_part}"
+
+    def clean(self):
+        errors = {}
+        if self.kind == "GREGORIAN":
+            if not self.date:
+                errors["date"] = "נדרש תאריך לועזי."
+            elif self.end_date and not self.repeat_every_year and self.end_date < self.date:
+                errors["end_date"] = "'עד תאריך' לא יכול להיות לפני 'מתאריך'."
+        elif self.kind == "HEBREW":
+            if not self.h_month:
+                errors["h_month"] = "נדרש חודש עברי."
+            if not self.h_day:
+                errors["h_day"] = "נדרש יום בחודש עברי."
+            if bool(self.h_end_month) != bool(self.h_end_day):
+                errors["h_end_day"] = "יש למלא גם חודש-עד וגם יום-עד, או להשאיר את שניהם ריקים."
+        if errors:
+            raise ValidationError(errors)
+
+    def matches(self, check_date) -> bool:
+        if self.kind == "HEBREW":
+            hy, hm, hd = hcal.from_gregorian(check_date.year, check_date.month, check_date.day)
+            start_md = (_resolve_hebrew_month_for_year(self.h_month, self.adar_policy, hy), self.h_day or 0)
+            if self.h_end_month and self.h_end_day:
+                end_md = (_resolve_hebrew_month_for_year(self.h_end_month, self.adar_policy, hy), self.h_end_day)
+            else:
+                end_md = start_md
+            check_md = (hm, hd)
+            if start_md <= end_md:
+                return start_md <= check_md <= end_md
+            return check_md >= start_md or check_md <= end_md
+
+        if not self.date:
+            return False
+        if self.repeat_every_year:
+            start_md = (self.date.month, self.date.day)
+            end_md = (self.end_date.month, self.end_date.day) if self.end_date else start_md
+            check_md = (check_date.month, check_date.day)
+            if start_md <= end_md:
+                return start_md <= check_md <= end_md
+            # טווח שחוצה את סוף השנה (למשל 28.12 עד 03.01)
+            return check_md >= start_md or check_md <= end_md
+        end = self.end_date or self.date
+        return self.date <= check_date <= end
+
+
+def is_phone_only_date(check_date) -> bool:
+    """האם בתאריך הנתון הזמנות ללקוחות באתר חסומות (ומוצג הסבר להזמין טלפונית)."""
+    return any(
+        rule.matches(check_date)
+        for rule in PhoneOnlyDate.objects.filter(is_active=True)
+    )
+
+
 class Season(models.TextChoices):
     SUMMER = "summer", _("קיץ")
     WINTER = "winter", _("חורף")

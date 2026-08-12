@@ -1,6 +1,6 @@
 import logging
 
-from homePage.models import Activity, Appointment
+from homePage.models import Activity, Appointment, is_phone_only_date
 from django.http import Http404, HttpResponseBadRequest, JsonResponse
 from django.views.decorators.http import require_POST, require_GET
 from django_ratelimit.decorators import ratelimit
@@ -452,6 +452,25 @@ def available_appointment_view(request, activity_id):
     start_day = date.today()
     end_day = start_day + timedelta(days=7)
 
+  # ✅ תאריכים שבהם הזמנות מהאתר חסומות ללקוחות ("הזמנות טלפוניות בלבד")
+  if selected_date and is_phone_only_date(selected_date):
+    context = {
+      "activity": activity,
+      "durations": [],
+      "grouped_appointments": {},
+      "selected_date": selected_date,
+      "has_slots": False,
+      "phone_only": True,
+    }
+    return render(request, "homePage/available_appointment.html", context)
+
+  phone_only_dates = set()
+  d = start_day
+  while d <= end_day:
+    if is_phone_only_date(d):
+      phone_only_dates.add(d)
+    d += timedelta(days=1)
+
   # ✅ חדש/מסודר: לחשב פעם אחת
   now_aw = timezone.now().astimezone(ZoneInfo("Asia/Jerusalem"))
   today = now_aw.date()
@@ -465,6 +484,8 @@ def available_appointment_view(request, activity_id):
     .order_by("date", "time")
     .distinct()
   )
+  if phone_only_dates:
+    base_qs = base_qs.exclude(date__in=phone_only_dates)
 
   # ✅ מסנן תורים של היום עד שעתיים קדימה
   if selected_date is None or selected_date == today:
@@ -660,6 +681,12 @@ def appointments_snapshot(request):
     )
 
     if date_str:
+        try:
+            parsed_date = datetime.strptime(date_str, "%Y-%m-%d").date()
+        except ValueError:
+            parsed_date = None
+        if parsed_date and is_phone_only_date(parsed_date):
+            return JsonResponse({"stamp": None, "slots": []})
         qs = qs.filter(date=date_str)
 
     # ✅ stamp אמיתי
@@ -770,6 +797,10 @@ def hold_appointment(request):
         return redirect(f"{base_url}?{qs}")
 
     base = Appointment.objects.select_for_update().get(id=appt_id)
+
+    # ✅ תאריך "הזמנות טלפוניות בלבד" - לקוחות לא יכולים לתפוס תור גם דרך קריאה ישירה
+    if is_phone_only_date(base.date):
+        return err("ההזמנות לתאריך זה מתבצעות טלפונית בלבד.")
 
     # ✅ אם מוחזק ע"י מישהו אחר ועדיין לא פג
     if base.hold_until and base.hold_until > now and str(base.hold_token) != token:

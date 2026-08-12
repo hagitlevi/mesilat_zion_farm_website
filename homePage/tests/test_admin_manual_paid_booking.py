@@ -124,6 +124,24 @@ class AdminManualPaidBookingTests(TestCase):
 
         self.assertRedirects(resp, reverse("admin:homePage_booking_change", args=[booking.id]))
 
+    @override_settings(SEND_EMAIL=True, SEND_SMS=False)
+    def test_paid_manually_email_says_payment_succeeded(self):
+        self._post(payment_mode="paid", payment_method="bit")
+
+        self.assertEqual(len(mail.outbox), 1)
+        body = mail.outbox[0].body
+        self.assertIn("התשלום עבר בהצלחה", body)
+        self.assertNotIn("ההזמנה בוצעה בהצלחה", body)
+
+    @override_settings(SEND_EMAIL=True, SEND_SMS=False)
+    def test_skip_payment_email_says_booking_succeeded_not_payment(self):
+        self._post(payment_mode="none")
+
+        self.assertEqual(len(mail.outbox), 1)
+        body = mail.outbox[0].body
+        self.assertIn("ההזמנה בוצעה בהצלחה", body)
+        self.assertNotIn("התשלום עבר בהצלחה", body)
+
     def test_no_notify_checkbox_shown_by_default(self):
         resp = self.client.get(self.url)
         self.assertContains(resp, 'name="silent_import"')
