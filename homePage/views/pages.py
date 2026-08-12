@@ -1,4 +1,4 @@
-from homePage.models import Activity, SiteReview
+from homePage.models import Activity, SiteReview, is_phone_only_date
 from django.http import Http404
 from django.db.models import Avg, Min, Max
 from ..utils import group_consecutive_hours
@@ -24,6 +24,7 @@ def home(request):
   latest_reviews = list(SiteReview.objects.order_by('-created_at')[:4])  # ← 4 אחרונות
   reviews_total = SiteReview.objects.count()
   reviews_avg = SiteReview.objects.aggregate(avg=Avg('rating'))['avg'] or 0
+  phone_only_today = is_phone_only_date(timezone.localtime().date())
   return render(request, "homePage/home.html", {
     "hours_rows": hours_rows,  # שם המפתח לא משתנה → אין שינוי בתבנית
     "schema_hours_rows": schema_hours_rows,
@@ -32,6 +33,7 @@ def home(request):
     "latest_reviews": latest_reviews,
     "reviews_total": reviews_total,
     "reviews_avg": reviews_avg,
+    "phone_only_today": phone_only_today,
   })
 
 @staff_member_required

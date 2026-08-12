@@ -9,6 +9,7 @@ from datetime import date, time, timedelta
 from django.core.exceptions import ValidationError
 from django.test import TestCase
 from django.urls import reverse
+from django.utils import timezone
 
 from homePage.admin import PhoneOnlyDateForm
 from homePage.models import Activity, Appointment, PhoneOnlyDate, is_phone_only_date
@@ -88,6 +89,20 @@ class PhoneOnlyDateModelTests(TestCase):
         rule = PhoneOnlyDate(kind="HEBREW")
         with self.assertRaises(ValidationError):
             rule.full_clean()
+
+
+class PhoneOnlyDateHomepageNoticeTests(TestCase):
+    def test_no_notice_on_normal_day(self):
+        resp = self.client.get(reverse("home"))
+        self.assertNotContains(resp, "ההזמנות מתבצעות במענה טלפוני")
+
+    def test_notice_shown_when_today_is_phone_only(self):
+        today = timezone.localtime().date()
+        PhoneOnlyDate.objects.create(date=today, repeat_every_year=False)
+
+        resp = self.client.get(reverse("home"))
+        self.assertContains(resp, "ההזמנות מתבצעות במענה טלפוני")
+        self.assertContains(resp, "0558859569")
 
 
 class PhoneOnlyDateFormTests(TestCase):

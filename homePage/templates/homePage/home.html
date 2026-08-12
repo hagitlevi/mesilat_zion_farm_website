@@ -80,7 +80,9 @@
         </div>
 
         <section class="activities">
-            <p class="august-notice">בחודש אוגוסט ההזמנות מתבצעות במענה טלפוני או בווצאפ <a href="tel:0558859569">0558859569</a></p>
+            {% if phone_only_today %}
+            <p class="phone-only-notice">כרגע ההזמנות מתבצעות במענה טלפוני או בווצאפ <a href="tel:0558859569">0558859569</a></p>
+            {% endif %}
             <h2>לפרטים והזמנת תורים:</h2>
             <ul>
                 <li class="reveal">
