@@ -24,6 +24,13 @@ logger = logging.getLogger(__name__)
 
 ##-----------------------------------פונקציות עזר------------------------------
 
+def _local_dt(dt):
+  """ממירה datetime שנקרא ממודל (יכול להיות aware ב-UTC, אחרי fetch מה-DB) לשעון ישראל
+  לפני עיצוב לתצוגה/הודעה. datetime naive (שנוצר מקומית ולא עבר דרך ה-DB) מוחזר כמו שהוא."""
+  if dt is None or timezone.is_naive(dt):
+    return dt
+  return timezone.localtime(dt)
+
 def get_treatment_amount_nis(session) -> Decimal | None:
   """
   מחזיר מחיר ב-₪ לפי Activity בשם 'שיעורי רכיבה/ טיפולית'.
@@ -263,8 +270,8 @@ def format_booking_sms(payment, booking) -> str:
     charge_id = getattr(payment, "charge_id", "") or "—"
     participants = getattr(booking, "participants", None)
     activity_name = getattr(getattr(booking, "activity", None), "name", "")
-    start_dt = getattr(booking, "start_dt", None)
-    end_dt = getattr(booking, "end_dt", None)
+    start_dt = _local_dt(getattr(booking, "start_dt", None))
+    end_dt = _local_dt(getattr(booking, "end_dt", None))
 
     ag = getattr(payment, "amount_agorot", None)
     try:
@@ -495,8 +502,8 @@ def send_booking_email(payment, booking, receipt=None, paid=True):
   charge_id = getattr(payment, "charge_id", None) or "—"
   customer = (getattr(payment, "customer_name", "") or "").strip()
   participants = getattr(booking, "participants", 1)
-  start_dt = getattr(booking, "start_dt", None)
-  end_dt = getattr(booking, "end_dt", None)
+  start_dt = _local_dt(getattr(booking, "start_dt", None))
+  end_dt = _local_dt(getattr(booking, "end_dt", None))
   activity_name = getattr(getattr(booking, "activity", None), "name", "") or ""
 
   # כותרת ייחודית (מפחית קיפול "טקסט מצוטט")

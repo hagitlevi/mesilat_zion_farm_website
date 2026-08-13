@@ -736,6 +736,13 @@ def admin_pay_stub(request):
                 messages.error(request, "חסרות שעות התחלה/סיום בהזמנה.")
                 return redirect(reverse("admin:homePage_booking_change", args=[obj.id]))
 
+            # obj נשלף מה-DB, אז start_dt/end_dt הם ב-UTC (aware) - יש להמיר לשעון ישראל
+            # לפני חילוץ יום/שעה, אחרת מחפשים סלוטים ביום/שעה הלא נכונים.
+            if timezone.is_aware(start_dt):
+                start_dt = timezone.localtime(start_dt)
+            if timezone.is_aware(end_dt):
+                end_dt = timezone.localtime(end_dt)
+
             minutes = int((end_dt - start_dt).total_seconds() // 60)
             slot_count = max(1, (minutes + 14) // 15)
             times_needed = [(start_dt + timedelta(minutes=15 * i)).time() for i in range(slot_count)]
