@@ -1828,7 +1828,11 @@ class BookingAdminForm(forms.ModelForm):
 
         # משך הפעילות בפועל (בלי ההפסקה)
         minutes_real = int((inst.end_dt - inst.start_dt).total_seconds() // 60)
-        day = inst.start_dt.date()
+        # start_dt נשמר ב-UTC; יש להמיר לשעון ישראל לפני חילוץ תאריך/שעה לתצוגה -
+        # אחרת הזמנה מוקדמת (למשל 00:30) עלולה "לזלוג" ליום הקודם, ושעת ה"נוכחי"
+        # המוצגת ברשימת הבחירה תהיה שגויה בכמה שעות.
+        local_start = timezone.localtime(inst.start_dt)
+        day = local_start.date()
         name = inst.activity.name
 
         # וריאנט לזוגית
@@ -1921,7 +1925,7 @@ class BookingAdminForm(forms.ModelForm):
             pass
 
         # תמיד להציג גם את שעת ההזמנה הנוכחית
-        cur = inst.start_dt.strftime("%H:%M")
+        cur = local_start.strftime("%H:%M")
         if cur not in times:
             times = [cur] + times
 
