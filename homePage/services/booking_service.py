@@ -3,7 +3,7 @@ from django.utils import timezone
 from decimal import Decimal
 from zoneinfo import ZoneInfo
 from datetime import datetime, time as dtime, timedelta
-from homePage.models import ActivityRule, BusinessHours, Season, Activity, Appointment, Booking, Payment
+from homePage.models import ActivityRule, BusinessHours, Season, Activity, Appointment, Booking, Payment, SiteSettings
 import logging
 
 logger = logging.getLogger(__name__)
@@ -68,9 +68,9 @@ def _capture_slots_and_break(appt, duration_minutes, booking, activity=None, pay
       except Exception:
         pass
 
-  # תפיסת ההפסקה של 15 דק' אם משך>30
+  # תפיסת ההפסקה של 15 דק' אם משך>30 (וההפסקה מופעלת בהגדרות האתר)
   extra_appt = None
-  if int(duration_minutes) > 30:
+  if int(duration_minutes) > 30 and SiteSettings.load().booking_break_enabled:
     extra_start_dt = base_dt + timedelta(minutes=15 * slot_count)
     extra = (Appointment.objects
              .select_for_update()

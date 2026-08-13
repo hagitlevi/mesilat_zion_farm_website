@@ -599,9 +599,10 @@ def mock_payment_success(request):
         if activity and hasattr(a, "activities"):
             a.activities.add(activity)
 
-    # תפיסת "הפסקה" של 15 דק' אחרי סוף התור אם > 30 דק'
+    # תפיסת "הפסקה" של 15 דק' אחרי סוף התור אם > 30 דק' (וההפסקה מופעלת בהגדרות האתר)
+    from homePage.models import SiteSettings
     extra_appt = None
-    if duration_minutes > 30:
+    if duration_minutes > 30 and SiteSettings.load().booking_break_enabled:
         extra_start_dt = base_dt + timedelta(minutes=15 * slot_count)
         extra = Appointment.objects.select_for_update().filter(
             date=base_appt.date,

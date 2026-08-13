@@ -1,6 +1,6 @@
 import logging
 
-from homePage.models import Activity, Appointment, is_phone_only_date
+from homePage.models import Activity, Appointment, is_phone_only_date, SiteSettings
 from django.http import Http404, HttpResponseBadRequest, JsonResponse
 from django.views.decorators.http import require_POST, require_GET
 from django_ratelimit.decorators import ratelimit
@@ -438,6 +438,7 @@ def available_appointment_view(request, activity_id):
 
   activity = get_object_or_404(Activity, id=activity_id)
   variant = (request.GET.get("variant") or "").lower()
+  break_enabled = SiteSettings.load().booking_break_enabled
 
   # --- טווח תאריכים ---
   date_str = request.GET.get("date")
@@ -632,7 +633,7 @@ def available_appointment_view(request, activity_id):
 
       # אם המפגש ארוך מ-30 דק׳ – נדרשת גם "הפסקה" של 15 דק׳ בסוף,
       # אבל רק אם יום הפעילות ממשיך אחרי סיום המפגש (בסוף היום אין צורך בהפסקה)
-      if d > 30:
+      if d > 30 and break_enabled:
         buffer_start_dt = start_dt + timedelta(minutes=15 * slots_needed)  # מיד אחרי סוף המפגש
         day_ends_here = apply_window and win_end_dt and buffer_start_dt >= win_end_dt
         if not day_ends_here:
@@ -813,7 +814,7 @@ def hold_appointment(request):
     slot_count = max(1, (duration + 14) // 15)
     times_needed = [(base_dt + timedelta(minutes=15*i)).time() for i in range(slot_count)]
 
-    need_break = duration > 30
+    need_break = duration > 30 and SiteSettings.load().booking_break_enabled
     if need_break:
         break_time = (base_dt + timedelta(minutes=15*slot_count)).time()
         # אם זה סוף היום (אין סלוט בכלל אחרי המפגש) - אין צורך בהפסקה

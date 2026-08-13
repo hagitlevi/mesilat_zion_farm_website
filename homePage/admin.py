@@ -379,7 +379,7 @@ def find_free_start_times(chosen_date, minutes, activity_name, variant=None):
         cutoff_min, win_start_dt, win_end_dt = 0, None, None
 
     slots_needed = max(1, (int(minutes) + 14)//15)
-    needs_buffer = int(minutes) > 30
+    needs_buffer = int(minutes) > 30 and SiteSettings.load().booking_break_enabled
 
     start_times = []
 
@@ -488,6 +488,7 @@ def admin_pay_stub(request):
       4) אם אין שום הקשר → נחזיר הודעה ו־redirect אחורה (אין מסך chooser).
     """
     title = "תשלום"
+    break_enabled = SiteSettings.load().booking_break_enabled
     booking_draft = request.session.get("booking_draft") or {}
     session_draft  = request.session.get("session_draft") or {}
     raw_id = (request.GET.get("id") or request.POST.get("id") or "").strip()
@@ -565,7 +566,7 @@ def admin_pay_stub(request):
                     # יוצרים טוקן חדש) - אחרת try_hold_chain רואה את הסלוטים כתפוסים
                     # ע"י טוקן אחר ("held_by_other") למרות שהם בעצם מוחזקים ע"י אותה טיוטה.
                     hold_token = (booking_draft.get("hold_token") or "").strip() or str(uuid.uuid4())
-                    hold_minutes = minutes + (15 if minutes > 30 else 0)
+                    hold_minutes = minutes + (15 if minutes > 30 and break_enabled else 0)
                     hold = try_hold_chain(
                         token=hold_token, user=request.user, date=d, start_dt=start_dt,
                         minutes_total_for_hold=hold_minutes, ttl_minutes=60,
@@ -766,7 +767,7 @@ def admin_pay_stub(request):
                         if hasattr(a, "activities"):
                             a.activities.add(obj.activity)
 
-                    if minutes > 30:
+                    if minutes > 30 and break_enabled:
                         extra_start = start_dt + timedelta(minutes=15 * slot_count)
                         extra = Appointment.objects.select_for_update().filter(
                             date=day, time=extra_start.time(), is_booked=False, is_break=False
@@ -1828,6 +1829,7 @@ class BookingAdminForm(forms.ModelForm):
 
         # משך הפעילות בפועל (בלי ההפסקה)
         minutes_real = int((inst.end_dt - inst.start_dt).total_seconds() // 60)
+        break_enabled = SiteSettings.load().booking_break_enabled
         # start_dt נשמר ב-UTC; יש להמיר לשעון ישראל לפני חילוץ תאריך/שעה לתצוגה -
         # אחרת הזמנה מוקדמת (למשל 00:30) עלולה "לזלוג" ליום הקודם, ושעת ה"נוכחי"
         # המוצגת ברשימת הבחירה תהיה שגויה בכמה שעות.
@@ -1850,7 +1852,7 @@ class BookingAdminForm(forms.ModelForm):
         # בתוך הפונקציה) - אסור להעביר לה משך שכבר מנופח בהפסקה, אחרת ההפסקה נספרת פעמיים
         # (המערכת מחפשת 90 ד' פנויות במקום 75). minutes_for_query (המנופח) עדיין דרוש בהמשך
         # לחישוב slot_cnt_q בלוגיקת "פנויות עבורך" למטה.
-        minutes_for_query = minutes_real + (15 if minutes_real > 30 else 0)
+        minutes_for_query = minutes_real + (15 if minutes_real > 30 and break_enabled else 0)
 
         # השעות הפנויות הרגילות (ללא הסלוטים שלך) - מעבירים את המשך האמיתי, לא המנופח
         times = find_free_start_times(day, minutes_real, name, variant=variant)
@@ -1895,7 +1897,7 @@ class BookingAdminForm(forms.ModelForm):
 
                 # אם המפגש מסתיים בדיוק עם סגירת הפעילות - אין צורך בהפסקה אחריו
                 day_ends_here = bool(win_end_dt) and meeting_end_dt >= win_end_dt
-                need_buffer = (minutes_real > 30) and not day_ends_here
+                need_buffer = (minutes_real > 30) and break_enabled and not day_ends_here
                 if need_buffer and win_end_dt and (meeting_end_dt + timedelta(minutes=15)) > win_end_dt:
                     return False  # אין מקום להפסקה לפני הסגירה
 
@@ -2152,7 +2154,7 @@ class BookingAdmin(admin.ModelAdmin):
         # שימי לב: אנחנו תופסים גם buffer אם minutes>30 כמו במערכת שלך,
         # אבל רק אם יש בכלל סלוט אחרי המפגש (לא סוף היום - אז אין צורך בהפסקה)
         minutes_total = minutes_real
-        if minutes_real > 30:
+        if minutes_real > 30 and SiteSettings.load().booking_break_enabled:
             buffer_start_dt = start_dt + timedelta(minutes=minutes_real)
             if Appointment.objects.filter(date=d, time=buffer_start_dt.time()).exists():
                 minutes_total = minutes_real + 15
@@ -2293,8 +2295,8 @@ class BookingAdmin(admin.ModelAdmin):
                     if hasattr(a, "activities"):
                         a.activities.add(booking.activity)
 
-                # הפסקה של 15 ד' אחרי פעילות אם משך>30 (רק אם פנוי)
-                if minutes > 30:
+                # הפסקה של 15 ד' אחרי פעילות אם משך>30 (רק אם פנוי, ורק אם ההפסקה מופעלת בהגדרות האתר)
+                if minutes > 30 and SiteSettings.load().booking_break_enabled:
                     buf_time = (new_start_dt + timedelta(minutes=15 * slot_cnt)).time()
                     extra = Appointment.objects.select_for_update().filter(date=day, time=buf_time).first()
                     if extra and not (extra.is_booked and extra.booking_id != booking.id):
@@ -2861,8 +2863,8 @@ class BookingAdmin(admin.ModelAdmin):
                         if hasattr(a, "activities"):
                             a.activities.add(activity)
 
-                    # הפסקת buffer אם >30 דק'
-                    if minutes > 30:
+                    # הפסקת buffer אם >30 דק' (ורק אם ההפסקה מופעלת בהגדרות האתר)
+                    if minutes > 30 and SiteSettings.load().booking_break_enabled:
                         extra_start = start_dt + timedelta(minutes=15 * slot_count)
                         extra = Appointment.objects.select_for_update().filter(
                             date=d, time=extra_start.time(), is_booked=False, is_break=False
@@ -3017,7 +3019,7 @@ class BookingAdmin(admin.ModelAdmin):
 
         activity_id = request.POST.get("activity") or None
         activity = Activity.objects.filter(pk=activity_id).first() if activity_id else None
-        capture_buffer = bool(request.POST.get("capture_buffer"))
+        capture_buffer = bool(request.POST.get("capture_buffer")) and SiteSettings.load().booking_break_enabled
         mark_paid = str(request.POST.get("mark_paid", "")).lower() in {"1", "true", "on", "yes"}
         skip_payment = str(request.POST.get("skip_payment", "")).lower() in {"1", "true", "on", "yes"}
 
