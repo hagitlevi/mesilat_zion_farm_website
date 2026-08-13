@@ -788,19 +788,12 @@ function syncParticipantsField(){
     loadQuote();
   });
 
-  // שעה -> כאן עושים HOLD בפועל
-  elStart && elStart.addEventListener('change', async ()=>{
+  // שעה - לא נועלים (HOLD) את הסלוט בבחירה בלבד; הזמינות נבדקת בשרת רק בשליחה בפועל,
+  // כדי שמילוי הטופס לא יחסום לקוחות באתר.
+  elStart && elStart.addEventListener('change', ()=>{
     updateSummary();
     loadQuote();
-
-    // אם עדיין לא בחרו שעה אמיתית
-    if (!elStart.value){
-      clearHoldLocal();
-      toggleSubmit(false);
-      return;
-    }
-
-    await requestHold();
+    toggleSubmit(!!elStart.value);
   });
 
   // וריאנט זוגית
@@ -844,17 +837,12 @@ function syncParticipantsField(){
       alert('חסרים נתונים: פעילות/אורך/תאריך/שעה');
       return;
     }
-    if (!elHoldToken || !elHoldToken.value){
-      e.preventDefault();
-      alert('צריך לבחור שעה ולהמתין לתפיסת התור (HOLD).');
-      return;
-    }
     if (elOverride) elOverride.value = String(mChosen);
     if (!elParticipants.value) elParticipants.value = '1';
-    mzSubmitting = true; // עוזבים את הדף בגלל שליחה אמיתית - לא לשחרר את ה-HOLD
+    mzSubmitting = true;
   });
 
-  // עזיבת הדף בלי לשלוח (סגירת טאב/ניווט הצידה) - משחררים את ה-HOLD הפעיל כדי שלא יישאר תפוס לריק
+  // עזיבת הדף בלי לשלוח (סגירת טאב/ניווט הצידה) - משחררים HOLD ישן אם איכשהו נשאר (לא אמור לקרות יותר)
   window.addEventListener('pagehide', ()=>{
     if (mzSubmitting) return;
     if (elHoldToken && elHoldToken.value) releaseHoldToken(elHoldToken.value);

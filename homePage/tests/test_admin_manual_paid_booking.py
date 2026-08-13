@@ -39,16 +39,11 @@ class AdminManualPaidBookingTests(TestCase):
             for i in range(2)
         ]
 
-        self.hold_token = str(uuid.uuid4())
-        now = timezone.now()
-        for a in self.slots:
-            a.hold_token = self.hold_token
-            a.hold_until = now + timedelta(minutes=10)
-            a.save(update_fields=["hold_token", "hold_until"])
-
         self.url = reverse("admin:homePage_appointment_book")
 
     def _post(self, **extra):
+        # שימו לב: אין hold_token - האדמין כבר לא צריך לנעול (HOLD) סלוט לפני שליחת
+        # הטופס, בדיקת הזמינות נעשית ישירות ברגע השליחה.
         data = {
             "activity_name": "רכיבה",
             "activity_id": str(self.activity.id),
@@ -60,7 +55,6 @@ class AdminManualPaidBookingTests(TestCase):
             "last_name": "כהן",
             "phone": "0501234567",
             "email": "dana@example.com",
-            "hold_token": self.hold_token,
         }
         data.update(extra)
         return self.client.post(self.url, data)
@@ -84,6 +78,46 @@ class AdminManualPaidBookingTests(TestCase):
         self.assertFalse(receipt.is_void)
         self.assertTrue(receipt.receipt_number)
 
+        self.assertRedirects(resp, reverse("admin:homePage_booking_change", args=[booking.id]))
+
+    def test_booking_succeeds_without_any_pre_hold(self):
+        # אין HOLD מוקדם על הסלוטים בכלל (setUp לא נועל אותם) - הבחירה עצמה לא
+        # אמורה לנעול כלום, ההזמנה נוצרת ישירות ברגע השליחה.
+        for a in self.slots:
+            self.assertIsNone(a.hold_until)
+
+        resp = self._post(payment_mode="none")
+
+        booking = Booking.objects.get(customer_email="dana@example.com")
+        for a in self.slots:
+            a.refresh_from_db()
+            self.assertTrue(a.is_booked)
+            self.assertEqual(a.booking_id, booking.id)
+        self.assertRedirects(resp, reverse("admin:homePage_booking_change", args=[booking.id]))
+
+    def test_booking_rejected_when_slot_actively_held_by_someone_else(self):
+        # סימולציה של לקוח שמחזיק את התור כרגע (HOLD פעיל מהאתר) - האדמין לא אמור
+        # לדרוס את זה; השליחה נכשלת עם הודעה, בלי ליצור הזמנה.
+        now = timezone.now()
+        self.slots[0].hold_token = str(uuid.uuid4())
+        self.slots[0].hold_until = now + timedelta(minutes=10)
+        self.slots[0].save(update_fields=["hold_token", "hold_until"])
+
+        resp = self._post(payment_mode="none")
+
+        self.assertFalse(Booking.objects.filter(customer_email="dana@example.com").exists())
+        self.assertRedirects(resp, self.url)
+
+    def test_booking_succeeds_when_previous_hold_already_expired(self):
+        now = timezone.now()
+        for a in self.slots:
+            a.hold_token = str(uuid.uuid4())
+            a.hold_until = now - timedelta(minutes=1)
+            a.save(update_fields=["hold_token", "hold_until"])
+
+        resp = self._post(payment_mode="none")
+
+        booking = Booking.objects.get(customer_email="dana@example.com")
         self.assertRedirects(resp, reverse("admin:homePage_booking_change", args=[booking.id]))
 
     def test_paid_manually_requires_a_payment_method(self):

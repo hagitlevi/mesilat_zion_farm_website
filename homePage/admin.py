@@ -1842,11 +1842,14 @@ class BookingAdminForm(forms.ModelForm):
             else:
                 variant = "day"
 
-        # לבדיקת זמינות – הוספת 15 ד' הפסקה כשמשך>30
+        # שימי לב: find_free_start_times כבר מוסיפה בעצמה 15 ד' הפסקה כשמשך>30 (ר' needs_buffer
+        # בתוך הפונקציה) - אסור להעביר לה משך שכבר מנופח בהפסקה, אחרת ההפסקה נספרת פעמיים
+        # (המערכת מחפשת 90 ד' פנויות במקום 75). minutes_for_query (המנופח) עדיין דרוש בהמשך
+        # לחישוב slot_cnt_q בלוגיקת "פנויות עבורך" למטה.
         minutes_for_query = minutes_real + (15 if minutes_real > 30 else 0)
 
-        # השעות הפנויות הרגילות (ללא הסלוטים שלך)
-        times = find_free_start_times(day, minutes_for_query, name, variant=variant)
+        # השעות הפנויות הרגילות (ללא הסלוטים שלך) - מעבירים את המשך האמיתי, לא המנופח
+        times = find_free_start_times(day, minutes_real, name, variant=variant)
 
         # === הוספת "פנויות עבורך": זמני התחלה שמותרים אם מתייחסים לסלוטים של ההזמנה שלך כאל פנויים ===
         # לא משחרר כלום – רק מוסיף לרשימה של ה-selector.
@@ -2066,7 +2069,9 @@ class BookingAdminForm(forms.ModelForm):
         return;
       }
 
-      var minutesForQuery = durMin + (durMin > 30 ? 15 : 0);
+      // find_free_start_times (ששרת ?ajax=times קורא לה) כבר מוסיפה בעצמה הפסקת 15 ד' -
+      // אסור לנפח כאן, אחרת ההפסקה נספרת פעמיים.
+      var minutesForQuery = durMin;
       var url = ajaxTimesUrl + "?ajax=times"
         + "&name=" + encodeURIComponent(activityName)
         + "&minutes=" + encodeURIComponent(minutesForQuery)
@@ -2747,11 +2752,9 @@ class BookingAdmin(admin.ModelAdmin):
         slot_count = max(1, (minutes + 14) // 15)
         times_needed = [(start_dt + timedelta(minutes=15 * i)).time() for i in range(slot_count)]
 
-        # חייב להיות hold_token מה-GET ajax=hold (ה-JS שם אותו בשדה hidden בשם hold_token)
+        # הבחירה עצמה לא תופסת/נועלת את הסלוט (בכוונה - כדי שמילוי הטופס לא יחסום
+        # לקוחות באתר). הבדיקה שהסלוט עדיין פנוי נעשית רק כאן, ברגע השליחה בפועל.
         hold_token = (request.POST.get("hold_token") or "").strip()
-        if not hold_token:
-            messages.error(request, "חסרים נתונים: צריך לבחור שעה ולהמתין לתפיסת התור (HOLD).")
-            return redirect(reverse("admin:homePage_appointment_book"))
 
         with transaction.atomic():
             now = timezone.now()
@@ -2766,16 +2769,14 @@ class BookingAdmin(admin.ModelAdmin):
                 messages.error(request, "אין רצף סלוטים פנוי.")
                 return redirect(reverse("admin:homePage_appointment_book"))
 
-            # חייבים שכל הסלוטים מוחזקים ע"י אותו hold_token ועדיין לא פג תוקף
+            # חייבים שכל הסלוטים יהיו פנויים: לא תפוסים, ולא מוחזקים כרגע (HOLD) ע"י לקוח באתר
             bad = qs.filter(
                 Q(is_booked=True) |
-                Q(hold_until__isnull=True) |
-                Q(hold_until__lte=now) |
-                ~Q(hold_token=hold_token)
+                (Q(hold_until__isnull=False) & Q(hold_until__gt=now))
             ).exists()
 
             if bad:
-                messages.error(request, "התור נתפס/פג תוקף. בחרי שעה אחרת ובצעי HOLD מחדש.")
+                messages.error(request, "התור נתפס/מוחזק כרגע. בחרי שעה אחרת.")
                 return redirect(reverse("admin:homePage_appointment_book"))
 
         t = (activity.activity_type or "").strip().lower()
@@ -2815,6 +2816,13 @@ class BookingAdmin(admin.ModelAdmin):
                     qs_lock = Appointment.objects.select_for_update().filter(
                         date=d, time__in=times_needed
                     )
+                    now = timezone.now()
+                    if qs_lock.filter(
+                        Q(is_booked=True) |
+                        (Q(hold_until__isnull=False) & Q(hold_until__gt=now))
+                    ).exists():
+                        messages.error(request, "התור נתפס/מוחזק כרגע. בחרי שעה אחרת.")
+                        return redirect(reverse("admin:homePage_appointment_book"))
                     ref = _gen_unique_mz_ref()
                     booking = Booking.objects.create(
                         activity=activity,
