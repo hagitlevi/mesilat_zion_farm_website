@@ -370,6 +370,8 @@ def find_free_start_times(chosen_date, minutes, activity_name, variant=None):
     free_set = {a.time for a in appts_list}
     allowed_set = free_set
 
+    is_night_or_sunrise_target = bool(rules_activity and rules_activity.name in {"רכיבה בזריחה", "רכיבת לילה"})
+
     if rules_activity:
         # get_rules_for אמור להחזיר: (_, cutoff_min, win_start_dt, win_end_dt)
         from .views import get_rules_for
@@ -377,6 +379,21 @@ def find_free_start_times(chosen_date, minutes, activity_name, variant=None):
         cutoff_min = cutoff_min or 0
     else:
         cutoff_min, win_start_dt, win_end_dt = 0, None, None
+
+    # אדמין בלבד, ורק בהזמנת "יום": לאפשר לסלוטי ההמשך לגלוש לתוך שעות
+    # רכיבת הלילה, ולהרחיב את שעת הסגירה בהתאם.
+    if not is_night_or_sunrise_target:
+        night_target = Activity.objects.filter(name="רכיבת לילה").first()
+        if night_target:
+            night_free = set(base_qs.filter(activities=night_target).values_list("time", flat=True))
+            allowed_set = free_set | night_free
+        if win_end_dt:
+            from homePage.utils import _windows_for_date
+            night_end = next((e for lbl, s, e, _ in _windows_for_date(chosen_date) if lbl == "night"), None)
+            if night_end:
+                night_end_dt = datetime.combine(chosen_date, night_end)
+                if night_end_dt > win_end_dt:
+                    win_end_dt = night_end_dt
 
     slots_needed = max(1, (int(minutes) + 14)//15)
     needs_buffer = int(minutes) > 30 and SiteSettings.load().booking_break_enabled
