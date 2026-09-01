@@ -99,6 +99,9 @@ def site_reviews(request):
     """דף ביקורות - מציג ביקורות קיימות ומאפשר להוסיף ביקורת חדשה עם טופס"""
     logger.debug("site_reviews called with method: %s", request.method)
 
+    # זמנית מושבת - להסיר את השורה הבאה כדי להחזיר את דף הביקורות לפעולה
+    return redirect('home')
+
     focus_rating_error = False  # <- דגל לגלילה
 
     if request.method == "POST":

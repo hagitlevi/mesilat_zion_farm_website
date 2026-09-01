@@ -162,6 +162,7 @@
         </div>
     </section>
 
+    {% comment %} זמנית מוסתר - להסיר את תג ה-comment הזה כדי להחזיר
     <section class="reviews-wrap reveal" dir="rtl">
       <div class="reviews-header">
         {% if reviews_total %}
@@ -193,6 +194,7 @@
 
       <a class="see-all" href="{% url 'site_reviews' %}">להשארת ביקורת או צפייה בביקורות</a>
     </section>
+    {% endcomment %}
 
 {% endblock %}
 
