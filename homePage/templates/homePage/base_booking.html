@@ -22,7 +22,7 @@
         {% if online_booking_enabled and activity.name != "שיעורי רכיבה/ טיפולית" and activity.name != "צילומים" %}
           <a href="#booking-notice" class="cta-on-image" aria-label="לעבור להזמנה">להזמנה</a>
         {% endif %}
-        <p class="text_on_picture">
+        <div class="text_on_picture">
             {% block description_text %}{% endblock %}
                 {% if activity.name != "צילומים" and activity.name != "טיול כרכרה" %}
                     <ul class="ride-facts">
@@ -44,7 +44,7 @@
                       {% endif %}
                     </ul>
                 {% endif %}
-        </p>
+        </div>
     </div>
 
     <div id="booking-notice" class="cancellation-policy">

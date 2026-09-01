@@ -44,8 +44,13 @@
 
 
 {% block content %}
+    <section class="hero" style="background-image:url('{% static 'homePage/images/homepage.jpeg' %}');">
+        <div class="hero-inner">
+            <p class="hero-eyebrow">בין שער הגיא לבית שמש</p>
+            <h1>חוות סוסים במסילת ציון</h1>
+        </div>
+    </section>
     <div class="container">
-        <h1 class="sr-only">חוות רכיבה על סוסים במסילת ציון — ליד בית שמש ושער הגיא</h1>
         <div class="about-wrapper reveal">
             <section class="about">
               <div class="frame-text">קצת עלינו</div>
@@ -83,7 +88,8 @@
             {% if phone_only_today %}
             <p class="phone-only-notice">כרגע ההזמנות מתבצעות במענה טלפוני או בווצאפ <a href="tel:0558859569">0558859569</a></p>
             {% endif %}
-            <h2>לפרטים והזמנת תורים:</h2>
+            <p class="section-eyebrow">לפרטים והזמנת תורים</p>
+            <h2>בחרו את החוויה שלכם</h2>
             <ul>
                 <li class="reveal">
                     <div class="activity-button">

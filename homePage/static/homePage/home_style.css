@@ -7,7 +7,6 @@
 body {
     margin: 0;
     padding: 0;
-    font-family: Arial, sans-serif;
     text-align: center;
 }
 
@@ -15,34 +14,91 @@ section {
     margin: 10px 0;
 }
 
-.about {
-    background-color: var(--main-background);
-    display: inline-block;
+/* ===== Hero ===== */
+.hero {
     position: relative;
-    border: 2px solid var(--main-color);
-    padding: 40px 20px 20px;
-    margin: auto;
-    font-family: sans-serif;
-    text-align: center;
-    max-width: 100%;
+    min-height: 320px;
+    display: flex;
+    align-items: flex-end;
+    background-size: cover;
+    background-position: center 46%;
+}
+
+@media (max-width: 600px) {
+    .hero {
+        min-height: 190px;
+    }
+}
+
+.hero::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(180deg, rgba(43,35,24,.05) 0%, rgba(30,25,16,.5) 60%, rgba(23,19,12,.82) 100%);
+}
+
+.hero-inner {
+    position: relative;
+    z-index: 1;
+    padding: 24px 20px;
+    max-width: 800px;
+    margin: 0 auto;
+    width: 100%;
     box-sizing: border-box;
 }
 
+.hero-eyebrow {
+    font-size: .78rem;
+    letter-spacing: .14em;
+    text-transform: uppercase;
+    color: #e7c58a;
+    font-weight: 700;
+    margin: 0 0 8px;
+}
+
+.hero h1 {
+    color: #fbf7ee;
+    font-size: clamp(1.5rem, 1.1rem + 1.8vw, 2.3rem);
+    line-height: 1.28;
+    margin: 0;
+    text-wrap: balance;
+}
+
+.about {
+    background-color: var(--paper);
+    display: inline-block;
+    position: relative;
+    border: 1px solid var(--line);
+    border-radius: 18px;
+    padding: 28px 24px 24px;
+    margin: auto;
+    text-align: center;
+    max-width: 640px;
+    box-sizing: border-box;
+    box-shadow: 0 10px 26px rgba(63, 74, 52, 0.1);
+}
+
 .about .frame-text {
-    color: var(--main-color);
-    position: absolute;
-    top: -12px; /* מציב את הטקסט מעט מעל המסגרת */
-    left: 50%;
-    transform: translateX(-50%);
-    padding: 0 10px;
-    font-weight: bold;
-    font-size: 30px;
-    background-color: var(--main-background);
+    color: var(--accent-deep);
+    font-family: var(--font-heading);
+    font-weight: 700;
+    font-size: 28px;
+    margin: 0 0 10px;
     }
 
+.section-eyebrow {
+    font-size: 0.8rem;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--accent-amber-2);
+    font-weight: 700;
+    text-align: center;
+    margin: 44px 0 4px;
+}
+
 h2 {
-    margin: 40px 20px 20px;
-    color: var(--main-color);
+    margin: 4px 20px 20px;
+    color: var(--accent-deep);
     font-size: 1.8em;
     padding: 0;
 }
@@ -496,6 +552,7 @@ footer.contact-section .follow-block > * { margin: 0; }               /* איפ�
   font-weight: 700;
   letter-spacing:.2px;
   font-size: clamp(1rem, 0.7rem + 0.7vw, 1.5rem);
+  color: var(--ink);
 }
 
 /* 1) דיו-קרמל עם ברק עדין (ברירת מחדל) */
@@ -548,10 +605,10 @@ ul.about-list.checkmarks{
   list-style: disc inside;
 }
 
-/* מחליפים את הסמן ב-✓ וצובעים בחום */
+/* מחליפים את הסמן ב-✓ וצובעים בענבר */
 ul.about-list.checkmarks li::marker{
   content: "✓\00A0";          /* וי + רווח צר */
-  color: var(--brown-deep);    /* החום שכבר הגדרנו */
+  color: var(--accent-amber);
   font-weight: 900;
   font-size: 1.05em;           /* טיפונת מודגש */
 }

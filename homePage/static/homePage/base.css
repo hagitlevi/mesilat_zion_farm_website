@@ -7,6 +7,27 @@
     --main-bor-der:#faf0dc;        /* מסגרת */
     --main-white:#faf7f2;        /* צבע כמעט לבן */
     --main-background: #faf7ed;
+
+    /* פלטה חדשה — לכותרות, hero, "קצת עלינו" וכו'. לא נוגעת בריבועי הפעילויות (עדיין var(--main-color)) */
+    --accent-deep: #3f4a34;
+    --accent-deep-2: #2e3627;
+    --accent-amber: #c2792e;
+    --accent-amber-2: #a3611f;
+    --paper: #fbf7ee;
+    --line: #d8cdae;
+    --ink: #2b2318;
+    --ink-soft: #5b5140;
+
+    --font-heading: 'Frank Ruhl Libre', serif;
+    --font-body: 'Heebo', Arial, sans-serif;
+}
+
+body {
+    font-family: var(--font-body);
+}
+
+h1, h2, h3 {
+    font-family: var(--font-heading);
 }
 
 .phone-only-notice{
@@ -141,7 +162,6 @@ footer{
     background-color: var(--main-bright);
     font-size: 0.9em;
     line-height: 1.6;
-    font-family: Arial, sans-serif !important;
 }
 
 .rights{

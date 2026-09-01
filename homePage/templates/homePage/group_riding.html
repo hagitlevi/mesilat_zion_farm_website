@@ -34,14 +34,16 @@
 {% endblock %}
 
 {% block description_text %}
-הרכיבה מותנית בהשתתפות של 2 עד {{ activity.max_participants }} רוכבים<br>
+<p class="text-note">הרכיבה מותנית בהשתתפות של 2 עד {{ activity.max_participants }} רוכבים</p>
 
 <u>מחירים (לאדם)</u>
-חצי שעה — 150 ₪<br>
-45 דקות — 200 ₪<br>
-שעה — 220 ₪<br>
-שעה וחצי — 290 ₪<br>
-שעתיים — 350 ₪<br>
+<ul class="price-list">
+  <li><span>חצי שעה</span><strong>150 ₪</strong></li>
+  <li><span>45 דקות</span><strong>200 ₪</strong></li>
+  <li><span>שעה</span><strong>220 ₪</strong></li>
+  <li><span>שעה וחצי</span><strong>290 ₪</strong></li>
+  <li><span>שעתיים</span><strong>350 ₪</strong></li>
+</ul>
 {% endblock %}
 
 {% block appointment_title %}
