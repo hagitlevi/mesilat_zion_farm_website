@@ -55,7 +55,7 @@ class AdminChargeHereTests(TestCase):
         with patch("homePage.admin._create_payplus_payment_link", return_value=_FAKE_LINK) as mock_link:
             resp = self.client.post(self.url, {"id": str(self.booking.id), "action": "charge_here"})
 
-        self.assertEqual(resp.status_code, 999)
+        self.assertEqual(resp.status_code, 302)
         self.assertEqual(resp.url, _FAKE_LINK)
         mock_link.assert_called_once()
 
