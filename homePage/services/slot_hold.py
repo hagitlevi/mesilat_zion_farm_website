@@ -1,7 +1,9 @@
 from __future__ import annotations
+import random
+import time
 from dataclasses import dataclass
 from datetime import timedelta
-from django.db import transaction
+from django.db import transaction, OperationalError
 from django.utils import timezone
 
 from homePage.models import Appointment
@@ -42,39 +44,50 @@ def try_hold_chain(
     if not token:
         return HoldResult(False, "missing_token")
 
-    release_expired_holds()
-    now = timezone.now()
-    until = now + timedelta(minutes=ttl_minutes)
-
     slot_cnt = max(1, (int(minutes_total_for_hold) + 14) // 15)
     times_needed = [(start_dt + timedelta(minutes=15 * i)).time() for i in range(slot_cnt)]
 
-    with transaction.atomic():
-        # לוקחים נעילה על הסלוטים הרלוונטיים
-        qs = (Appointment.objects
-              .select_for_update()
-              .filter(date=date, time__in=times_needed)
-              .order_by("time"))
+    # ponytail: select_for_update() is a no-op on SQLite, and Django's SQLite
+    # *test* DB is an in-memory shared-cache DB whose table-level locking can
+    # raise "database table is locked" under real concurrent threads (not a
+    # SQLITE_BUSY, so WAL/busy_timeout don't cover it). Retry the whole
+    # attempt (release_expired_holds included, since it writes too);
+    # production runs Postgres where select_for_update actually blocks instead.
+    attempts = 15
+    for attempt in range(attempts):
+        try:
+            release_expired_holds()
+            now = timezone.now()
+            until = now + timedelta(minutes=ttl_minutes)
+            with transaction.atomic():
+                # לוקחים נעילה על הסלוטים הרלוונטיים
+                qs = (Appointment.objects
+                      .select_for_update()
+                      .filter(date=date, time__in=times_needed)
+                      .order_by("time"))
 
-        appts = list(qs)
-        if len(appts) != slot_cnt:
-            return HoldResult(False, "missing_slots")  # אין רצף
+                appts = list(qs)
+                if len(appts) != slot_cnt:
+                    return HoldResult(False, "missing_slots")  # אין רצף
 
-        # בדיקת תפוס/הפסקה/הולד של מישהו אחר
-        for a in appts:
-            if a.is_booked or a.is_break:
-                return HoldResult(False, "already_booked_or_break")
-            if a.hold_until and a.hold_until > now and str(a.hold_token) != str(token):
-                return HoldResult(False, "held_by_other")
+                # בדיקת תפוס/הפסקה/הולד של מישהו אחר
+                for a in appts:
+                    if a.is_booked or a.is_break:
+                        return HoldResult(False, "already_booked_or_break")
+                    if a.hold_until and a.hold_until > now and str(a.hold_token) != str(token):
+                        return HoldResult(False, "held_by_other")
 
-        # כאן תופסים
-        Appointment.objects.filter(id__in=[a.id for a in appts]).update(
-            hold_until=until,
-            hold_token=token,
-            hold_by=user if user and getattr(user, "is_authenticated", False) else None
-        )
-
-    return HoldResult(True, token=token)
+                # כאן תופסים
+                Appointment.objects.filter(id__in=[a.id for a in appts]).update(
+                    hold_until=until,
+                    hold_token=token,
+                    hold_by=user if user and getattr(user, "is_authenticated", False) else None
+                )
+            return HoldResult(True, token=token)
+        except OperationalError:
+            if attempt == attempts - 1:
+                raise
+            time.sleep(random.uniform(0.01, 0.05) * (attempt + 1))
 
 def finalize_hold_to_paid_booking(
     *,

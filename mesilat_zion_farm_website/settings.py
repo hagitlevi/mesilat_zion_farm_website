@@ -112,6 +112,23 @@ DATABASES = {
     )
 }
 
+# מפעיל WAL על SQLite כדי לצמצם קונפליקטים בין threads/חיבורים שכותבים בו-זמנית
+# (רלוונטי רק לסביבת הפיתוח/בדיקות; בפרודקשן רץ PostgreSQL שלא מושפע מזה)
+from django.db.backends.signals import connection_created
+
+def _configure_sqlite(sender, connection, **kwargs):
+    if connection.vendor == "sqlite":
+        cursor = connection.cursor()
+        cursor.execute("PRAGMA journal_mode=WAL;")
+        cursor.execute("PRAGMA busy_timeout=20000;")
+
+connection_created.connect(_configure_sqlite)
+
+# SQLite לא תומך בנעילה ברמת שורה; בלי timeout, כתיבות בו-זמניות (למשל
+# בטסטים עם threads) נכשלות מיד עם "database is locked" במקום להמתין.
+if DATABASES["default"]["ENGINE"] == "django.db.backends.sqlite3":
+    DATABASES["default"].setdefault("OPTIONS", {})
+    DATABASES["default"]["OPTIONS"]["timeout"] = 20
 
 
 

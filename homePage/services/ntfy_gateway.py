@@ -75,7 +75,7 @@ def session_msgid(session) -> str:
   """
   ref = (session.payment_ref or gen_unique_ref_any()).replace(" ", "")
   # דומיין ל-Message-ID: מנסה לקחת מה-DEFAULT_FROM_EMAIL, ואם לא – נופל לברירת מחדל.
-  from_domain = getattr(settings, "DEFAULT_FROM_EMAIL", "")
+  from_domain = getattr(settings, "DEFAULT_FROM_EMAIL", None) or ""
   domain = from_domain.split("@")[-1] if "@" in from_domain else "mesilat-zion.local"
   return f"<session-{ref}@{domain}>"
 
