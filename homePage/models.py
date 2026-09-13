@@ -496,6 +496,26 @@ class SiteReview(models.Model):                               # מודל תגו�
         who = self.name or "אנונימי"                         # אם אין שם—"אנונימי"
         return f"{who} ({self.rating}★)"                      # ייצוג נוח באדמין/קונסול
 
+class GoogleReview(models.Model):                             # תגובה שסונכרנה מ-Google Business Profile
+    google_review_id = models.CharField("מזהה ביקורת בגוגל", max_length=255, unique=True)
+    reviewer_name = models.CharField("שם המגיב", max_length=120, blank=True)
+    reviewer_photo_url = models.URLField("תמונת המגיב", blank=True)
+    rating = models.PositiveSmallIntegerField("דירוג", validators=[MinValueValidator(1), MaxValueValidator(5)])
+    comment = models.TextField("תגובה", blank=True)
+    reply_comment = models.TextField("תשובת החווה", blank=True)
+    create_time = models.DateTimeField("נכתב ב-")
+    update_time = models.DateTimeField("עודכן ב-")
+    synced_at = models.DateTimeField("סונכרן ב-", auto_now=True)
+
+    class Meta:
+        ordering = ['-create_time']
+        verbose_name = "ביקורת גוגל"
+        verbose_name_plural = "ביקורות גוגל"
+
+    def __str__(self):
+        who = self.reviewer_name or "אנונימי"
+        return f"{who} ({self.rating}★)"
+
 class CancellationRequest(models.Model):
     CHANNELS = [("web", "אתר"), ("phone", "טלפון"), ("whatsapp", "וואטסאפ")]
     STATUSES = [("pending", "ממתין"), ("approved", "ממתין להחזר"), ("rejected", "נדחה"), ("refunded", "זוכה")]

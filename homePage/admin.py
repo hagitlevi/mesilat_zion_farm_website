@@ -1,7 +1,7 @@
 from django.contrib import admin
 import json
 from .models import (
-    Activity, Appointment, CustomSchedule, Booking, SiteReview,
+    Activity, Appointment, CustomSchedule, Booking, SiteReview, GoogleReview,
     CancellationRequest, TermsConsent, ScheduleBoard, Weekday,
     BusinessHours, ActivityRule, Instructor, TreatmentSession,
     MonthlySummary, Payment, Receipt, PhoneOnlyDate,
@@ -3302,6 +3302,19 @@ class SiteReviewAdmin(admin.ModelAdmin):
     list_filter   = ('rating',)
     search_fields = ('name', 'comment')
     ordering      = ('-created_at',)
+
+@admin.register(GoogleReview)
+class GoogleReviewAdmin(admin.ModelAdmin):
+    list_display = ('reviewer_name', 'rating', 'create_time', 'synced_at')
+    list_filter = ('rating',)
+    search_fields = ('reviewer_name', 'comment')
+    ordering = ('-create_time',)
+
+    def has_add_permission(self, request):
+        return False  # התוכן מגיע רק מסנכרון עם גוגל
+
+    def has_change_permission(self, request, obj=None):
+        return False
 
 @admin.register(CancellationRequest)
 class CancellationRequestAdmin(admin.ModelAdmin):

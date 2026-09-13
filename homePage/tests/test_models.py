@@ -12,7 +12,7 @@ from django.core.exceptions import ValidationError
 
 from homePage.models import (
     Activity, Appointment, Booking,
-    SiteReview, TreatmentSession, CustomSchedule,
+    SiteReview, TreatmentSession, CustomSchedule, GoogleReview,
 )
 
 
@@ -231,3 +231,42 @@ class BookingDeleteSignalTest(TestCase):
         self.assertFalse(appt.is_paid)
         self.assertIsNone(appt.booking)
         self.assertEqual(appt.customer_name, "")
+
+
+# ─── GoogleReview ──────────────────────────────────────────────────
+
+class GoogleReviewDefaultsTest(TestCase):
+    def test_str_and_ordering(self):
+        older = GoogleReview.objects.create(
+            google_review_id="accounts/1/locations/2/reviews/old",
+            reviewer_name="דנה",
+            rating=4,
+            comment="נחמד",
+            create_time=timezone.now() - timedelta(days=1),
+            update_time=timezone.now() - timedelta(days=1),
+        )
+        newer = GoogleReview.objects.create(
+            google_review_id="accounts/1/locations/2/reviews/new",
+            reviewer_name="",
+            rating=5,
+            comment="מעולה",
+            create_time=timezone.now(),
+            update_time=timezone.now(),
+        )
+        self.assertEqual(str(newer), "אנונימי (5★)")
+        self.assertEqual(list(GoogleReview.objects.all()), [newer, older])
+
+    def test_google_review_id_is_unique(self):
+        GoogleReview.objects.create(
+            google_review_id="dup",
+            rating=5,
+            create_time=timezone.now(),
+            update_time=timezone.now(),
+        )
+        with self.assertRaises(Exception):
+            GoogleReview.objects.create(
+                google_review_id="dup",
+                rating=3,
+                create_time=timezone.now(),
+                update_time=timezone.now(),
+            )
