@@ -16,3 +16,6 @@ db.sqlite3
 backups/
 *backup*.sqlite3
 data.json
+
+# Superpowers SDD workspace
+.superpowers/
