@@ -17,7 +17,6 @@ import dj_database_url
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 load_dotenv(BASE_DIR / ".env")
-FEEDBACK_URL = os.getenv("FEEDBACK_URL", "https://mesilatzionfarm.co.il/reviews/")
 SEND_EMAIL = os.getenv("SEND_EMAIL", "False") == "True"
 SEND_SMS = os.getenv("SEND_SMS", "False") == "True"
 NTFY_URL = os.getenv("NTFY_URL", "https://ntfy.sh").rstrip("/")
@@ -27,6 +26,11 @@ NUMBER_OF_HORSES = int(os.getenv("NUMBER_OF_HORSES", "5"))
 
 GOOGLE_PLACE_ID = os.getenv("GOOGLE_PLACE_ID", "PASTE_YOUR_PLACE_ID_HERE")
 GOOGLE_PLACES_API_KEY = os.getenv("GOOGLE_PLACES_API_KEY", "")
+
+FEEDBACK_URL = os.getenv(
+    "FEEDBACK_URL",
+    f"https://search.google.com/local/writereview?placeid={GOOGLE_PLACE_ID}",
+)
 GOOGLE_OAUTH_CLIENT_ID = os.getenv("GOOGLE_OAUTH_CLIENT_ID", "")
 GOOGLE_OAUTH_CLIENT_SECRET = os.getenv("GOOGLE_OAUTH_CLIENT_SECRET", "")
 GOOGLE_OAUTH_REFRESH_TOKEN = os.getenv("GOOGLE_OAUTH_REFRESH_TOKEN", "")

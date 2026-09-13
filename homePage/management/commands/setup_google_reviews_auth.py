@@ -1,3 +1,4 @@
+import secrets
 import urllib.parse
 import webbrowser
 from http.server import BaseHTTPRequestHandler, HTTPServer
@@ -21,6 +22,8 @@ class _CallbackHandler(BaseHTTPRequestHandler):
         parsed = urllib.parse.urlparse(self.path)
         params = urllib.parse.parse_qs(parsed.query)
         self.server.auth_code = params.get("code", [None])[0]
+        self.server.auth_error = params.get("error", [None])[0]
+        self.server.auth_state = params.get("state", [None])[0]
         self.send_response(200)
         self.send_header("Content-Type", "text/html; charset=utf-8")
         self.end_headers()
@@ -43,6 +46,7 @@ class Command(BaseCommand):
                 "יש להגדיר GOOGLE_OAUTH_CLIENT_ID ו-GOOGLE_OAUTH_CLIENT_SECRET ב-.env לפני הרצת הפקודה."
             )
 
+        expected_state = secrets.token_urlsafe(16)
         params = {
             "client_id": client_id,
             "redirect_uri": REDIRECT_URI,
@@ -50,6 +54,7 @@ class Command(BaseCommand):
             "scope": SCOPE,
             "access_type": "offline",
             "prompt": "consent",
+            "state": expected_state,
         }
         auth_url = f"{AUTH_BASE_URL}?{urllib.parse.urlencode(params)}"
 
@@ -62,9 +67,17 @@ class Command(BaseCommand):
 
         server = HTTPServer(("localhost", 8765), _CallbackHandler)
         server.auth_code = None
+        server.auth_error = None
+        server.auth_state = None
         self.stdout.write("ממתינה לאישור בדפדפן...")
-        while server.auth_code is None:
+        while server.auth_code is None and server.auth_error is None:
             server.handle_request()
+
+        if server.auth_error:
+            raise CommandError(f"ההרשאה נדחתה או נכשלה בגוגל: {server.auth_error}")
+
+        if server.auth_state != expected_state:
+            raise CommandError("state לא תואם - ייתכן ניסיון זיוף. הריצי את הפקודה מחדש.")
 
         code = server.auth_code
         tokens = exchange_code_for_tokens(client_id, client_secret, code, REDIRECT_URI)

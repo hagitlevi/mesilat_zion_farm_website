@@ -33,14 +33,19 @@ class Command(BaseCommand):
         access_token = refresh_access_token(client_id, client_secret, refresh_token)
         reviews = fetch_all_reviews(access_token, account_id, location_id)
 
-        created = updated = 0
+        created = updated = skipped = 0
         for r in reviews:
+            rating = star_rating_to_int(r.get("starRating", ""))
+            if rating is None:
+                skipped += 1
+                continue
+
             reviewer = r.get("reviewer", {})
             reply = r.get("reviewReply", {})
             defaults = {
                 "reviewer_name": reviewer.get("displayName", ""),
                 "reviewer_photo_url": reviewer.get("profilePhotoUrl", ""),
-                "rating": star_rating_to_int(r.get("starRating", "")),
+                "rating": rating,
                 "comment": r.get("comment", ""),
                 "reply_comment": reply.get("comment", ""),
                 "create_time": parse_datetime(r["createTime"]),
@@ -54,4 +59,6 @@ class Command(BaseCommand):
             else:
                 updated += 1
 
-        self.stdout.write(f"סונכרנו {len(reviews)} תגובות (חדשות: {created}, עודכנו: {updated})")
+        self.stdout.write(
+            f"סונכרנו {len(reviews)} תגובות (חדשות: {created}, עודכנו: {updated}, דולגו: {skipped})"
+        )

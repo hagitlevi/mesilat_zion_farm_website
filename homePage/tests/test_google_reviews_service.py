@@ -14,8 +14,8 @@ class StarRatingMappingTest(SimpleTestCase):
         self.assertEqual(star_rating_to_int("ONE"), 1)
         self.assertEqual(star_rating_to_int("FIVE"), 5)
 
-    def test_unknown_value_defaults_to_five(self):
-        self.assertEqual(star_rating_to_int("STAR_RATING_UNSPECIFIED"), 5)
+    def test_unknown_value_returns_none(self):
+        self.assertIsNone(star_rating_to_int("STAR_RATING_UNSPECIFIED"))
 
 
 class RefreshAccessTokenTest(SimpleTestCase):

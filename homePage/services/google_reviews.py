@@ -8,9 +8,9 @@ REVIEWS_URL_TMPL = "https://mybusiness.googleapis.com/v4/accounts/{account_id}/l
 STAR_RATING_MAP = {"ONE": 1, "TWO": 2, "THREE": 3, "FOUR": 4, "FIVE": 5}
 
 
-def star_rating_to_int(value: str) -> int:
-    """ממפה את ה-enum של גוגל (ONE..FIVE) למספר; ברירת מחדל 5 אם הערך לא מוכר."""
-    return STAR_RATING_MAP.get(value, 5)
+def star_rating_to_int(value: str) -> int | None:
+    """ממפה את ה-enum של גוגל (ONE..FIVE) למספר; None אם הערך לא מוכר."""
+    return STAR_RATING_MAP.get(value)
 
 
 def exchange_code_for_tokens(client_id: str, client_secret: str, code: str, redirect_uri: str) -> dict:
