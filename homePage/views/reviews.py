@@ -1,7 +1,6 @@
-from homePage.models import SiteReview, Booking, CancellationRequest
-from ..forms import SiteReviewForm, CancelRequestForm
+from homePage.models import GoogleReview, Booking, CancellationRequest
+from ..forms import CancelRequestForm
 from django.views.decorators.http import require_http_methods
-from django_ratelimit.decorators import ratelimit
 from django.db.models import Avg
 from django.core.paginator import Paginator
 from django.shortcuts import render, redirect
@@ -93,34 +92,12 @@ def cancel_request_view(request):
 
     return render(request, "homePage/cancel_request.html", {"form": form})
 
-@require_http_methods(["GET", "POST"])
-@ratelimit(key="ip", rate="5/m", method="POST", block=True)
+@require_http_methods(["GET"])
 def site_reviews(request):
-    """דף ביקורות - מציג ביקורות קיימות ומאפשר להוסיף ביקורת חדשה עם טופס"""
-    logger.debug("site_reviews called with method: %s", request.method)
+    """דף ביקורות - מציג תגובות שסונכרנו מ-Google Business Profile"""
+    logger.debug("site_reviews called")
 
-    # זמנית מושבת - להסיר את השורה הבאה כדי להחזיר את דף הביקורות לפעולה
-    return redirect('home')
-
-    focus_rating_error = False  # <- דגל לגלילה
-
-    if request.method == "POST":
-        form = SiteReviewForm(request.POST)
-        if form.is_valid():
-            form.save()
-            messages.success(request,  "תודה רבה על שיתוף הפעולה." , extra_tags="review_saved")
-            return redirect('site_reviews')
-        else:
-            # אם השגיאה היא על rating — לא מציגים פופאפ כלל, רק נגלול לטופס
-            if 'rating' in form.errors:
-                focus_rating_error = True
-            else:
-                # לשגיאות אחרות מותר להציג פופאפ (אם תרצי אפשר גם לוותר)
-                messages.error(request, "יש בעיה בפרטים. נסה שוב." , extra_tags="review_error")
-    else:
-        form = SiteReviewForm()
-
-    qs = SiteReview.objects.order_by('-created_at')
+    qs = GoogleReview.objects.all()  # כבר ממוין לפי -create_time דרך Meta.ordering
     paginator = Paginator(qs, 10)
     page_obj = paginator.get_page(request.GET.get('page'))
 
@@ -130,6 +107,4 @@ def site_reviews(request):
         "page_obj": page_obj,
         "rating_avg": agg['avg'] or 0,
         "rating_count": qs.count(),
-        "form": form,
-        "focus_rating_error": focus_rating_error,  # <- לדף
     })
