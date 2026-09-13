@@ -189,6 +189,11 @@ All configuration is loaded from a `.env` file in the project root. Key variable
 | `FEEDBACK_URL` | Base URL for feedback links in SMS | — |
 | `GOOGLE_PLACE_ID` | Google Places ID (optional) | — |
 | `GOOGLE_PLACES_API_KEY` | Google Places API key (optional) | — |
+| `GOOGLE_OAUTH_CLIENT_ID` | OAuth client ID for Google Business Profile API | — |
+| `GOOGLE_OAUTH_CLIENT_SECRET` | OAuth client secret for Google Business Profile API | — |
+| `GOOGLE_OAUTH_REFRESH_TOKEN` | Refresh token from `setup_google_reviews_auth` | — |
+| `GOOGLE_BUSINESS_ACCOUNT_ID` | Google Business Profile account ID | — |
+| `GOOGLE_BUSINESS_LOCATION_ID` | Google Business Profile location ID | — |
 
 **Policy versions** (configured in `settings.py`):
 
@@ -213,6 +218,7 @@ All configuration is loaded from a `.env` file in the project root. Key variable
 | `CustomSchedule` | Special date rules supporting both Gregorian and Hebrew calendar dates |
 | `ActivityRule` | Activity availability rules per day and time |
 | `SiteReview` | Customer star ratings and comments |
+| `GoogleReview` | Reviews synced from Google Business Profile (read-only, replaces SiteReview display on /reviews) |
 | `CancellationRequest` | Cancellation requests with multi-channel tracking |
 | `TermsConsent` | Versioned terms/privacy consent by phone number |
 | `MarketingConsent` | Per-channel marketing opt-in tracking (SMS, Email, WhatsApp) |
@@ -245,7 +251,7 @@ All configuration is loaded from a `.env` file in the project root. Key variable
 ### Content & Policies
 | Method | URL | Description |
 |---|---|---|
-| `GET/POST` | `/reviews/` | View and submit customer reviews |
+| `GET` | `/reviews/` | Display reviews synced from Google Business Profile |
 | `GET/POST` | `/cancel-request/` | Submit a cancellation request |
 | `GET` | `/terms/` | Terms of service |
 | `GET` | `/privacy/` | Privacy policy |
@@ -283,7 +289,7 @@ The application is designed for deployment on [Render.com](https://render.com) w
    ```bash
    gunicorn mesilat_zion_farm_website.wsgi:application --bind 0.0.0.0:8000
    ```
-7. Schedule `send_feedback_requests` management command via cron or Render's cron job feature
+7. Schedule `send_feedback_requests` and `sync_google_reviews` management commands via cron or Render's cron job feature
 
 ---
 
@@ -292,6 +298,13 @@ The application is designed for deployment on [Render.com](https://render.com) w
 ```bash
 # Send SMS feedback requests to customers with completed bookings
 python manage.py send_feedback_requests
+
+# One-time: authorize this app against the farm's Google Business Profile
+# and print the refresh token + account/location IDs to add to .env
+python manage.py setup_google_reviews_auth
+
+# Recurring: pull the latest reviews from Google Business Profile into GoogleReview
+python manage.py sync_google_reviews
 ```
 
-This command is intended to run on a scheduled basis (e.g., daily) to prompt recent customers for reviews.
+`send_feedback_requests` and `sync_google_reviews` are intended to run on a scheduled basis (e.g., daily). `setup_google_reviews_auth` is run once, locally, to obtain the refresh token.
