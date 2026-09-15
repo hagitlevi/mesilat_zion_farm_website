@@ -1,4 +1,4 @@
-from datetime import timedelta
+from datetime import date, datetime, timedelta
 
 from django.test import TestCase
 from django.utils import timezone
@@ -30,7 +30,10 @@ class FindFreeStartTimesExcludesPastTimesTests(TestCase):
 
     def test_does_not_filter_future_days_by_time_of_day(self):
         tomorrow = self.today + timedelta(days=1)
-        early_slot = self._slot(timezone.datetime.combine(tomorrow, self.now_local.time()).replace(tzinfo=_TZ) - timedelta(hours=5))
+        # מעגלים דרך תאריך פיקטיבי כדי ש"5 שעות אחורה" תזיז רק את שעת היום
+        # ולא תגלוש ל-'תמול' כשהריצה קרובה לחצות (למשל 00:07 - 5h = היום הקודם).
+        early_time = (datetime.combine(date(2000, 1, 1), self.now_local.time()) - timedelta(hours=5)).time()
+        early_slot = self._slot(datetime.combine(tomorrow, early_time).replace(tzinfo=_TZ))
 
         times = find_free_start_times(tomorrow, 15, self.activity.name)
 
