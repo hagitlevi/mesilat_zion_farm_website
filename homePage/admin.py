@@ -3978,12 +3978,28 @@ def _generate_slots_from_form(cleaned):
 
     if mode == "full":
         windows = _business_windows_for_date(date_obj)
-        if not windows:
-            return totals, "לא נמצאו שעות עבודה ליום הזה (בדקי BusinessHours והשיוך לימי השבוע)."
         for (st, et) in windows:
             c, s, b = _create_slots_for_range(date_obj, st, et, activities)
             totals["created"] += c
             totals["skipped"] += s
+
+        # זריחה/לילה חורגים משעות העבודה הרגילות ולא כלולים ב-BusinessHours,
+        # אז יוצרים אותם בנפרד לפי חוקי ה-CustomSchedule (allow_sunrise/allow_night לתאריך).
+        from homePage.utils import _windows_for_date
+        for label, wst, wet, _act_name in _windows_for_date(date_obj):
+            if label == "night":
+                matched = [a for a in activities if re.search(NIGHT_RE, a.name, re.I)]
+            elif label == "sunrise":
+                matched = [a for a in activities if re.search(SUNRISE_RE, a.name, re.I)]
+            else:
+                continue
+            if matched:
+                c, s, b = _create_slots_for_range(date_obj, wst, wet, matched)
+                totals["created"] += c
+                totals["skipped"] += s
+
+        if not windows and totals["created"] == 0 and totals["skipped"] == 0:
+            return totals, "לא נמצאו שעות עבודה ליום הזה (בדקי BusinessHours והשיוך לימי השבוע)."
         return totals, None
 
     # window
