@@ -312,6 +312,13 @@
         </select>
       </div>
 
+      <div class="mz-row" id="marketing_row" style="margin-top:12px">
+        <label style="display:flex; align-items:center; gap:8px; cursor:pointer;">
+          <input type="checkbox" id="marketing_optin" name="marketing_optin" value="1" style="width:18px; height:18px; cursor:pointer;">
+          הלקוח מאשר קבלת פרסום ושיווק
+        </label>
+      </div>
+
       {% if show_no_notify_checkbox %}
       <div class="mz-row" style="margin-top:12px">
         <label style="display:flex; align-items:center; gap:8px; cursor:pointer; font-weight:600; color:#c0392b;">
@@ -338,6 +345,18 @@
 
   // ----- refs -----
   const $ = id => document.getElementById(id);
+
+  // מסתיר את צ'קבוקס הפרסום והשיווק אם הלקוח (לפי טלפון) כבר אישר בעבר
+  const elPhone = $('id_phone');
+  if (elPhone) elPhone.addEventListener('change', async () => {
+    const row = $('marketing_row'), box = $('marketing_optin');
+    try {
+      const r = await fetch(`${AJAX_URL}?ajax=marketing_exists&phone=${encodeURIComponent(elPhone.value)}`);
+      const exists = (await r.json()).exists;
+      row.style.display = exists ? 'none' : '';
+      if (exists) box.checked = false;
+    } catch (e) { row.style.display = ''; }
+  });
 
   const elVariantLbl = $('couple_variant_label');
   const elVariantWrp = $('couple_variant_wrap');

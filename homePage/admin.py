@@ -2449,6 +2449,12 @@ class BookingAdmin(admin.ModelAdmin):
         POST: יוצר הזמנה, תופס סלוטים, נותן payment_ref ייחודי, מחשב מחיר ושולח מייל.
         """
         HIDE_RE = re.compile(r'^\s*שיעורי\s*רכיבה\s*/\s*טיפולית\s*$', re.U)
+        # ---- AJAX: האם הלקוח כבר אישר פרסום ושיווק ----
+        if request.method == "GET" and request.GET.get("ajax") == "marketing_exists":
+            sid = normalize_phone_il(request.GET.get("phone") or "")
+            exists = bool(sid) and MarketingConsent.objects.filter(subject_id=sid).exists()
+            return JsonResponse({"exists": exists})
+
         # ---- AJAX: זמני התחלה פנויות ----
         if request.method == "GET" and request.GET.get("ajax") == "times":
             name = (request.GET.get("name") or "").strip()
@@ -2685,6 +2691,19 @@ class BookingAdmin(admin.ModelAdmin):
         phone = (request.POST.get("phone") or "").strip()
         email = (request.POST.get("email") or "").strip()
         couple_variant = (request.POST.get("couple_variant") or "").strip().lower()  # 'day'|'night'|'sunrise'
+
+        # אישור פרסום ושיווק - אותה רשומה כמו בטופס האתר (payment.py)
+        if request.POST.get("marketing_optin") and phone:
+            MarketingConsent.objects.get_or_create(
+                subject_id=normalize_phone_il(phone),
+                defaults={
+                    "version": getattr(settings, "MARKETING_VERSION", "1.0"),
+                    "full_name": f"{first_name} {last_name}".strip(),
+                    "customer_email": email.lower(),
+                    "ip": request.META.get("REMOTE_ADDR"),
+                    "user_agent": (request.META.get("HTTP_USER_AGENT", "") or "")[:255],
+                },
+            )
 
         # סכום ידני (אופציונלי)
         manual_total_s = (request.POST.get("manual_total") or "").strip()
