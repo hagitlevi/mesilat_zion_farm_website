@@ -1,5 +1,7 @@
 from django.contrib import admin
+import io
 import json
+import zipfile
 from .models import (
     Activity, Appointment, CustomSchedule, Booking, SiteReview, GoogleReview,
     CancellationRequest, TermsConsent, ScheduleBoard, Weekday,
@@ -3783,12 +3785,46 @@ class PaymentAdmin(admin.ModelAdmin):
     list_display = ("__str__",)
 
 
+_RECEIPTS_PER_PDF = 50  # ריבוי קבלות ב-PDF אחד מחניק את ה-CPU/זיכרון של השרת
+
+
+class _ReceiptMonthFilter(admin.SimpleListFilter):
+    """בסיס לשני פילטרי חודש (מחודש / עד חודש) - בחירה של שניהם נותנת טווח של כמה חודשים."""
+    _is_end = False
+
+    def lookups(self, request, model_admin):
+        return [(d.strftime("%Y-%m"), d.strftime("%m/%Y")) for d in Receipt.objects.dates("created_at", "month", order="DESC")]
+
+    def queryset(self, request, queryset):
+        if not self.value():
+            return queryset
+        year, month = map(int, self.value().split("-"))
+        if self._is_end:
+            month += 1
+            if month == 13:
+                year, month = year + 1, 1
+            boundary = timezone.make_aware(datetime(year, month, 1))
+            return queryset.filter(created_at__lt=boundary)
+        return queryset.filter(created_at__gte=timezone.make_aware(datetime(year, month, 1)))
+
+
+class ReceiptFromMonthFilter(_ReceiptMonthFilter):
+    title = "מחודש"
+    parameter_name = "from_month"
+
+
+class ReceiptToMonthFilter(_ReceiptMonthFilter):
+    title = "עד חודש (כולל)"
+    parameter_name = "to_month"
+    _is_end = True
+
+
 @admin.register(Receipt)
 class ReceiptAdmin(admin.ModelAdmin):
     """קבלות נוצרות אוטומטית עם תשלום PayPlus מוצלח, או ידנית דרך 'הנפקת קבלה ידנית' (לתשלומי
     מזומן/ביט/פייבוקס/העברה/שיק). בשני המקרים אי אפשר לערוך/למחוק אחרי היצירה, כדי לשמור על אי-הפיכות."""
     list_display = ("receipt_number", "customer_name", "customer_email", "get_payment_method_display", "amount", "created_at", "is_void")
-    list_filter = ("is_void",)
+    list_filter = (ReceiptFromMonthFilter, ReceiptToMonthFilter, "is_void")
     search_fields = ("receipt_number", "customer_name", "customer_email")
     actions = ("download_pdf", "mark_void", "unmark_void", "resend_receipt_email")
 
@@ -3912,12 +3948,27 @@ class ReceiptAdmin(admin.ModelAdmin):
             filename = f"{receipt.receipt_number}.pdf"
         else:
             receipts = list(queryset.order_by("pk"))
-            try:
-                pdf_bytes = render_receipts_pdf(receipts)
-            except Exception:
-                self.message_user(request, "יצירת ה-PDF נכשלה", level=messages.ERROR)
-                return
-            filename = f"קבלות_{timezone.localdate().isoformat()}.pdf"
+            if len(receipts) <= _RECEIPTS_PER_PDF:
+                try:
+                    pdf_bytes = render_receipts_pdf(receipts)
+                except Exception:
+                    self.message_user(request, "יצירת ה-PDF נכשלה", level=messages.ERROR)
+                    return
+                filename = f"קבלות_{timezone.localdate().isoformat()}.pdf"
+            else:
+                chunks = [receipts[i:i + _RECEIPTS_PER_PDF] for i in range(0, len(receipts), _RECEIPTS_PER_PDF)]
+                buf = io.BytesIO()
+                try:
+                    with zipfile.ZipFile(buf, "w", zipfile.ZIP_STORED) as zf:
+                        for n, chunk in enumerate(chunks, 1):
+                            zf.writestr(f"קבלות_{n}.pdf", render_receipts_pdf(chunk))
+                except Exception:
+                    self.message_user(request, "יצירת ה-PDF נכשלה", level=messages.ERROR)
+                    return
+                self.message_user(request, f"ירדו {len(chunks)} קבצי PDF (עד {_RECEIPTS_PER_PDF} קבלות בכל קובץ), ארוזים ב-ZIP אחד.")
+                response = HttpResponse(buf.getvalue(), content_type="application/zip")
+                response["Content-Disposition"] = f'attachment; filename="receipts_{timezone.localdate().isoformat()}_{len(chunks)}_files.zip"'
+                return response
         response = HttpResponse(pdf_bytes, content_type="application/pdf")
         response["Content-Disposition"] = f'attachment; filename="{filename}"'
         return response
