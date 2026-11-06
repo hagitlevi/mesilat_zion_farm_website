@@ -27,7 +27,9 @@ class ShabbatClosureMiddleware:
         if not blocked:
             return self.get_response(request)
 
-        response = render(request, "homePage/shabbat_closed.html", status=503)
+        # 200 ולא 503: פרוקסי האירוח מחליף תגובות 5xx בעמוד "ERROR" משלו ומסתיר את העמוד שלנו.
+        # noindex בתבנית מונע אינדוקס של עמוד הסגירה.
+        response = render(request, "homePage/shabbat_closed.html", status=200)
         if reopen_at is not None:
             seconds_left = int((reopen_at - timezone.now()).total_seconds())
             response["Retry-After"] = str(max(seconds_left, 0))
