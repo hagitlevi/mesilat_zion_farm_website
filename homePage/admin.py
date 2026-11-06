@@ -1,6 +1,7 @@
 from django.contrib import admin
 import io
 import json
+import logging
 import zipfile
 from .models import (
     Activity, Appointment, CustomSchedule, Booking, SiteReview, GoogleReview,
@@ -3785,6 +3786,7 @@ class PaymentAdmin(admin.ModelAdmin):
     list_display = ("__str__",)
 
 
+logger = logging.getLogger(__name__)
 _RECEIPTS_PER_PDF = 50  # ריבוי קבלות ב-PDF אחד מחניק את ה-CPU/זיכרון של השרת
 
 
@@ -3943,6 +3945,7 @@ class ReceiptAdmin(admin.ModelAdmin):
             try:
                 pdf_bytes = render_receipt_pdf(receipt)
             except Exception:
+                logger.exception("receipt PDF download failed")
                 self.message_user(request, "יצירת ה-PDF נכשלה", level=messages.ERROR)
                 return
             filename = f"{receipt.receipt_number}.pdf"
@@ -3952,6 +3955,7 @@ class ReceiptAdmin(admin.ModelAdmin):
                 try:
                     pdf_bytes = render_receipts_pdf(receipts)
                 except Exception:
+                    logger.exception("receipt PDF download failed")
                     self.message_user(request, "יצירת ה-PDF נכשלה", level=messages.ERROR)
                     return
                 filename = f"קבלות_{timezone.localdate().isoformat()}.pdf"
@@ -3963,6 +3967,7 @@ class ReceiptAdmin(admin.ModelAdmin):
                         for n, chunk in enumerate(chunks, 1):
                             zf.writestr(f"קבלות_{n}.pdf", render_receipts_pdf(chunk))
                 except Exception:
+                    logger.exception("receipt PDF download failed")
                     self.message_user(request, "יצירת ה-PDF נכשלה", level=messages.ERROR)
                     return
                 self.message_user(request, f"ירדו {len(chunks)} קבצי PDF (עד {_RECEIPTS_PER_PDF} קבלות בכל קובץ), ארוזים ב-ZIP אחד.")
