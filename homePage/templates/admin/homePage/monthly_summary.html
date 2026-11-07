@@ -2,16 +2,22 @@
 {% load static %}
 {% block extrastyle %}
 <style>
-  .mz-month-summary { direction: rtl; }
+  .mz-month-summary { direction: rtl; max-width: 100%; box-sizing: border-box; }
   .mz-month-summary h2 { margin-top: 24px; }
-  .mz-month-summary .toolbar { display:flex; gap:10px; align-items:center; margin: 10px 0 16px; }
-  .mz-month-summary .toolbar a.btn { background:#6a879b; color:#fff; padding:6px 10px; text-decoration:none; border-radius:8px; font-weight:700; }
-  .mz-month-summary .toolbar form { margin-inline-start:auto; display:flex; gap:8px; align-items:center; }
+  .mz-month-summary .toolbar { display:flex; flex-wrap:wrap; gap:10px; align-items:center; margin: 10px 0 16px; }
+  .mz-month-summary .toolbar a.btn, .mz-month-summary .toolbar button.btn { background:#6a879b; color:#fff; padding:6px 10px; text-decoration:none; border:0; border-radius:8px; font-weight:700; cursor:pointer; }
+  .mz-month-summary .toolbar form { margin-inline-start:auto; display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
   .mz-month-summary table { width:100%; border-collapse: collapse; margin: 6px 0 16px; }
-  .mz-month-summary th, .mz-month-summary td { border:1px solid #ddd; padding:8px 10px; text-align:right; }
+  .mz-month-summary th, .mz-month-summary td { border:1px solid #ddd; padding:8px 10px; text-align:right; overflow-wrap:anywhere; }
   .mz-month-summary th { background:#f4f6f8; }
   .mz-month-summary .total { font-weight:800; }
+  .mz-month-summary .big { font-size: 1.6em; font-weight:800; margin: 4px 0 12px; }
   .muted { color:#666; font-size: 12px; }
+  @media (max-width: 640px) {
+    .mz-month-summary th, .mz-month-summary td { padding:6px 4px; font-size:13px; }
+    .mz-month-summary .toolbar form { margin-inline-start:0; width:100%; }
+    .mz-month-summary .toolbar input[type=month] { flex:1 1 130px; min-width:0; }
+  }
 </style>
 {% endblock %}
 
@@ -20,44 +26,71 @@
   <h1>{{ title }}</h1>
 
   <div class="toolbar">
-    <a class="btn" href="{{ nav.prev_url }}">‹ חודש קודם</a>
-    <strong style="margin:0 8px">{{ month_label }}</strong>
-    <a class="btn" href="{{ nav.next_url }}">חודש הבא ›</a>
+    <a class="btn" href="{{ nav.prev_url }}">‹ הקודם</a>
+    <strong style="margin:0 8px">{{ range_label }}</strong>
+    <a class="btn" href="{{ nav.next_url }}">הבא ›</a>
 
     <form method="get" action="">
-      <label for="monthpick">קפיצה לחודש:</label>
-      <input id="monthpick" type="month" name="jump" value="{{ nav.value_for_input }}" />
-      <button class="btn" onclick="
-        const v=document.getElementById('monthpick').value;
-        if(!v) return false;
-        const [yy, mm] = v.split('-');
-        const url = new URL(window.location.href);
-        url.searchParams.set('year', yy);
-        url.searchParams.set('month', mm);
-        window.location.href = url.toString();
-        return false;
-      ">עבור</button>
+      <label for="from_m">מחודש:</label>
+      <input id="from_m" type="month" name="from" value="{{ nav.from_value }}" />
+      <label for="to_m">עד חודש:</label>
+      <input id="to_m" type="month" name="to" value="{{ nav.to_value }}" />
+      <button class="btn" type="submit">הצג</button>
     </form>
   </div>
 
   <p class="muted">
     טווח נתונים:
     {{ period_start|date:"d.m.Y H:i" }} — {{ period_end|date:"d.m.Y H:i" }}
-    {% if is_current_month %}(עד עכשיו){% endif %}
+    {% if is_open %}(עד עכשיו){% endif %}
   </p>
+
+  <h2>סה״כ הכנסות</h2>
+  <div class="big">{{ total.total_revenue }}</div>
+  <table>
+    <thead>
+      <tr><th>מקור ההכנסה</th><th>סכום</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>הזמנות ששולמו</td><td>{{ total.bookings_revenue }}</td></tr>
+      <tr><td>מפגשי שיעור/טיפול</td><td>{{ total.sessions_revenue }}</td></tr>
+      <tr><td>קבלות עצמאיות ({{ total.receipts_count }})</td><td>{{ total.receipts_revenue }}</td></tr>
+      <tr class="total"><td>סה״כ</td><td>{{ total.total_revenue }}</td></tr>
+    </tbody>
+  </table>
+
+  {% if month_rows %}
+  <h2>לפי חודש</h2>
+  <table>
+    <thead>
+      <tr><th>חודש</th><th>הזמנות</th><th>מפגשים</th><th>קבלות עצמאיות</th><th>סה״כ</th></tr>
+    </thead>
+    <tbody>
+      {% for r in month_rows %}
+        <tr>
+          <td>{{ r.label }}</td>
+          <td>{{ r.bookings_revenue }}</td>
+          <td>{{ r.sessions_revenue }}</td>
+          <td>{{ r.receipts_revenue }}</td>
+          <td class="total">{{ r.total_revenue }}</td>
+        </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
 
   <h2>לפי פעילות</h2>
   <table>
     <thead>
       <tr>
         <th>פעילות / סוג מפגש</th>
-        <th># הזמנות/מפגשים (סה״כ)</th>
-        <th># שולמו</th>
-        <th>סה״כ הכנסות (שולם)</th>
+        <th>סה״כ</th>
+        <th>שולמו</th>
+        <th>הכנסות</th>
       </tr>
     </thead>
     <tbody>
-      {% for row in activity_rows %}
+      {% for row in total.activity_rows %}
         <tr>
           <td>{{ row.name }}</td>
           <td>{{ row.count_total }}</td>
@@ -65,7 +98,7 @@
           <td>{{ row.revenue_display }}</td>
         </tr>
       {% empty %}
-        <tr><td colspan="4">אין נתונים לחודש זה.</td></tr>
+        <tr><td colspan="4">אין נתונים לתקופה זו.</td></tr>
       {% endfor %}
     </tbody>
   </table>
@@ -75,37 +108,42 @@
     <thead>
       <tr>
         <th>אמצעי תשלום</th>
-        <th># עסקאות (שולם)</th>
-        <th>סה״כ הכנסות</th>
+        <th>עסקאות</th>
+        <th>הכנסות</th>
       </tr>
     </thead>
     <tbody>
-      {% for row in payment_rows %}
+      {% for row in total.payment_rows %}
         <tr>
           <td>{{ row.method }}</td>
           <td>{{ row.count }}</td>
           <td>{{ row.revenue_display }}</td>
         </tr>
       {% empty %}
-        <tr><td colspan="3">אין תשלומים לחודש זה.</td></tr>
+        <tr><td colspan="3">אין תשלומים לתקופה זו.</td></tr>
       {% endfor %}
     </tbody>
   </table>
 
   <p class="muted">
-    הערה: הפירוק לפי אמצעי תשלום מתבסס על הזמנות <strong>Booking</strong> בלבד.
-    הכנסות ממפגשי <strong>שיעור/טיפול</strong> נכללות בטבלת הפעילויות ובסיכומים,
-    אך אינן מפורקות לפי אמצעי תשלום. סה״כ הכנסות ממפגשים: <strong>{{ summary.sessions_revenue_display }}</strong>.
+    הפירוק לפי אמצעי תשלום כולל הזמנות ששולמו וקבלות עצמאיות. הכנסות ממפגשי
+    <strong>שיעור/טיפול</strong> נכללות בטבלת הפעילויות ובסה״כ, אך אינן מפורקות לפי אמצעי תשלום
+    (סה״כ ממפגשים: <strong>{{ total.sessions_revenue }}</strong>).
   </p>
 
   <h2>סיכום כולל</h2>
   <table>
     <tbody>
-      <tr><th>סה״כ הזמנות/מפגשים (כל הסטטוסים)</th><td class="total">{{ summary.total_bookings }}</td></tr>
-      <tr><th>סה״כ ששולמו</th><td class="total">{{ summary.total_paid_bookings }}</td></tr>
-      <tr><th>סה״כ הכנסות</th><td class="total">{{ summary.total_revenue_display }}</td></tr>
+      <tr><th>סה״כ הזמנות/מפגשים (כל הסטטוסים)</th><td class="total">{{ total.total_bookings }}</td></tr>
+      <tr><th>סה״כ ששולמו</th><td class="total">{{ total.total_paid }}</td></tr>
+      <tr><th>סה״כ הכנסות</th><td class="total">{{ total.total_revenue }}</td></tr>
+      <tr><th>קבלות ידניות אחרות (לידיעה, לא נכללות בסכום)</th><td>{{ total.other_manual_count }} · {{ total.other_manual_total }}</td></tr>
     </tbody>
   </table>
+  <p class="muted">
+    "קבלות ידניות אחרות" הן קבלות שהונפקו עם סימון הזמנה כשולמה, וקבלות ישנות שהונפקו לפני שהמערכת
+    התחילה להבדיל בין סוגים. הן לא נספרות בסכום כדי שלא ייספרו פעמיים.
+  </p>
 
   <div class="toolbar">
     <a class="btn" href="{{ nav.this_month_url }}">חזרה לחודש הנוכחי</a>

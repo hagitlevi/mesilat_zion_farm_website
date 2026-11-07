@@ -42,7 +42,7 @@ def create_receipt_for_payment(payment, booking) -> Receipt:
 
 
 def create_manual_receipt(*, customer_name, customer_email, items, payment_method,
-                           cheque_bank="", cheque_branch="", cheque_due_date="", created_by=None) -> Receipt:
+                           cheque_bank="", cheque_branch="", cheque_due_date="", created_by=None, standalone=False) -> Receipt:
   """יוצר קבלה ידנית מהאדמין. `items` הוא רשימת dict-ים עם description/amount (טקסט/מחרוזת).
   זורק ValueError עם הודעה בעברית אם הקלט לא תקין."""
   cleaned_items = []
@@ -84,6 +84,7 @@ def create_manual_receipt(*, customer_name, customer_email, items, payment_metho
       cheque_branch=cheque_branch.strip() if is_cheque else "",
       cheque_due_date=cheque_due_date.strip() if is_cheque else "",
       created_by=created_by,
+      standalone=standalone,
   )
   _assign_receipt_number(receipt)
   return receipt
