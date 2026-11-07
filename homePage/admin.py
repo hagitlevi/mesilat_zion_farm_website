@@ -3463,6 +3463,10 @@ class TermsConsentAdmin(admin.ModelAdmin):
 _MAX_SUMMARY_MONTHS = 24
 
 
+def _method_label(code):
+    return dict(Receipt.PAYMENT_METHOD_CHOICES).get(code, code) or "לא צוין"
+
+
 def _period_summary(start, end, now_local=None):
     """
     סיכום הכנסות לטווח [start, end). now_local: אם הטווח כולל את הרגע הנוכחי, מפגשי טיפול
@@ -3497,7 +3501,7 @@ def _period_summary(start, end, now_local=None):
     for row in (paid_qs.values("payment_method")
                       .annotate(revenue=Coalesce(Sum("total_price"), DEC0), count=Count("id"))):
         payment_rows.append({
-            "method": (row["payment_method"] or "").strip() or "—",
+            "method": _method_label((row["payment_method"] or "").strip()),
             "count": int(row["count"] or 0),
             "revenue": Decimal(row["revenue"] or 0),
         })
@@ -3543,7 +3547,7 @@ def _period_summary(start, end, now_local=None):
     standalone = standalone_qs.aggregate(total=Coalesce(Sum("amount"), DEC0), n=Count("id"))
     for row in standalone_qs.values("payment_method").annotate(revenue=Sum("amount"), count=Count("id")):
         payment_rows.append({
-            "method": "קבלה עצמאית – " + dict(Receipt.PAYMENT_METHOD_CHOICES).get(row["payment_method"], row["payment_method"]),
+            "method": "קבלה עצמאית – " + _method_label(row["payment_method"]),
             "count": int(row["count"]),
             "revenue": Decimal(row["revenue"] or 0),
         })
@@ -3581,6 +3585,7 @@ def _period_summary(start, end, now_local=None):
         "receipts_revenue": _fmt_ils(receipts_revenue),
         "receipts_count": int(standalone["n"]),
         "total_revenue": _fmt_ils(total_revenue),
+        "total_value": total_revenue,
         "other_manual_total": _fmt_ils(Decimal(other_manual["total"])),
         "other_manual_count": int(other_manual["n"]),
     }
@@ -3642,8 +3647,21 @@ class MonthlySummaryAdmin(admin.ModelAdmin):
             for idx in range(from_idx, to_idx + 1):
                 month_rows.append({"label": month_name_he(idx), **summarize(idx, idx)[3]})
 
+        biggest = max((r["total_value"] for r in month_rows), default=0) or 1
+        for r in month_rows:
+            r["pct"] = int(r["total_value"] * 100 / biggest)
+
         span = to_idx - from_idx + 1
         ym = lambda idx: f"{idx // 12}-{idx % 12 + 1:02d}"
+        jan_idx = now_local.year * 12
+        chips = [
+            ("החודש", cur_idx, cur_idx),
+            ("חודש שעבר", cur_idx - 1, cur_idx - 1),
+            ("3 חודשים אחרונים", cur_idx - 2, cur_idx),
+            ("מתחילת השנה", jan_idx, cur_idx),
+        ]
+        chips = [{"label": lbl, "url": f"?from={ym(f)}&to={ym(t)}", "active": (f, t) == (from_idx, to_idx)}
+                 for lbl, f, t in chips]
         ctx = {
             "title": "סיכום הכנסות",
             "opts": self.model._meta,
@@ -3651,6 +3669,8 @@ class MonthlySummaryAdmin(admin.ModelAdmin):
             "period_start": start, "period_end": end, "is_open": is_open,
             "total": total,
             "month_rows": month_rows,
+            "chips": chips,
+            "custom_range": not any(c["active"] for c in chips),
             "nav": {
                 "prev_url": f"?from={ym(from_idx - span)}&to={ym(to_idx - span)}",
                 "next_url": f"?from={ym(from_idx + span)}&to={ym(to_idx + span)}",

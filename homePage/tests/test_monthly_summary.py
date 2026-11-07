@@ -39,4 +39,4 @@ class MonthlySummaryTests(TestCase):
         url = reverse("admin:homePage_monthlysummary_changelist")
         for qs in ("", "?year=2026&month=3", "?from=2026-01&to=2026-03", "?from=2026-03&to=2026-01", "?from=junk"):
             self.assertEqual(self.client.get(url + qs).status_code, 200, qs)
-        self.assertContains(self.client.get(url + "?from=2026-01&to=2026-03"), "לפי חודש")
+        self.assertContains(self.client.get(url + "?from=2026-01&to=2026-03"), "חודש אחרי חודש")

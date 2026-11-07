@@ -2,151 +2,135 @@
 {% load static %}
 {% block extrastyle %}
 <style>
-  .mz-month-summary { direction: rtl; max-width: 100%; box-sizing: border-box; }
-  .mz-month-summary h2 { margin-top: 24px; }
-  .mz-month-summary .toolbar { display:flex; flex-wrap:wrap; gap:10px; align-items:center; margin: 10px 0 16px; }
-  .mz-month-summary .toolbar a.btn, .mz-month-summary .toolbar button.btn { background:#6a879b; color:#fff; padding:6px 10px; text-decoration:none; border:0; border-radius:8px; font-weight:700; cursor:pointer; }
-  .mz-month-summary .toolbar form { margin-inline-start:auto; display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
-  .mz-month-summary table { width:100%; border-collapse: collapse; margin: 6px 0 16px; }
-  .mz-month-summary th, .mz-month-summary td { border:1px solid #ddd; padding:8px 10px; text-align:right; overflow-wrap:anywhere; }
-  .mz-month-summary th { background:#f4f6f8; }
-  .mz-month-summary .total { font-weight:800; }
-  .mz-month-summary .big { font-size: 1.6em; font-weight:800; margin: 4px 0 12px; }
-  .muted { color:#666; font-size: 12px; }
-  @media (max-width: 640px) {
-    .mz-month-summary th, .mz-month-summary td { padding:6px 4px; font-size:13px; }
-    .mz-month-summary .toolbar form { margin-inline-start:0; width:100%; }
-    .mz-month-summary .toolbar input[type=month] { flex:1 1 130px; min-width:0; }
-  }
+  .ms { direction: rtl; max-width: 720px; margin: 0 auto; box-sizing: border-box; color: #3b2a17; font-size: 16px; }
+  .ms *, .ms *::before, .ms *::after { box-sizing: border-box; }
+  .ms h1 { margin: 4px 0 14px; font-size: 1.5rem; color: #704a22; }
+  .ms h2 { margin: 26px 0 10px; font-size: 1.15rem; color: #704a22; }
+
+  /* בחירת תקופה */
+  .ms .chips { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 14px; }
+  .ms .chip { padding: 9px 14px; border-radius: 999px; background: #f1e8da; color: #5b3d1d; text-decoration: none; font-weight: 700; font-size: .95rem; }
+  .ms .chip.on { background: #704a22; color: #fff; }
+  .ms .pager { display: flex; align-items: center; justify-content: space-between; gap: 10px; background: #fff; border: 1px solid #eadfcc; border-radius: 16px; padding: 8px; }
+  .ms .pager a { flex: 0 0 auto; width: 48px; text-align: center; padding: 8px 0; border-radius: 12px; background: #f1e8da; color: #5b3d1d; text-decoration: none; font-weight: 800; font-size: 1.6rem; line-height: 1; }
+  .ms .pager .label { text-align: center; font-weight: 800; font-size: 1.1rem; line-height: 1.25; }
+  .ms .pager .label small { display: block; font-weight: 500; font-size: .8rem; color: #8a7a66; }
+  .ms details.custom { margin-top: 10px; }
+  .ms details.custom summary { cursor: pointer; color: #704a22; font-weight: 700; padding: 8px 2px; }
+  .ms details.custom form { display: flex; flex-wrap: wrap; gap: 10px; align-items: end; padding: 12px; background: #fff; border: 1px solid #eadfcc; border-radius: 14px; }
+  .ms details.custom label { display: block; font-size: .85rem; color: #8a7a66; margin-bottom: 4px; }
+  .ms details.custom input { width: 100%; padding: 10px; font-size: 1rem; border: 1px solid #d8c9b0; border-radius: 10px; background: #fff; color: #3b2a17; }
+  .ms details.custom .f { flex: 1 1 140px; min-width: 0; }
+  .ms .go { flex: 1 1 100%; padding: 12px; border: 0; border-radius: 12px; background: #704a22; color: #fff; font-weight: 800; font-size: 1rem; cursor: pointer; }
+
+  /* כרטיסים */
+  .ms .hero { margin-top: 16px; padding: 20px 16px; text-align: center; border-radius: 20px; background: linear-gradient(135deg, #704a22, #9a6a35); color: #fff; }
+  .ms .hero .cap { font-size: .95rem; opacity: .9; }
+  .ms .hero .num { font-size: 2.6rem; font-weight: 900; line-height: 1.15; margin: 4px 0; }
+  .ms .hero .sub { font-size: .9rem; opacity: .9; }
+  .ms .cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 10px; }
+  .ms .card { background: #fff; border: 1px solid #eadfcc; border-radius: 14px; padding: 12px 6px; text-align: center; }
+  .ms .card .cap { font-size: .8rem; color: #8a7a66; }
+  .ms .card .val { font-size: 1.1rem; font-weight: 800; margin-top: 4px; overflow-wrap: anywhere; }
+
+  /* רשימות */
+  .ms .list { background: #fff; border: 1px solid #eadfcc; border-radius: 16px; overflow: hidden; }
+  .ms .item { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 12px 14px; border-bottom: 1px solid #f1e8da; }
+  .ms .item:last-child { border-bottom: 0; }
+  .ms .item .name { font-weight: 700; overflow-wrap: anywhere; }
+  .ms .item .meta { display: block; font-weight: 400; font-size: .8rem; color: #8a7a66; margin-top: 2px; }
+  .ms .item .amt { font-weight: 800; white-space: nowrap; }
+  .ms .bar { height: 6px; border-radius: 6px; background: #f1e8da; margin-top: 8px; }
+  .ms .bar i { display: block; height: 100%; border-radius: 6px; background: #9a6a35; }
+  .ms .empty { padding: 16px; text-align: center; color: #8a7a66; }
+  .ms .note { font-size: .82rem; color: #8a7a66; line-height: 1.5; margin: 8px 2px; }
+  .ms details.more { margin-top: 22px; }
+  .ms details.more summary { cursor: pointer; color: #704a22; font-weight: 700; padding: 8px 2px; }
+
+  @media (min-width: 560px) { .ms .hero .num { font-size: 3rem; } }
 </style>
 {% endblock %}
 
 {% block content %}
-<div class="mz-month-summary">
-  <h1>{{ title }}</h1>
-
-  <div class="toolbar">
-    <a class="btn" href="{{ nav.prev_url }}">‹ הקודם</a>
-    <strong style="margin:0 8px">{{ range_label }}</strong>
-    <a class="btn" href="{{ nav.next_url }}">הבא ›</a>
-
-    <form method="get" action="">
-      <label for="from_m">מחודש:</label>
-      <input id="from_m" type="month" name="from" value="{{ nav.from_value }}" />
-      <label for="to_m">עד חודש:</label>
-      <input id="to_m" type="month" name="to" value="{{ nav.to_value }}" />
-      <button class="btn" type="submit">הצג</button>
-    </form>
+<div class="ms">
+  <div class="chips">
+    {% for c in chips %}<a class="chip{% if c.active %} on{% endif %}" href="{{ c.url }}">{{ c.label }}</a>{% endfor %}
   </div>
 
-  <p class="muted">
-    טווח נתונים:
-    {{ period_start|date:"d.m.Y H:i" }} — {{ period_end|date:"d.m.Y H:i" }}
-    {% if is_open %}(עד עכשיו){% endif %}
-  </p>
+  <div class="pager">
+    <a href="{{ nav.prev_url }}" aria-label="התקופה הקודמת">›</a>
+    <div class="label">{{ range_label }}<small>{% if is_open %}עד עכשיו{% else %}תקופה מלאה{% endif %}</small></div>
+    <a href="{{ nav.next_url }}" aria-label="התקופה הבאה">‹</a>
+  </div>
 
-  <h2>סה״כ הכנסות</h2>
-  <div class="big">{{ total.total_revenue }}</div>
-  <table>
-    <thead>
-      <tr><th>מקור ההכנסה</th><th>סכום</th></tr>
-    </thead>
-    <tbody>
-      <tr><td>הזמנות ששולמו</td><td>{{ total.bookings_revenue }}</td></tr>
-      <tr><td>מפגשי שיעור/טיפול</td><td>{{ total.sessions_revenue }}</td></tr>
-      <tr><td>קבלות עצמאיות ({{ total.receipts_count }})</td><td>{{ total.receipts_revenue }}</td></tr>
-      <tr class="total"><td>סה״כ</td><td>{{ total.total_revenue }}</td></tr>
-    </tbody>
-  </table>
+  <details class="custom"{% if custom_range %} open{% endif %}>
+    <summary>רוצה לבחור חודשים אחרים?</summary>
+    <form method="get" action="">
+      <div class="f"><label for="from_m">מחודש</label><input id="from_m" type="month" name="from" value="{{ nav.from_value }}"></div>
+      <div class="f"><label for="to_m">עד חודש (כולל)</label><input id="to_m" type="month" name="to" value="{{ nav.to_value }}"></div>
+      <button class="go" type="submit">הצג את התקופה</button>
+    </form>
+  </details>
+
+  <div class="hero">
+    <div class="cap">כמה נכנס בתקופה הזו</div>
+    <div class="num">{{ total.total_revenue }}</div>
+    <div class="sub">{{ total.total_paid }} תשלומים מתוך {{ total.total_bookings }} הזמנות ומפגשים</div>
+  </div>
+
+  <div class="cards">
+    <div class="card"><div class="cap">הזמנות</div><div class="val">{{ total.bookings_revenue }}</div></div>
+    <div class="card"><div class="cap">מפגשים</div><div class="val">{{ total.sessions_revenue }}</div></div>
+    <div class="card"><div class="cap">קבלות עצמאיות ({{ total.receipts_count }})</div><div class="val">{{ total.receipts_revenue }}</div></div>
+  </div>
 
   {% if month_rows %}
-  <h2>לפי חודש</h2>
-  <table>
-    <thead>
-      <tr><th>חודש</th><th>הזמנות</th><th>מפגשים</th><th>קבלות עצמאיות</th><th>סה״כ</th></tr>
-    </thead>
-    <tbody>
-      {% for r in month_rows %}
-        <tr>
-          <td>{{ r.label }}</td>
-          <td>{{ r.bookings_revenue }}</td>
-          <td>{{ r.sessions_revenue }}</td>
-          <td>{{ r.receipts_revenue }}</td>
-          <td class="total">{{ r.total_revenue }}</td>
-        </tr>
-      {% endfor %}
-    </tbody>
-  </table>
+  <h2>חודש אחרי חודש</h2>
+  <div class="list">
+    {% for r in month_rows %}
+      <div class="item" style="display:block">
+        <div style="display:flex;justify-content:space-between;gap:12px">
+          <span class="name">{{ r.label }}</span><span class="amt">{{ r.total_revenue }}</span>
+        </div>
+        <div class="bar"><i style="width:{{ r.pct }}%"></i></div>
+      </div>
+    {% endfor %}
+  </div>
   {% endif %}
 
-  <h2>לפי פעילות</h2>
-  <table>
-    <thead>
-      <tr>
-        <th>פעילות / סוג מפגש</th>
-        <th>סה״כ</th>
-        <th>שולמו</th>
-        <th>הכנסות</th>
-      </tr>
-    </thead>
-    <tbody>
-      {% for row in total.activity_rows %}
-        <tr>
-          <td>{{ row.name }}</td>
-          <td>{{ row.count_total }}</td>
-          <td>{{ row.count_paid }}</td>
-          <td>{{ row.revenue_display }}</td>
-        </tr>
-      {% empty %}
-        <tr><td colspan="4">אין נתונים לתקופה זו.</td></tr>
-      {% endfor %}
-    </tbody>
-  </table>
-
-  <h2>לפי אמצעי תשלום</h2>
-  <table>
-    <thead>
-      <tr>
-        <th>אמצעי תשלום</th>
-        <th>עסקאות</th>
-        <th>הכנסות</th>
-      </tr>
-    </thead>
-    <tbody>
-      {% for row in total.payment_rows %}
-        <tr>
-          <td>{{ row.method }}</td>
-          <td>{{ row.count }}</td>
-          <td>{{ row.revenue_display }}</td>
-        </tr>
-      {% empty %}
-        <tr><td colspan="3">אין תשלומים לתקופה זו.</td></tr>
-      {% endfor %}
-    </tbody>
-  </table>
-
-  <p class="muted">
-    הפירוק לפי אמצעי תשלום כולל הזמנות ששולמו וקבלות עצמאיות. הכנסות ממפגשי
-    <strong>שיעור/טיפול</strong> נכללות בטבלת הפעילויות ובסה״כ, אך אינן מפורקות לפי אמצעי תשלום
-    (סה״כ ממפגשים: <strong>{{ total.sessions_revenue }}</strong>).
-  </p>
-
-  <h2>סיכום כולל</h2>
-  <table>
-    <tbody>
-      <tr><th>סה״כ הזמנות/מפגשים (כל הסטטוסים)</th><td class="total">{{ total.total_bookings }}</td></tr>
-      <tr><th>סה״כ ששולמו</th><td class="total">{{ total.total_paid }}</td></tr>
-      <tr><th>סה״כ הכנסות</th><td class="total">{{ total.total_revenue }}</td></tr>
-      <tr><th>קבלות ידניות אחרות (לידיעה, לא נכללות בסכום)</th><td>{{ total.other_manual_count }} · {{ total.other_manual_total }}</td></tr>
-    </tbody>
-  </table>
-  <p class="muted">
-    "קבלות ידניות אחרות" הן קבלות שהונפקו עם סימון הזמנה כשולמה, וקבלות ישנות שהונפקו לפני שהמערכת
-    התחילה להבדיל בין סוגים. הן לא נספרות בסכום כדי שלא ייספרו פעמיים.
-  </p>
-
-  <div class="toolbar">
-    <a class="btn" href="{{ nav.this_month_url }}">חזרה לחודש הנוכחי</a>
+  <h2>מה הכניס</h2>
+  <div class="list">
+    {% for row in total.activity_rows %}
+      <div class="item">
+        <div class="name">{{ row.name }}<span class="meta">{{ row.count_total }} הזמנות · {{ row.count_paid }} שולמו</span></div>
+        <div class="amt">{{ row.revenue_display }}</div>
+      </div>
+    {% empty %}
+      <div class="empty">אין נתונים לתקופה הזו.</div>
+    {% endfor %}
   </div>
+
+  <h2>איך שילמו</h2>
+  <div class="list">
+    {% for row in total.payment_rows %}
+      <div class="item">
+        <div class="name">{{ row.method }}<span class="meta">{{ row.count }} עסקאות</span></div>
+        <div class="amt">{{ row.revenue_display }}</div>
+      </div>
+    {% empty %}
+      <div class="empty">אין תשלומים לתקופה הזו.</div>
+    {% endfor %}
+  </div>
+  <p class="note">הכנסות ממפגשי שיעור/טיפול ({{ total.sessions_revenue }}) נכללות בסה״כ ובחלק "מה הכניס", אך לא מפורקות לפי אמצעי תשלום.</p>
+
+  <details class="more">
+    <summary>עוד פרטים</summary>
+    <div class="list" style="margin-top:8px">
+      <div class="item"><span class="name">הזמנות ומפגשים (כל הסטטוסים)</span><span class="amt">{{ total.total_bookings }}</span></div>
+      <div class="item"><span class="name">מתוכם שולמו</span><span class="amt">{{ total.total_paid }}</span></div>
+      <div class="item"><span class="name">קבלות ידניות אחרות (לא נכללות בסכום)</span><span class="amt">{{ total.other_manual_count }} · {{ total.other_manual_total }}</span></div>
+    </div>
+    <p class="note">"קבלות ידניות אחרות" הן קבלות שהונפקו בסימון הזמנה כשולמה, וקבלות ישנות לפני שהמערכת הבדילה בין הסוגים. הן לא נספרות בסכום כדי שלא ייספרו פעמיים.</p>
+  </details>
 </div>
 {% endblock %}
