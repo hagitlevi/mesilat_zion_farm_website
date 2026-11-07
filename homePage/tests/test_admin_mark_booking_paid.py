@@ -78,6 +78,17 @@ class MarkBookingPaidTests(TestCase):
 
         self.assertRedirects(resp, reverse("admin:homePage_booking_change", args=[self.booking.id]))
 
+    def test_receipt_is_linked_and_shown_on_booking_page(self):
+        change_url = reverse("admin:homePage_booking_change", args=[self.booking.id])
+        self.assertContains(self.client.get(change_url), "אין קבלה משויכת")
+
+        with patch("homePage.admin.send_sms_via_ntfy"),              patch("homePage.services.receipts.render_receipt_pdf", return_value=b"%PDF-fake"):
+            self.client.post(self.url, {"payment_method": "bit"})
+
+        receipt = Receipt.objects.get(customer_email="dana@example.com")
+        self.assertEqual(receipt.booking, self.booking)
+        self.assertContains(self.client.get(change_url), receipt.receipt_number)
+
     def test_mark_paid_requires_a_payment_method(self):
         resp = self.client.post(self.url, {"payment_method": ""})
 

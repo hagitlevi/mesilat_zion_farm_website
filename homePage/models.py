@@ -680,6 +680,10 @@ class Receipt(models.Model):
     cheque_due_date = models.CharField(max_length=50, blank=True)
     created_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL)
     created_at = models.DateTimeField(auto_now_add=True)
+    booking = models.ForeignKey(
+        'Booking', null=True, blank=True, on_delete=models.SET_NULL, related_name='receipts',
+        verbose_name="הזמנה", editable=False,
+    )
     standalone = models.BooleanField(
         "קבלה עצמאית", default=False,
         help_text="קבלה שהונפקה ידנית ללא קשר להזמנה — נספרת כהכנסה נפרדת בסיכום החודש.",

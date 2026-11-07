@@ -40,7 +40,7 @@ from django.db.models.functions import Coalesce
 from django.db.models import Count, Sum, Value, DecimalField
 from django.contrib.admin.widgets import AdminDateWidget, AdminTimeWidget, FilteredSelectMultiple
 from django.http import HttpResponse
-from django.utils.html import format_html
+from django.utils.html import format_html, format_html_join
 from .models import MarketingConsent
 from .models import SiteSettings
 import csv
@@ -2156,8 +2156,25 @@ class BookingAdmin(admin.ModelAdmin):
                      "mark_paid_action")
     list_filter   = ("activity", "status","created_at", "start_dt")
     search_fields = ("customer_name", "customer_phone", "customer_email", "payment_ref")
-    readonly_fields = ("total_price", "payment_method", "payment_ref", "status")
+    readonly_fields = ("total_price", "payment_method", "payment_ref", "status", "receipts_link")
     inlines = []
+
+    @admin.display(description="קבלה")
+    def receipts_link(self, obj):
+        if not obj or not obj.pk:
+            return "—"
+        receipts = Receipt.objects.filter(Q(booking=obj) | Q(payment__booking=obj)).distinct().order_by("pk")
+        if not receipts:
+            return "אין קבלה משויכת להזמנה (הזמנות ישנות ששולמו ידנית אינן מקושרות)"
+        return format_html_join(
+            mark_safe("<br>"),
+            '<a href="{}">קבלה {}</a> · ₪{}{} · <a href="{}">הורדת PDF</a>',
+            (
+                (reverse("admin:homePage_receipt_change", args=[r.pk]), r.receipt_number, r.amount,
+                 " (מבוטלת)" if r.is_void else "", reverse("admin:homePage_receipt_download", args=[r.pk]))
+                for r in receipts
+            ),
+        )
 
     def has_delete_permission(self, request, obj=None):
         return False
@@ -2408,6 +2425,7 @@ class BookingAdmin(admin.ModelAdmin):
                             items=[{"description": booking.activity.name, "amount": str(booking.total_price or 0)}],
                             payment_method=payment_method,
                             created_by=request.user,
+                            booking=booking,
                         )
                     booking.status = "paid"
                     booking.payment_method = payment_method
@@ -2947,6 +2965,7 @@ class BookingAdmin(admin.ModelAdmin):
                         items=[{"description": activity.name, "amount": str(total_price or 0)}],
                         payment_method=manual_payment_method,
                         created_by=request.user,
+                        booking=booking,
                     )
                 except Exception as e:
                     messages.warning(
