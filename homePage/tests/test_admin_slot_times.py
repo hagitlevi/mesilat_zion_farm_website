@@ -1,4 +1,5 @@
 from datetime import date, datetime, timedelta
+from unittest.mock import patch
 
 from django.test import TestCase
 from django.utils import timezone
@@ -13,7 +14,11 @@ _TZ = ZoneInfo("Asia/Jerusalem")
 class FindFreeStartTimesExcludesPastTimesTests(TestCase):
     def setUp(self):
         self.activity = Activity.objects.create(name="רכיבה", description="", duration_minutes=30)
-        self.now_local = timezone.now().astimezone(_TZ)
+        # שעה קבועה (12:00) כדי שהבדיקה לא תיכשל כשרצה קרוב לחצות ("עוד שעתיים" נופל על מחר)
+        self.now_local = timezone.now().astimezone(_TZ).replace(hour=12, minute=0, second=0, microsecond=0)
+        patcher = patch("django.utils.timezone.now", return_value=self.now_local)
+        patcher.start()
+        self.addCleanup(patcher.stop)
         self.today = self.now_local.date()
 
     def _slot(self, dt_local):
