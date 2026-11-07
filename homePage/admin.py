@@ -3551,6 +3551,7 @@ def _period_summary(start, end, now_local=None):
             "count": int(row["count"]),
             "revenue": Decimal(row["revenue"] or 0),
         })
+    all_receipts = receipts_qs.aggregate(total=Coalesce(Sum("amount"), DEC0), n=Count("id"))
     other_manual = receipts_qs.filter(standalone=False, payment__isnull=True).aggregate(
         total=Coalesce(Sum("amount"), DEC0), n=Count("id"))
 
@@ -3586,6 +3587,8 @@ def _period_summary(start, end, now_local=None):
         "receipts_count": int(standalone["n"]),
         "total_revenue": _fmt_ils(total_revenue),
         "total_value": total_revenue,
+        "all_receipts_total": _fmt_ils(Decimal(all_receipts["total"])),
+        "all_receipts_count": int(all_receipts["n"]),
         "other_manual_total": _fmt_ils(Decimal(other_manual["total"])),
         "other_manual_count": int(other_manual["n"]),
     }

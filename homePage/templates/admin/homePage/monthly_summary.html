@@ -84,6 +84,12 @@
     <div class="card"><div class="cap">קבלות עצמאיות ({{ total.receipts_count }})</div><div class="val">{{ total.receipts_revenue }}</div></div>
   </div>
 
+  <div class="card" style="margin-top:10px;padding:14px">
+    <div class="cap">סה״כ לפי קבלות שהונפקו ({{ total.all_receipts_count }} קבלות)</div>
+    <div class="val">{{ total.all_receipts_total }}</div>
+    <div class="cap" style="margin-top:4px">כל הקבלות בתקופה (אוטומטיות וידניות, בלי מבוטלות). מידע בלבד, לא נוסף לסה״כ למעלה.</div>
+  </div>
+
   {% if month_rows %}
   <h2>חודש אחרי חודש</h2>
   <div class="list">

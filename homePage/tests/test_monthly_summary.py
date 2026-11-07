@@ -31,6 +31,7 @@ class MonthlySummaryTests(TestCase):
         _receipt(999, standalone=False)  # נוצרה עם סימון הזמנה - כבר נספרת דרך ההזמנה
         s = _period_summary(datetime(2000, 1, 1, tzinfo=TZ), datetime(2100, 1, 1, tzinfo=TZ))
         self.assertEqual((s["receipts_count"], s["receipts_revenue"], s["total_revenue"]), (1, "₪ 100", "₪ 100"))
+        self.assertEqual((s["all_receipts_count"], s["all_receipts_total"]), (2, "₪ 1099"))
         self.assertEqual((s["other_manual_count"], s["other_manual_total"]), (1, "₪ 999"))
 
     def test_view_renders_for_single_month_range_and_legacy_params(self):
